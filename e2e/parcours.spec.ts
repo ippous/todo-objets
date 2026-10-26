@@ -3,6 +3,12 @@ import { expect, test, type Page } from "@playwright/test";
 const EMAIL = process.env.E2E_EMAIL ?? "ippous@gmail.com";
 const SECRET = process.env.E2E_SECRET ?? "test-local";
 
+// Déploiement protégé par Vercel : un lien de partage pose le cookie d'accès.
+test.beforeEach(async ({ page }) => {
+  const share = process.env.E2E_VERCEL_SHARE;
+  if (share) await page.goto(`/?_vercel_share=${encodeURIComponent(share)}`);
+});
+
 async function login(page: Page) {
   await page.goto("/connexion");
   await page.getByLabel("Adresse e-mail autorisée").fill(EMAIL);
