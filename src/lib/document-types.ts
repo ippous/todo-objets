@@ -7,7 +7,10 @@ export const DOCUMENT_TYPES: Record<string, string> = {
   "image/png": "Image",
   "image/webp": "Image",
   "image/heic": "Image",
+  "image/gif": "Image",
   "text/plain": "Texte",
+  "text/markdown": "Markdown",
+  "application/json": "JSON",
   "text/csv": "CSV",
   "application/msword": "Word",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "Word",
@@ -28,7 +31,11 @@ const BY_EXTENSION: Record<string, string> = {
   png: "image/png",
   webp: "image/webp",
   heic: "image/heic",
+  gif: "image/gif",
   txt: "text/plain",
+  log: "text/plain",
+  md: "text/markdown",
+  json: "application/json",
   csv: "text/csv",
   doc: "application/msword",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -65,4 +72,42 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} o`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
   return `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} Mo`;
+}
+
+/** Façon d'afficher un document dans la visionneuse. */
+export type ViewerKind =
+  | "pdf"
+  | "image"
+  | "text"
+  | "csv"
+  | "docx"
+  | "xlsx"
+  | "odt"
+  | "ods"
+  | "pptx"
+  | "zip"
+  | "none";
+
+const VIEWERS: Record<string, ViewerKind> = {
+  "application/pdf": "pdf",
+  "image/jpeg": "image",
+  "image/png": "image",
+  "image/webp": "image",
+  "image/gif": "image",
+  "image/heic": "image", // Safari sait l'afficher ; ailleurs, repli sur le téléchargement
+  "text/plain": "text",
+  "text/markdown": "text",
+  "application/json": "text",
+  "text/csv": "csv",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "application/vnd.oasis.opendocument.text": "odt",
+  "application/vnd.oasis.opendocument.spreadsheet": "ods",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+  "application/zip": "zip",
+  // .doc, .xls, .ppt (anciens formats binaires) : pas d'aperçu, téléchargement
+};
+
+export function viewerKind(contentType: string): ViewerKind {
+  return VIEWERS[contentType] ?? "none";
 }

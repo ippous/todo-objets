@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { purge, testMarker } from "./helpers";
 
 const EMAIL = process.env.E2E_EMAIL ?? "ippous@gmail.com";
 const SECRET = process.env.E2E_SECRET ?? "test-local";
@@ -15,7 +16,13 @@ async function login(page: Page) {
   await page.getByLabel("Code de test").fill(SECRET);
   await page.getByRole("button", { name: "Se connecter", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Arbre des objets" })).toBeVisible();
+  await purge(page, testMarker(test.info())); // restes d'un essai précédent
 }
+
+// Chaque test efface ce qu'il a créé, même s'il échoue.
+test.afterEach(async ({ page }, info) => {
+  await purge(page, testMarker(info));
+});
 
 test("une adresse non autorisée est refusée", async ({ page }) => {
   await page.goto("/connexion");
@@ -26,7 +33,7 @@ test("une adresse non autorisée est refusée", async ({ page }) => {
 });
 
 test("parcours complet : objets, tâches, cumuls, déplacement, récurrence", async ({ page }, info) => {
-  const suffix = `${info.project.name}-${Date.now().toString(36)}`;
+  const suffix = testMarker(info);
   const root = `Tracteur ${suffix}`;
   const child = `Moteur ${suffix}`;
   await login(page);
@@ -42,7 +49,7 @@ test("parcours complet : objets, tâches, cumuls, déplacement, récurrence", as
   // Nouvelle racine (les objets ne font pas forcément partie d'une propriété)
   await page.getByRole("link", { name: "Nouvel objet racine" }).click();
   await page.getByLabel("Nom").fill(root);
-  await page.getByLabel(/^Type/).fill("véhicule");
+  await page.getByLabel(/^Type/).selectOption({ label: "véhicule" });
   await page.getByRole("button", { name: "Créer l'objet" }).click();
   await expect(page.getByRole("heading", { level: 1, name: root })).toBeVisible();
 

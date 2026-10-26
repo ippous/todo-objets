@@ -5,7 +5,7 @@ import { useActionState } from "react";
 import type { ActionState } from "@/lib/forms";
 import { FormError, Submit } from "./submit";
 
-type Values = { name: string; type: string | null; description: string | null; location: string | null; tags: string[] };
+type Values = { name: string; typeId: string | null; description: string | null; location: string | null; tags: string[] };
 
 export function ObjectForm({
   action,
@@ -13,7 +13,9 @@ export function ObjectForm({
   parentId,
   submitLabel,
   cancelHref,
+  types,
 }: {
+  types: { id: string; name: string }[];
   action: (state: ActionState, fd: FormData) => Promise<ActionState>;
   values?: Values;
   parentId?: string | null;
@@ -29,13 +31,18 @@ export function ObjectForm({
         <input className="input" name="name" required maxLength={120} defaultValue={values?.name} autoFocus />
       </label>
       <label className="field">
-        <span>Type (propriété, bâtiment, pièce, véhicule, machine…)</span>
-        <input className="input" name="type" maxLength={60} defaultValue={values?.type ?? ""} list="types-objet" />
-        <datalist id="types-objet">
-          {["propriété", "bâtiment", "pièce", "terrain", "véhicule", "machine", "équipement", "projet"].map((t) => (
-            <option key={t} value={t} />
+        <span>Type</span>
+        <select className="input" name="typeId" defaultValue={values?.typeId ?? ""}>
+          <option value="">Sans type</option>
+          {types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
           ))}
-        </datalist>
+        </select>
+        <Link href="/types" className="w-fit text-sm text-moss underline-offset-4 hover:underline">
+          Gérer les types
+        </Link>
       </label>
       <label className="field">
         <span>Description (surface, matériaux, accès, état…)</span>

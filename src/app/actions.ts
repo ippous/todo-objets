@@ -25,7 +25,12 @@ import {
   DomainError,
   getTodo,
   moveObject,
+  createType,
+  deleteType,
+  renameType,
   setCoverPhoto,
+  setDocumentType,
+  type TypeKind,
   setTodoStatus,
   updateObject,
   updateTodo,
@@ -160,6 +165,50 @@ export async function deleteObjectInlineAction(id: string): Promise<ActionState>
   return { ok: true };
 }
 
+// ---------- Types d'objets et de documents ----------
+
+const KINDS: TypeKind[] = ["objet", "document"];
+const assertKind = (k: string): TypeKind => {
+  if (!KINDS.includes(k as TypeKind)) throw new DomainError("Catégorie de type invalide");
+  return k as TypeKind;
+};
+
+export async function createTypeAction(kind: TypeKind, _: ActionState, fd: FormData): Promise<ActionState> {
+  await requireUser();
+  try {
+    await createType(getDb(), assertKind(kind), str(fd, "name"));
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function renameTypeAction(kind: TypeKind, id: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await renameType(getDb(), assertKind(kind), id, str(fd, "name"));
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function deleteTypeAction(kind: TypeKind, id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await deleteType(getDb(), assertKind(kind), id);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
 // ---------- Ajout en lot ----------
 
 export type BulkResult = ActionState & { count?: number };
@@ -171,13 +220,14 @@ const PRIORITY_SET = new Set(["haute", "moyenne", "basse"]);
 export async function createObjectsBulkAction(
   parentId: string | null,
   names: string[],
-  type: string | null,
+  typeId: string | null,
 ): Promise<BulkResult> {
   await requireUser();
   try {
     if (parentId) assertId(parentId);
+    if (typeId) assertId(typeId);
     if (!Array.isArray(names) || names.some((n) => typeof n !== "string")) throw new DomainError("Liste invalide");
-    const created = await createObjects(getDb(), parentId, names, { type: type?.trim().slice(0, 60) || null });
+    const created = await createObjects(getDb(), parentId, names, { typeId: typeId || null });
     revalidatePath("/", "layout");
     refresh();
     return { ok: true, count: created.length };
@@ -219,6 +269,7 @@ export async function createTodosBulkAction(
 
 /** Enregistre un document déjà envoyé dans le stockage. */
 export async function addDocumentAction(input: {
+  typeId: string;
   pathname: string;
   filename: string;
   contentType: string;
@@ -228,6 +279,7 @@ export async function addDocumentAction(input: {
   try {
     const parsed = parseDocumentPath(input.pathname);
     if (!parsed) throw new DomainError("Document invalide");
+    assertId(input.typeId);
     if (!DOCUMENT_TYPES[input.contentType]) throw new DomainError("Ce type de fichier n'est pas accepté");
     if (!Number.isInteger(input.size) || input.size <= 0 || input.size > DOCUMENT_MAX_BYTES) {
       throw new DomainError("Taille de fichier invalide");
@@ -235,12 +287,27 @@ export async function addDocumentAction(input: {
     if (!(await exists(input.pathname))) throw new DomainError("L'envoi du document n'est pas terminé. Réessaie.");
     await addDocument(getDb(), {
       objectId: parsed.objectId,
+      typeId: input.typeId,
       pathname: input.pathname,
       filename: String(input.filename ?? ""),
       contentType: input.contentType,
       size: input.size,
       createdById: user.id,
     });
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function setDocumentTypeAction(id: string, typeId: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    assertId(typeId);
+    await setDocumentType(getDb(), id, typeId);
   } catch (err) {
     return handle(err);
   }

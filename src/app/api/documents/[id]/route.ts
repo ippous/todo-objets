@@ -4,7 +4,17 @@ import { getDocument } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/session";
 import { read } from "@/lib/storage";
 
-const INLINE = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "text/plain"]);
+const INLINE = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "text/plain",
+  "text/markdown",
+  "application/json",
+]);
+const TEXT = new Set(["text/plain", "text/markdown", "text/csv", "application/json"]);
 
 /** Ouvre (PDF, images, texte) ou télécharge un document, pour les seuls utilisateurs connectés. */
 export async function GET(request: NextRequest, ctx: RouteContext<"/api/documents/[id]">) {
@@ -21,7 +31,7 @@ export async function GET(request: NextRequest, ctx: RouteContext<"/api/document
   const ascii = doc.filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
   return new NextResponse(stream, {
     headers: {
-      "Content-Type": doc.contentType === "text/plain" ? "text/plain; charset=utf-8" : doc.contentType,
+      "Content-Type": TEXT.has(doc.contentType) ? `${doc.contentType}; charset=utf-8` : doc.contentType,
       "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,
       "Cache-Control": "private, max-age=3600",
       "X-Content-Type-Options": "nosniff",

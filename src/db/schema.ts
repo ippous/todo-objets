@@ -32,13 +32,33 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const objectTypes = pgTable(
+  "object_types",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("object_types_name_uq").on(sql`lower(${t.name})`)],
+);
+
+export const documentTypes = pgTable(
+  "document_types",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("document_types_name_uq").on(sql`lower(${t.name})`)],
+);
+
 export const objects = pgTable(
   "objects",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
     parentId: uuid("parent_id"),
-    type: text("type"),
+    typeId: uuid("type_id").references(() => objectTypes.id, { onDelete: "restrict" }),
     description: text("description"),
     location: text("location"),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
@@ -49,6 +69,7 @@ export const objects = pgTable(
   (t) => [
     foreignKey({ columns: [t.parentId], foreignColumns: [t.id], name: "objects_parent_fk" }).onDelete("restrict"),
     index("objects_parent_idx").on(t.parentId),
+    index("objects_type_idx").on(t.typeId),
     check("objects_not_own_parent", sql`${t.parentId} IS NULL OR ${t.parentId} <> ${t.id}`),
   ],
 );
@@ -123,11 +144,18 @@ export const documents = pgTable(
     pathname: text("pathname").notNull(),
     filename: text("filename").notNull(),
     contentType: text("content_type").notNull(),
+    typeId: uuid("type_id")
+      .notNull()
+      .references(() => documentTypes.id, { onDelete: "restrict" }),
     size: integer("size").notNull(),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("documents_object_idx").on(t.objectId), uniqueIndex("documents_pathname_uq").on(t.pathname)],
+  (t) => [
+    index("documents_object_idx").on(t.objectId),
+    index("documents_type_idx").on(t.typeId),
+    uniqueIndex("documents_pathname_uq").on(t.pathname),
+  ],
 );
 
 export const links = pgTable(
@@ -149,7 +177,11 @@ export type User = typeof users.$inferSelect;
 export type DocumentRow = typeof documents.$inferSelect;
 export type LinkRow = typeof links.$inferSelect;
 export type Photo = typeof photos.$inferSelect;
-export type ObjectRow = typeof objects.$inferSelect;
+export type ObjectBase = typeof objects.$inferSelect;
+/** Objet avec le nom de son type (jointure). */
+export type ObjectRow = ObjectBase & { type: string | null };
+export type ObjectType = typeof objectTypes.$inferSelect;
+export type DocumentType = typeof documentTypes.$inferSelect;
 export type Todo = typeof todos.$inferSelect;
 export type NewTodo = typeof todos.$inferInsert;
 export type NewObject = typeof objects.$inferInsert;

@@ -41,7 +41,8 @@ describe("arborescence en base", () => {
   });
 
   it("déplace un sous-arbre complet", async () => {
-    const tracteur = await createObject(db, { name: "Tracteur", type: "véhicule" });
+    const { typeIdByName } = await import("@/lib/repo");
+    const tracteur = await createObject(db, { name: "Tracteur", typeId: await typeIdByName(db, "objet", "véhicule") });
     await moveObject(db, ids["Annexe"], tracteur.id);
     const sub = await subtreeIdsDb(db, tracteur.id);
     expect(sub).toContain(ids["PoolHouse"]);
@@ -145,10 +146,11 @@ describe("utilisateurs", () => {
 
 describe("ajout en lot", () => {
   it("crée plusieurs sous-objets dans l'ordre, après les frères existants", async () => {
-    const { createObjects } = await import("@/lib/repo");
-    const created = await createObjects(db, ids["Annexe"], [" Vestiaire ", "", "Sauna", "Douches"], { type: "pièce" });
+    const { createObjects, typeIdByName } = await import("@/lib/repo");
+    const piece = await typeIdByName(db, "objet", "pièce");
+    const created = await createObjects(db, ids["Annexe"], [" Vestiaire ", "", "Sauna", "Douches"], { typeId: piece });
     expect(created.map((o) => o.name)).toEqual(["Vestiaire", "Sauna", "Douches"]);
-    expect(created.every((o) => o.type === "pièce" && o.parentId === ids["Annexe"])).toBe(true);
+    expect(created.every((o) => o.typeId === piece && o.parentId === ids["Annexe"])).toBe(true);
     const positions = created.map((o) => o.position);
     expect(positions[0]).toBeGreaterThan(1); // Salle de sport (0) et PoolHouse (1) existent déjà
     expect(positions).toEqual([...positions].sort((a, b) => a - b));

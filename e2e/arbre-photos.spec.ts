@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
+import { purge, testMarker } from "./helpers";
 
 const EMAIL = process.env.E2E_EMAIL ?? "ippous@gmail.com";
 const SECRET = process.env.E2E_SECRET ?? "test-local";
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, info) => {
   const share = process.env.E2E_VERCEL_SHARE;
   if (share) await page.goto(`/?_vercel_share=${encodeURIComponent(share)}`);
   await page.goto("/connexion");
@@ -11,6 +12,12 @@ test.beforeEach(async ({ page }) => {
   await page.getByLabel("Code de test").fill(SECRET);
   await page.getByRole("button", { name: "Se connecter", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Arbre des objets" })).toBeVisible();
+  await purge(page, testMarker(info)); // restes d'un essai précédent
+});
+
+// Chaque test efface ce qu'il a créé, même s'il échoue.
+test.afterEach(async ({ page }, info) => {
+  await purge(page, testMarker(info));
 });
 
 async function createRoot(page: Page, name: string) {
@@ -52,7 +59,7 @@ const row = (page: Page, name: string) =>
   page.locator(".tree li > div").filter({ has: page.getByRole("link", { name, exact: true }) });
 
 test("déplacer avec le mode « Déplacer », puis supprimer depuis l'arbre", async ({ page }, info) => {
-  const s = `${info.project.name}-${Date.now().toString(36)}`;
+  const s = testMarker(info);
   const a = `Grange ${s}`;
   const b = `Hangar ${s}`;
   const c = `Établi ${s}`;
@@ -98,7 +105,7 @@ test("déplacer avec le mode « Déplacer », puis supprimer depuis l'arbre", as
 
 test("glisser-déposer dans l'arbre", async ({ page }, info) => {
   test.skip(info.project.name === "mobile", "Le glisser-déposer concerne la souris");
-  const s = `${info.project.name}-${Date.now().toString(36)}`;
+  const s = testMarker(info);
   const a = `Cave ${s}`;
   const b = `Tonneau ${s}`;
   await createRoot(page, a);
@@ -117,7 +124,7 @@ test("glisser-déposer dans l'arbre", async ({ page }, info) => {
 });
 
 test("photos : ajout, vignette dans l'arbre, changement de vignette, suppression", async ({ page }, info) => {
-  const s = `${info.project.name}-${Date.now().toString(36)}`;
+  const s = testMarker(info);
   const name = `Puits ${s}`;
   const id = await createRoot(page, name);
 
@@ -167,7 +174,7 @@ test("photos : ajout, vignette dans l'arbre, changement de vignette, suppression
 });
 
 test("photos d'une tâche et vignette dans la liste", async ({ page }, info) => {
-  const s = `${info.project.name}-${Date.now().toString(36)}`;
+  const s = testMarker(info);
   const obj = `Portail ${s}`;
   const id = await createRoot(page, obj);
   await page.goto(`/taches/nouvelle?objet=${id}`);
@@ -198,7 +205,7 @@ test("les photos ne sont pas accessibles sans connexion", async ({ browser }) =>
 });
 
 test("ajout en lot d'objets et de tâches", async ({ page }, info) => {
-  const s = `${info.project.name}-${Date.now().toString(36)}`;
+  const s = testMarker(info);
   const parent = `Verger ${s}`;
   const id = await createRoot(page, parent);
 
@@ -218,7 +225,7 @@ test("ajout en lot d'objets et de tâches", async ({ page }, info) => {
     input.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
   }, `- Cerisier ${s}\n- Prunier ${s}\n\n`);
   await expect(dialog.getByLabel("Nom 4")).toHaveValue(`Prunier ${s}`);
-  await dialog.getByLabel("Type").fill("arbre");
+  await dialog.getByLabel("Type").selectOption({ label: "équipement" });
   await dialog.getByRole("button", { name: "Créer 4 objets" }).click();
   await expect(page.getByText(`4 objets créés sous « ${parent} ».`)).toBeVisible();
   await expect(dialog).toBeHidden();
@@ -253,7 +260,7 @@ test("ajout en lot d'objets et de tâches", async ({ page }, info) => {
 });
 
 test("documents et liens d'un objet", async ({ page }, info) => {
-  const s = `${info.project.name}-${Date.now().toString(36)}`;
+  const s = testMarker(info);
   const name = `Chaudière ${s}`;
   const id = await createRoot(page, name);
   // Pas de « networkidle » : les aperçus Vercel gardent des connexions ouvertes
@@ -271,8 +278,10 @@ test("documents et liens d'un objet", async ({ page }, info) => {
   await expect(page.getByText("Document ajouté")).toBeVisible({ timeout: 30_000 });
   const docLink = page.getByRole("link", { name: "Notice chaudière été.pdf" });
   await expect(docLink).toBeVisible();
-  const href = await docLink.getAttribute("href");
-  const res = await page.request.get(href!);
+  const viewer = await docLink.getAttribute("href");
+  expect(viewer).toMatch(/^\/documents\/[0-9a-f-]{36}$/);
+  const href = `/api${viewer}`;
+  const res = await page.request.get(href);
   expect(res.status()).toBe(200);
   expect(res.headers()["content-type"]).toBe("application/pdf");
   expect(res.headers()["content-disposition"]).toContain("inline");
@@ -306,17 +315,17 @@ test("documents et liens d'un objet", async ({ page }, info) => {
   await page.getByRole("button", { name: "Supprimer Notice chaudière été.pdf" }).click();
   await page.getByRole("button", { name: "Oui, supprimer" }).click();
   await expect(page.getByRole("link", { name: "Notice chaudière été.pdf" })).toHaveCount(0);
-  expect((await page.request.get(href!)).status()).toBe(404);
+  expect((await page.request.get(href)).status()).toBe(404);
 
   // Un document n'empêche pas la suppression de l'objet, et part avec lui
   await page.getByLabel("Ajouter des documents").setInputFiles({ name: "plan.pdf", mimeType: "application/pdf", buffer: pdf });
   await expect(page.getByRole("link", { name: "plan.pdf" })).toBeVisible({ timeout: 30_000 });
-  const planHref = await page.getByRole("link", { name: "plan.pdf" }).getAttribute("href");
+  const planHref = `/api${await page.getByRole("link", { name: "plan.pdf" }).getAttribute("href")}`;
   await page.goto("/");
   await row(page, name).getByRole("button", { name: `Actions pour ${name}` }).click();
   await page.getByRole("menuitem", { name: "Supprimer…" }).click();
   await page.getByRole("button", { name: "Oui, supprimer" }).click();
   await expect(page.getByText(`« ${name} » a été supprimé.`)).toBeVisible();
-  expect((await page.request.get(planHref!)).status()).toBe(404);
+  expect((await page.request.get(planHref)).status()).toBe(404);
   void id;
 });

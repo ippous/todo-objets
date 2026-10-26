@@ -11,15 +11,15 @@ export type BulkTarget =
 type Props = {
   target: BulkTarget | null;
   users?: { id: string; name: string }[];
+  objectTypes?: { id: string; name: string }[];
   onClose: () => void;
   onDone?: (message: string) => void;
 };
 
 const MAX = 50;
-const TYPES = ["propriété", "bâtiment", "pièce", "terrain", "véhicule", "machine", "équipement", "projet"];
 
 /** Boîte de dialogue pour saisir plusieurs noms d'objets ou titres de tâches d'un coup. */
-export function BulkAddDialog({ target, users = [], onClose, onDone }: Props) {
+export function BulkAddDialog({ target, users = [], objectTypes = [], onClose, onDone }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const [rows, setRows] = useState<string[]>([""]);
@@ -206,18 +206,14 @@ export function BulkAddDialog({ target, users = [], onClose, onDone }: Props) {
               {isObjects ? (
                 <label className="field">
                   <span>Type</span>
-                  <input
-                    className="input"
-                    value={type}
-                    maxLength={60}
-                    list="bulk-types"
-                    onChange={(e) => setType(e.target.value)}
-                  />
-                  <datalist id="bulk-types">
-                    {TYPES.map((t) => (
-                      <option key={t} value={t} />
+                  <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
+                    <option value="">Sans type</option>
+                    {objectTypes.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
                     ))}
-                  </datalist>
+                  </select>
                 </label>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
@@ -303,11 +299,13 @@ export function BulkAddDialog({ target, users = [], onClose, onDone }: Props) {
 export function BulkAddButton({
   target,
   users,
+  objectTypes,
   label,
   className = "btn btn-ghost",
 }: {
   target: BulkTarget;
   users?: { id: string; name: string }[];
+  objectTypes?: { id: string; name: string }[];
   label: string;
   className?: string;
 }) {
@@ -318,7 +316,11 @@ export function BulkAddButton({
       <button type="button" className={className} onClick={() => setOpen(true)}>
         {label}
       </button>
-      <BulkAddDialog target={open ? target : null} users={users} onClose={() => setOpen(false)} onDone={setMessage} />
+      <BulkAddDialog
+        target={open ? target : null}
+        users={users}
+        objectTypes={objectTypes}
+        onClose={() => setOpen(false)} onDone={setMessage} />
       {message && (
         <p role="status" className="basis-full text-sm text-moss">
           {message}

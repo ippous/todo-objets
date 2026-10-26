@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/", label: "Arbre", match: (p: string) => p === "/" || p.startsWith("/objets") },
   { href: "/taches", label: "Tâches", match: (p: string) => p === "/taches" },
   { href: "/taches/nouvelle", label: "Ajouter", match: (p: string) => p === "/taches/nouvelle" },
+  { href: "/types", label: "Types", match: (p: string) => p.startsWith("/types") },
 ];
 
 export function NavLinks({ isAdmin, variant }: { isAdmin: boolean; variant: "top" | "bottom" }) {

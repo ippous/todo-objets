@@ -4,13 +4,16 @@ import { and, asc, desc, eq, inArray, isNull, lte, ne, sql, type SQL } from "dri
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@/db";
 import {
+  documentTypes,
   documents,
   links,
+  objectTypes,
   objects,
   photos,
   todos,
   users,
   type DocumentRow,
+  type ObjectBase,
   type LinkRow,
   type NewObject,
   type NewTodo,
@@ -24,12 +27,34 @@ export class DomainError extends Error {}
 
 // ---------- Objets ----------
 
+const objectWithType = () => ({
+  id: objects.id,
+  name: objects.name,
+  parentId: objects.parentId,
+  typeId: objects.typeId,
+  type: objectTypes.name,
+  description: objects.description,
+  location: objects.location,
+  tags: objects.tags,
+  position: objects.position,
+  createdAt: objects.createdAt,
+  updatedAt: objects.updatedAt,
+});
+
 export async function listObjects(db: Db): Promise<ObjectRow[]> {
-  return db.select().from(objects).orderBy(asc(objects.position), asc(objects.name));
+  return db
+    .select(objectWithType())
+    .from(objects)
+    .leftJoin(objectTypes, eq(objectTypes.id, objects.typeId))
+    .orderBy(asc(objects.position), asc(objects.name));
 }
 
 export async function getObject(db: Db, id: string): Promise<ObjectRow | undefined> {
-  const [row] = await db.select().from(objects).where(eq(objects.id, id));
+  const [row] = await db
+    .select(objectWithType())
+    .from(objects)
+    .leftJoin(objectTypes, eq(objectTypes.id, objects.typeId))
+    .where(eq(objects.id, id));
   return row;
 }
 
@@ -45,7 +70,7 @@ export async function subtreeIdsDb(db: Db, rootId: string): Promise<string[]> {
   return rowsOf<{ id: string }>(res).map((r) => r.id);
 }
 
-export async function createObject(db: Db, data: NewObject): Promise<ObjectRow> {
+export async function createObject(db: Db, data: NewObject): Promise<ObjectBase> {
   if (data.parentId) {
     const parent = await getObject(db, data.parentId);
     if (!parent) throw new DomainError("Objet parent introuvable");
@@ -61,8 +86,8 @@ export async function createObjects(
   db: Db,
   parentId: string | null,
   names: string[],
-  common: { type?: string | null } = {},
-): Promise<ObjectRow[]> {
+  common: { typeId?: string | null } = {},
+): Promise<ObjectBase[]> {
   const clean = names.map((n) => n.trim()).filter(Boolean);
   if (clean.length === 0) throw new DomainError("Saisis au moins un nom");
   if (clean.length > BULK_MAX) throw new DomainError(`${BULK_MAX} objets au maximum à la fois`);
@@ -79,7 +104,7 @@ export async function createObjects(
     const start = (max ?? -1) + 1;
     return tx
       .insert(objects)
-      .values(clean.map((name, i) => ({ name, parentId, type: common.type || null, position: start + i })))
+      .values(clean.map((name, i) => ({ name, parentId, typeId: common.typeId || null, position: start + i })))
       .returning();
   });
 }
@@ -108,7 +133,7 @@ export async function createTodos(
 export async function updateObject(
   db: Db,
   id: string,
-  data: Pick<NewObject, "name" | "type" | "description" | "location" | "tags">,
+  data: Pick<NewObject, "name" | "typeId" | "description" | "location" | "tags">,
 ): Promise<void> {
   await db.update(objects).set({ ...data, updatedAt: new Date() }).where(eq(objects.id, id));
 }
@@ -563,8 +588,14 @@ export async function objectCovers(db: Db): Promise<Map<string, string>> {
 
 // ---------- Documents ----------
 
-export async function listDocuments(db: Db, objectId: string): Promise<DocumentRow[]> {
-  return db.select().from(documents).where(eq(documents.objectId, objectId)).orderBy(desc(documents.createdAt));
+export async function listDocuments(db: Db, objectId: string): Promise<(DocumentRow & { typeName: string })[]> {
+  const rows = await db
+    .select({ doc: documents, typeName: documentTypes.name })
+    .from(documents)
+    .innerJoin(documentTypes, eq(documentTypes.id, documents.typeId))
+    .where(eq(documents.objectId, objectId))
+    .orderBy(asc(documentTypes.name), desc(documents.createdAt));
+  return rows.map((r) => ({ ...r.doc, typeName: r.typeName }));
 }
 
 export async function getDocument(db: Db, id: string): Promise<DocumentRow | undefined> {
@@ -574,10 +605,20 @@ export async function getDocument(db: Db, id: string): Promise<DocumentRow | und
 
 export async function addDocument(
   db: Db,
-  data: { objectId: string; pathname: string; filename: string; contentType: string; size: number; createdById?: string | null },
+  data: {
+    objectId: string;
+    typeId: string;
+    pathname: string;
+    filename: string;
+    contentType: string;
+    size: number;
+    createdById?: string | null;
+  },
 ): Promise<DocumentRow> {
   const obj = await getObject(db, data.objectId);
   if (!obj) throw new DomainError("Objet introuvable");
+  const [t] = await db.select({ id: documentTypes.id }).from(documentTypes).where(eq(documentTypes.id, data.typeId));
+  if (!t) throw new DomainError("Type de document introuvable");
   const filename = data.filename.trim().slice(0, 200) || "document";
   const [row] = await db.insert(documents).values({ ...data, filename }).returning();
   return row;
@@ -588,6 +629,93 @@ export async function deleteDocument(db: Db, id: string): Promise<string> {
   const [row] = await db.delete(documents).where(eq(documents.id, id)).returning({ p: documents.pathname });
   if (!row) throw new DomainError("Document introuvable");
   return row.p;
+}
+
+/** Change le type d'un document. */
+export async function setDocumentType(db: Db, id: string, typeId: string): Promise<void> {
+  const [t] = await db.select({ id: documentTypes.id }).from(documentTypes).where(eq(documentTypes.id, typeId));
+  if (!t) throw new DomainError("Type de document introuvable");
+  const [row] = await db.update(documents).set({ typeId }).where(eq(documents.id, id)).returning({ id: documents.id });
+  if (!row) throw new DomainError("Document introuvable");
+}
+
+// ---------- Types (objets et documents) ----------
+
+export type TypeKind = "objet" | "document";
+const typeTable = (k: TypeKind) => (k === "objet" ? objectTypes : documentTypes);
+const usageTable = (k: TypeKind) => (k === "objet" ? objects : documents);
+
+export type TypeWithUsage = { id: string; name: string; usage: number };
+
+export async function listTypes(db: Db, kind: TypeKind): Promise<TypeWithUsage[]> {
+  const t = typeTable(kind);
+  const u = usageTable(kind);
+  const rows = await db
+    .select({ id: t.id, name: t.name, usage: sql<number>`count(${u.id})::int` })
+    .from(t)
+    .leftJoin(u, eq(u.typeId, t.id))
+    .groupBy(t.id, t.name)
+    .orderBy(sql`lower(${t.name})`);
+  return rows.map((r) => ({ ...r, usage: Number(r.usage) }));
+}
+
+function cleanTypeName(name: string) {
+  const n = name.trim().replace(/\s+/g, " ");
+  if (!n) throw new DomainError("Saisis un nom de type");
+  if (n.length > 60) throw new DomainError("60 caractères au maximum");
+  return n;
+}
+
+async function assertUniqueName(db: Db, kind: TypeKind, name: string, exceptId?: string) {
+  const t = typeTable(kind);
+  const [dup] = await db
+    .select({ id: t.id })
+    .from(t)
+    .where(and(sql`lower(${t.name}) = lower(${name})`, exceptId ? ne(t.id, exceptId) : undefined))
+    .limit(1);
+  if (dup) throw new DomainError(`Le type « ${name} » existe déjà`);
+}
+
+export async function createType(db: Db, kind: TypeKind, rawName: string): Promise<{ id: string; name: string }> {
+  const name = cleanTypeName(rawName);
+  await assertUniqueName(db, kind, name);
+  const t = typeTable(kind);
+  const [row] = await db.insert(t).values({ name }).returning({ id: t.id, name: t.name });
+  return row;
+}
+
+export async function renameType(db: Db, kind: TypeKind, id: string, rawName: string): Promise<void> {
+  const name = cleanTypeName(rawName);
+  await assertUniqueName(db, kind, name, id);
+  const t = typeTable(kind);
+  const [row] = await db.update(t).set({ name }).where(eq(t.id, id)).returning({ id: t.id });
+  if (!row) throw new DomainError("Type introuvable");
+}
+
+/** Supprime un type, uniquement s'il n'est utilisé par aucun objet ou document. */
+export async function deleteType(db: Db, kind: TypeKind, id: string): Promise<void> {
+  const t = typeTable(kind);
+  const u = usageTable(kind);
+  await db.transaction(async (tx) => {
+    const [type] = await tx.select({ id: t.id, name: t.name }).from(t).where(eq(t.id, id)).for("update");
+    if (!type) throw new DomainError("Type introuvable");
+    const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(u).where(eq(u.typeId, id));
+    if (Number(n) > 0) {
+      const what = kind === "objet" ? "objet" : "document";
+      throw new DomainError(
+        `Impossible de supprimer « ${type.name} » : ${n} ${what}${Number(n) > 1 ? "s l'utilisent" : " l'utilise"}`,
+      );
+    }
+    await tx.delete(t).where(eq(t.id, id));
+  });
+}
+
+/** Identifiant d'un type à partir de son nom (créé s'il n'existe pas). */
+export async function typeIdByName(db: Db, kind: TypeKind, name: string): Promise<string> {
+  const t = typeTable(kind);
+  const [row] = await db.select({ id: t.id }).from(t).where(sql`lower(${t.name}) = lower(${name.trim()})`);
+  if (row) return row.id;
+  return (await createType(db, kind, name)).id;
 }
 
 // ---------- Liens ----------
@@ -630,6 +758,90 @@ export async function addLink(
 export async function deleteLink(db: Db, id: string): Promise<void> {
   const [row] = await db.delete(links).where(eq(links.id, id)).returning({ id: links.id });
   if (!row) throw new DomainError("Lien introuvable");
+}
+
+// ---------- Purge des données de test ----------
+
+export const PURGE_MARKER_MIN = 4;
+
+export type PurgeResult = { objects: number; todos: number; types: number; files: string[]; names: string[] };
+
+/**
+ * Supprime tout ce qu'un test a créé : les objets dont le nom contient `marker`
+ * (avec leurs sous-arbres, tâches, photos, documents et liens), les tâches dont
+ * le titre le contient, et les types inutilisés qui le contiennent.
+ * Renvoie les chemins des fichiers à effacer du stockage.
+ */
+export async function purgeTestData(db: Db, marker: string, opts: { dryRun?: boolean } = {}): Promise<PurgeResult> {
+  const m = marker.trim();
+  if (m.length < PURGE_MARKER_MIN) throw new DomainError(`Marqueur trop court (${PURGE_MARKER_MIN} caractères au moins)`);
+  const like = `%${m.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`LOCK TABLE objects IN SHARE ROW EXCLUSIVE MODE`);
+    const tree = rowsOf<{ id: string; depth: number }>(
+      await tx.execute(sql`
+        WITH RECURSIVE t(id, depth) AS (
+          SELECT id, 0 FROM objects WHERE name ILIKE ${like}
+          UNION
+          SELECT o.id, t.depth + 1 FROM objects o JOIN t ON o.parent_id = t.id
+        )
+        SELECT id, max(depth)::int AS depth FROM t GROUP BY id`),
+    );
+    const objectIds = tree.map((r) => r.id);
+    const names = (
+      await tx.select({ name: objects.name }).from(objects).where(sql`${objects.name} ILIKE ${like}`)
+    ).map((r) => r.name);
+    const todoRows = await tx
+      .select({ id: todos.id })
+      .from(todos)
+      .where(
+        objectIds.length
+          ? sql`${todos.objectId} IN ${objectIds} OR ${todos.title} ILIKE ${like}`
+          : sql`${todos.title} ILIKE ${like}`,
+      );
+    const todoIds = todoRows.map((r) => r.id);
+
+    if (opts.dryRun) return { objects: objectIds.length, todos: todoIds.length, types: 0, files: [], names };
+    const files: string[] = [];
+    if (objectIds.length || todoIds.length) {
+      const owners: SQL[] = [];
+      if (objectIds.length) owners.push(inArray(photos.objectId, objectIds));
+      if (todoIds.length) owners.push(inArray(photos.todoId, todoIds));
+      const ph = await tx
+        .select({ p: photos.pathname, t: photos.thumbPathname })
+        .from(photos)
+        .where(sql.join(owners, sql` OR `));
+      files.push(...ph.flatMap((f) => [f.p, f.t]));
+    }
+    if (objectIds.length) {
+      const docs = await tx.select({ p: documents.pathname }).from(documents).where(inArray(documents.objectId, objectIds));
+      files.push(...docs.map((d) => d.p));
+    }
+    if (todoIds.length) {
+      // Les occurrences récurrentes peuvent se référencer entre elles : on coupe le lien d'abord.
+      await tx.update(todos).set({ previousOccurrenceId: null }).where(inArray(todos.previousOccurrenceId, todoIds));
+      await tx.delete(todos).where(inArray(todos.id, todoIds));
+    }
+    // Du plus profond au plus haut, à cause de la contrainte parent (restrict)
+    const depths = [...new Set(tree.map((r) => r.depth))].sort((a, b) => b - a);
+    for (const d of depths) {
+      const ids = tree.filter((r) => r.depth === d).map((r) => r.id);
+      await tx.delete(objects).where(inArray(objects.id, ids));
+    }
+
+    let types = 0;
+    for (const [table, col] of [
+      [objectTypes, sql`(SELECT count(*) FROM objects WHERE type_id = ${objectTypes.id})`],
+      [documentTypes, sql`(SELECT count(*) FROM documents WHERE type_id = ${documentTypes.id})`],
+    ] as const) {
+      const del = await tx
+        .delete(table)
+        .where(sql`${table.name} ILIKE ${like} AND ${col} = 0`)
+        .returning({ id: table.id });
+      types += del.length;
+    }
+    return { objects: objectIds.length, todos: todoIds.length, types, files: files.filter(Boolean), names };
+  });
 }
 
 // ---------- Utilitaire ----------

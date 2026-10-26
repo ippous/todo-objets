@@ -4,7 +4,7 @@ import { deleteObjectAction, moveObjectAction, updateObjectAction } from "@/app/
 import { ObjectForm } from "@/components/object-form";
 import { getDb } from "@/db";
 import { objectOptions } from "@/lib/options";
-import { listObjects } from "@/lib/repo";
+import { listObjects, listTypes } from "@/lib/repo";
 import { DeleteObject, MoveObject } from "./forms";
 
 export const metadata: Metadata = { title: "Modifier l'objet" };
@@ -12,7 +12,8 @@ export const metadata: Metadata = { title: "Modifier l'objet" };
 export default async function ModifierObjetPage(props: PageProps<"/objets/[id]/modifier">) {
   const { id } = await props.params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const objs = await listObjects(getDb());
+  const db = getDb();
+  const [objs, types] = await Promise.all([listObjects(db), listTypes(db, "objet")]);
   const obj = objs.find((o) => o.id === id);
   if (!obj) notFound();
 
@@ -25,6 +26,7 @@ export default async function ModifierObjetPage(props: PageProps<"/objets/[id]/m
           values={obj}
           submitLabel="Enregistrer les modifications"
           cancelHref={`/objets/${id}`}
+          types={types}
         />
       </section>
 

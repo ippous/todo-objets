@@ -73,7 +73,15 @@ type Ctx = {
   pending: boolean;
 };
 
-export function TreeView({ forest, users = [] }: { forest: TreeViewNode[]; users?: { id: string; name: string }[] }) {
+export function TreeView({
+  forest,
+  users = [],
+  objectTypes = [],
+}: {
+  forest: TreeViewNode[];
+  users?: { id: string; name: string }[];
+  objectTypes?: { id: string; name: string }[];
+}) {
   const [bulk, setBulk] = useState<BulkTarget | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [movingId, setMovingId] = useState<string | null>(null);
@@ -200,6 +208,7 @@ export function TreeView({ forest, users = [] }: { forest: TreeViewNode[]; users
       <BulkAddDialog
         target={bulk}
         users={users}
+        objectTypes={objectTypes}
         onClose={() => setBulk(null)}
         onDone={(text) => {
           setMessage({ kind: "ok", text });

@@ -12,6 +12,7 @@ import {
   listLinks,
   listObjects,
   normalizeUrl,
+  typeIdByName,
 } from "@/lib/repo";
 import { seedInitialTree } from "@/lib/seed";
 import { createTestDb } from "./helpers";
@@ -50,6 +51,7 @@ describe("documents", () => {
   it("ajoute, liste et supprime des documents", async () => {
     const d = await addDocument(db, {
       objectId: ids["La ferme"],
+      typeId: await typeIdByName(db, "document", "Facture"),
       pathname: "test/documents/x/facture.pdf",
       filename: "Facture couvreur.pdf",
       contentType: "application/pdf",
@@ -63,6 +65,7 @@ describe("documents", () => {
   it("la suppression d'un objet emporte ses documents, liens et photos", async () => {
     await addDocument(db, {
       objectId: ids["Prairies"],
+      typeId: await typeIdByName(db, "document", "Plan"),
       pathname: "test/documents/p/plan.pdf",
       filename: "plan.pdf",
       contentType: "application/pdf",

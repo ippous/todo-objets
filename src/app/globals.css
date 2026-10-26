@@ -169,3 +169,16 @@ textarea.input {
     transform: translateY(-2px);
   }
 }
+
+/* Aperçu de documents Word / OpenDocument */
+.doc-preview { line-height: 1.6; overflow-wrap: anywhere; }
+.doc-preview > * + * { margin-top: 0.75em; }
+.doc-preview h1 { font-size: 1.5rem; font-weight: 700; }
+.doc-preview h2 { font-size: 1.25rem; font-weight: 700; }
+.doc-preview h3, .doc-preview h4 { font-weight: 700; }
+.doc-preview ul { list-style: disc; padding-left: 1.5rem; }
+.doc-preview ol { list-style: decimal; padding-left: 1.5rem; }
+.doc-preview a { color: var(--moss); text-decoration: underline; }
+.doc-preview img { max-width: 100%; height: auto; }
+.doc-preview table { border-collapse: collapse; display: block; overflow-x: auto; }
+.doc-preview td, .doc-preview th { border: 1px solid var(--line); padding: 0.25rem 0.5rem; vertical-align: top; }

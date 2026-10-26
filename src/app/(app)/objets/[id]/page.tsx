@@ -17,6 +17,7 @@ import {
   listObjects,
   listPhotos,
   listTodos,
+  listTypes,
   listUsers,
   type TodoListItem,
 } from "@/lib/repo";
@@ -42,12 +43,14 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
   if (!obj) notFound();
 
   const showDone = terminees === "1";
-  const [all, photos, users, docs, links] = await Promise.all([
+  const [all, photos, users, docs, links, objectTypes, docTypes] = await Promise.all([
     listTodos(db, { subtreeOf: id }, "echeance"),
     listPhotos(db, { objectId: id }),
     listUsers(db),
     listDocuments(db, id),
     listLinks(db, id),
+    listTypes(db, "objet"),
+    listTypes(db, "document"),
   ]);
   const userName = new Map(users.map((u) => [u.id, u.name]));
   const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
@@ -133,7 +136,11 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
             users={activeUsers}
             label="Plusieurs tâches"
           />
-          <BulkAddButton target={{ kind: "objets", parentId: id, parentName: obj.name }} label="Plusieurs sous-objets" />
+          <BulkAddButton
+            target={{ kind: "objets", parentId: id, parentName: obj.name }}
+            objectTypes={objectTypes}
+            label="Plusieurs sous-objets"
+          />
         </div>
       </header>
 
@@ -211,8 +218,11 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
             objectId={obj.id}
             prefix={storagePrefix}
             mode={storageMode}
+            docTypes={docTypes.map((t) => ({ id: t.id, name: t.name }))}
             docs={docs.map((d) => ({
               id: d.id,
+              typeId: d.typeId,
+              typeName: d.typeName,
               filename: d.filename,
               contentType: d.contentType,
               size: d.size,

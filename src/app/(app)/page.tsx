@@ -4,7 +4,7 @@ import { getDb } from "@/db";
 import { BulkAddButton } from "@/components/bulk-add";
 import { TreeView, type TreeViewNode } from "@/components/tree-view";
 import { fmtEur, fmtHours } from "@/lib/format";
-import { listObjects, listUsers, objectCovers, openStatsByObject, todoCountByObject } from "@/lib/repo";
+import { listObjects, listTypes, listUsers, objectCovers, openStatsByObject, todoCountByObject } from "@/lib/repo";
 import { buildForest, emptyStats, type TreeNode } from "@/lib/tree";
 import type { ObjectRow } from "@/db/schema";
 
@@ -25,12 +25,13 @@ function toView(n: TreeNode<ObjectRow>, counts: Map<string, number>, covers: Map
 
 export default async function ArbrePage() {
   const db = getDb();
-  const [objs, stats, counts, covers, users] = await Promise.all([
+  const [objs, stats, counts, covers, users, objectTypes] = await Promise.all([
     listObjects(db),
     openStatsByObject(db),
     todoCountByObject(db),
     objectCovers(db),
     listUsers(db),
+    listTypes(db, "objet"),
   ]);
   const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
   const forest = buildForest(objs, stats);
@@ -62,6 +63,7 @@ export default async function ArbrePage() {
           </Link>
           <BulkAddButton
             target={{ kind: "objets", parentId: null, parentName: null }}
+            objectTypes={objectTypes}
             label="Plusieurs objets racines"
           />
         </div>
@@ -76,7 +78,7 @@ export default async function ArbrePage() {
         </div>
       ) : (
         <section aria-label="Arborescences" className="rounded-xl bg-surface p-3 sm:p-5">
-          <TreeView forest={forest.map((n) => toView(n, counts, covers))} users={activeUsers} />
+          <TreeView forest={forest.map((n) => toView(n, counts, covers))} users={activeUsers} objectTypes={objectTypes} />
         </section>
       )}
     </div>

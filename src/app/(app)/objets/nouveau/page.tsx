@@ -2,14 +2,15 @@ import type { Metadata } from "next";
 import { createObjectAction } from "@/app/actions";
 import { ObjectForm } from "@/components/object-form";
 import { getDb } from "@/db";
-import { getObject } from "@/lib/repo";
+import { getObject, listTypes } from "@/lib/repo";
 
 export const metadata: Metadata = { title: "Nouvel objet" };
 
 export default async function NouvelObjetPage(props: PageProps<"/objets/nouveau">) {
   const { parent } = await props.searchParams;
   const parentId = typeof parent === "string" && /^[0-9a-f-]{36}$/i.test(parent) ? parent : null;
-  const parentObj = parentId ? await getObject(getDb(), parentId) : undefined;
+  const db = getDb();
+  const [parentObj, types] = await Promise.all([parentId ? getObject(db, parentId) : undefined, listTypes(db, "objet")]);
 
   return (
     <div className="grid gap-6">
@@ -21,6 +22,7 @@ export default async function NouvelObjetPage(props: PageProps<"/objets/nouveau"
         parentId={parentObj?.id ?? null}
         submitLabel="Créer l'objet"
         cancelHref={parentObj ? `/objets/${parentObj.id}` : "/"}
+        types={types}
       />
     </div>
   );
