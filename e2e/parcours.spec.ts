@@ -31,6 +31,14 @@ test("parcours complet : objets, tâches, cumuls, déplacement, récurrence", as
   const child = `Moteur ${suffix}`;
   await login(page);
 
+  // Parent d'accueil pour le déplacement (le test ne dépend pas des données existantes)
+  const home = `Atelier ${suffix}`;
+  await page.goto("/objets/nouveau");
+  await page.getByLabel("Nom").fill(home);
+  await page.getByRole("button", { name: "Créer l'objet" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: home })).toBeVisible();
+  await page.goto("/");
+
   // Nouvelle racine (les objets ne font pas forcément partie d'une propriété)
   await page.getByRole("link", { name: "Nouvel objet racine" }).click();
   await page.getByLabel("Nom").fill(root);
@@ -68,9 +76,9 @@ test("parcours complet : objets, tâches, cumuls, déplacement, récurrence", as
   const parentSelect = page.getByLabel("Nouveau parent");
   await expect(parentSelect.locator("option", { hasText: child })).toHaveCount(0);
   // Déplacement sous la propriété existante
-  await parentSelect.selectOption({ label: "Le Moulin FRat" });
+  await parentSelect.selectOption({ label: home });
   await page.getByRole("button", { name: "Déplacer" }).click();
-  await expect(page.getByRole("navigation", { name: "Fil d'Ariane" })).toContainText("Le Moulin FRat");
+  await expect(page.getByRole("navigation", { name: "Fil d'Ariane" })).toContainText(home);
 
   // Terminer la tâche depuis la liste à plat : saisie du réalisé + occurrence suivante
   await page.goto(`/taches?q=${encodeURIComponent(suffix)}`);
@@ -86,7 +94,7 @@ test("parcours complet : objets, tâches, cumuls, déplacement, récurrence", as
   const done = page.getByRole("listitem").filter({ hasText: `Vidange ${suffix}` });
   await expect(done).toContainText("3 h");
 
-  // Arbre : la nouvelle branche est visible sous le Moulin
+  // Arbre : la nouvelle branche est visible sous son nouveau parent
   await page.goto("/");
   await expect(page.getByRole("link", { name: root })).toBeVisible();
 });
