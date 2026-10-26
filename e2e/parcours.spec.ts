@@ -54,7 +54,8 @@ test("parcours complet : objets, tâches, cumuls, déplacement, récurrence", as
 
   // Tâche récurrente sur le sous-objet
   await page.getByRole("link", { name: "Ajouter une tâche", exact: true }).click();
-  await page.getByLabel("Titre").fill(`Vidange ${suffix}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Nouvelle tâche" })).toBeVisible();
+  await page.getByLabel("Titre", { exact: true }).fill(`Vidange ${suffix}`);
   await page.getByLabel("Durée (heures)").first().fill("2,5");
   await page.getByLabel("Valeur (€)").first().fill("150");
   await expect(page.getByText("Soit 60 €/h")).toBeVisible();

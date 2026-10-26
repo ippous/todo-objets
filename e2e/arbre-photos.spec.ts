@@ -123,7 +123,7 @@ test("photos : ajout, vignette dans l'arbre, changement de vignette, suppression
 
   const red = await jpeg(page, "#b03020");
   const blue = await jpeg(page, "#2040a0", 900, 1400);
-  await page.locator('input[type="file"]').setInputFiles([
+  await page.getByLabel("Ajouter des photos").setInputFiles([
     { name: "rouge.jpg", mimeType: "image/jpeg", buffer: red },
     { name: "bleu.jpg", mimeType: "image/jpeg", buffer: blue },
   ]);
@@ -171,11 +171,11 @@ test("photos d'une tâche et vignette dans la liste", async ({ page }, info) => 
   const obj = `Portail ${s}`;
   const id = await createRoot(page, obj);
   await page.goto(`/taches/nouvelle?objet=${id}`);
-  await page.getByLabel("Titre").fill(`Huiler ${s}`);
+  await page.getByLabel("Titre", { exact: true }).fill(`Huiler ${s}`);
   await page.getByRole("button", { name: "Créer la tâche" }).click();
   await page.getByRole("link", { name: `Huiler ${s}` }).click();
   await expect(page.getByRole("heading", { level: 1, name: `Huiler ${s}` })).toBeVisible();
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.getByLabel("Ajouter des photos").setInputFiles({
     name: "gond.jpg",
     mimeType: "image/jpeg",
     buffer: await jpeg(page, "#507040"),
@@ -250,4 +250,72 @@ test("ajout en lot d'objets et de tâches", async ({ page }, info) => {
     await expect(r).toContainText("Priorité haute");
     await expect(r).toContainText("Travaux");
   }
+});
+
+test("documents et liens d'un objet", async ({ page }, info) => {
+  const s = `${info.project.name}-${Date.now().toString(36)}`;
+  const name = `Chaudière ${s}`;
+  const id = await createRoot(page, name);
+  await page.waitForLoadState("networkidle");
+
+  // Document PDF
+  const pdf = Buffer.from(
+    "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 0/Kids[]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
+  );
+  await page.getByLabel("Ajouter des documents").setInputFiles({
+    name: "Notice chaudière été.pdf",
+    mimeType: "application/pdf",
+    buffer: pdf,
+  });
+  await expect(page.getByText("Document ajouté")).toBeVisible({ timeout: 30_000 });
+  const docLink = page.getByRole("link", { name: "Notice chaudière été.pdf" });
+  await expect(docLink).toBeVisible();
+  const href = await docLink.getAttribute("href");
+  const res = await page.request.get(href!);
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toBe("application/pdf");
+  expect(res.headers()["content-disposition"]).toContain("inline");
+  expect((await page.request.get(`${href}?telecharger=1`)).headers()["content-disposition"]).toContain("attachment");
+
+  // Type refusé
+  await page.getByLabel("Ajouter des documents").setInputFiles({
+    name: "script.html",
+    mimeType: "text/html",
+    buffer: Buffer.from("<script>alert(1)</script>"),
+  });
+  await expect(page.getByText("ce type de fichier n'est pas accepté")).toBeVisible();
+
+  // Liens
+  await page.getByLabel("Adresse du lien").fill("fabricant-chaudieres.fr/modele-z");
+  await page.getByLabel("Titre (facultatif)").fill("Fiche du modèle");
+  await page.getByRole("button", { name: "Ajouter le lien" }).click();
+  const link = page.getByRole("link", { name: "Fiche du modèle" });
+  await expect(link).toHaveAttribute("href", "https://fabricant-chaudieres.fr/modele-z");
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(page.getByLabel("Adresse du lien")).toHaveValue("");
+
+  await page.getByLabel("Adresse du lien").fill("javascript:alert(1)");
+  await page.getByRole("button", { name: "Ajouter le lien" }).click();
+  await expect(page.getByText("Seules les adresses web (http, https) sont acceptées")).toBeVisible();
+
+  // Suppressions avec confirmation
+  await page.getByRole("button", { name: "Supprimer le lien Fiche du modèle" }).click();
+  await page.getByRole("button", { name: "Oui, supprimer" }).click();
+  await expect(page.getByRole("link", { name: "Fiche du modèle" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Supprimer Notice chaudière été.pdf" }).click();
+  await page.getByRole("button", { name: "Oui, supprimer" }).click();
+  await expect(page.getByRole("link", { name: "Notice chaudière été.pdf" })).toHaveCount(0);
+  expect((await page.request.get(href!)).status()).toBe(404);
+
+  // Un document n'empêche pas la suppression de l'objet, et part avec lui
+  await page.getByLabel("Ajouter des documents").setInputFiles({ name: "plan.pdf", mimeType: "application/pdf", buffer: pdf });
+  await expect(page.getByRole("link", { name: "plan.pdf" })).toBeVisible({ timeout: 30_000 });
+  const planHref = await page.getByRole("link", { name: "plan.pdf" }).getAttribute("href");
+  await page.goto("/");
+  await row(page, name).getByRole("button", { name: `Actions pour ${name}` }).click();
+  await page.getByRole("menuitem", { name: "Supprimer…" }).click();
+  await page.getByRole("button", { name: "Oui, supprimer" }).click();
+  await expect(page.getByText(`« ${name} » a été supprimé.`)).toBeVisible();
+  expect((await page.request.get(planHref!)).status()).toBe(404);
+  void id;
 });

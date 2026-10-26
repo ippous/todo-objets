@@ -3,7 +3,21 @@
 import { and, asc, desc, eq, inArray, isNull, lte, ne, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@/db";
-import { objects, photos, todos, users, type NewObject, type NewTodo, type ObjectRow, type Photo, type Todo } from "@/db/schema";
+import {
+  documents,
+  links,
+  objects,
+  photos,
+  todos,
+  users,
+  type DocumentRow,
+  type LinkRow,
+  type NewObject,
+  type NewTodo,
+  type ObjectRow,
+  type Photo,
+  type Todo,
+} from "@/db/schema";
 import { emptyStats, nextDueDate, round2, type Recurrence, type Stats } from "./tree";
 
 export class DomainError extends Error {}
@@ -144,8 +158,9 @@ export async function deleteObject(db: Db, id: string): Promise<string[]> {
       .select({ p: photos.pathname, t: photos.thumbPathname })
       .from(photos)
       .where(eq(photos.objectId, id));
+    const docs = await tx.select({ p: documents.pathname }).from(documents).where(eq(documents.objectId, id));
     await tx.delete(objects).where(eq(objects.id, id));
-    return files.flatMap((f) => [f.p, f.t]);
+    return [...files.flatMap((f) => [f.p, f.t]), ...docs.map((d) => d.p)];
   });
 }
 
@@ -544,6 +559,77 @@ export async function objectCovers(db: Db): Promise<Map<string, string>> {
     .from(photos)
     .where(and(eq(photos.isCover, true), sql`${photos.objectId} IS NOT NULL`));
   return new Map(rows.map((r) => [r.objectId!, r.id]));
+}
+
+// ---------- Documents ----------
+
+export async function listDocuments(db: Db, objectId: string): Promise<DocumentRow[]> {
+  return db.select().from(documents).where(eq(documents.objectId, objectId)).orderBy(desc(documents.createdAt));
+}
+
+export async function getDocument(db: Db, id: string): Promise<DocumentRow | undefined> {
+  const [row] = await db.select().from(documents).where(eq(documents.id, id));
+  return row;
+}
+
+export async function addDocument(
+  db: Db,
+  data: { objectId: string; pathname: string; filename: string; contentType: string; size: number; createdById?: string | null },
+): Promise<DocumentRow> {
+  const obj = await getObject(db, data.objectId);
+  if (!obj) throw new DomainError("Objet introuvable");
+  const filename = data.filename.trim().slice(0, 200) || "document";
+  const [row] = await db.insert(documents).values({ ...data, filename }).returning();
+  return row;
+}
+
+/** Supprime un document ; retourne le chemin du fichier à effacer. */
+export async function deleteDocument(db: Db, id: string): Promise<string> {
+  const [row] = await db.delete(documents).where(eq(documents.id, id)).returning({ p: documents.pathname });
+  if (!row) throw new DomainError("Document introuvable");
+  return row.p;
+}
+
+// ---------- Liens ----------
+
+/** Normalise une adresse web : ajoute https:// si besoin, refuse tout autre protocole. */
+export function normalizeUrl(raw: string): string {
+  const v = raw.trim();
+  if (!v) throw new DomainError("Saisis une adresse");
+  let url: URL;
+  try {
+    url = new URL(/^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`);
+  } catch {
+    throw new DomainError("Adresse invalide");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new DomainError("Seules les adresses web (http, https) sont acceptées");
+  if (!url.hostname.includes(".") && url.hostname !== "localhost") throw new DomainError("Adresse invalide");
+  if (url.href.length > 2000) throw new DomainError("Adresse trop longue");
+  return url.href;
+}
+
+export async function listLinks(db: Db, objectId: string): Promise<LinkRow[]> {
+  return db.select().from(links).where(eq(links.objectId, objectId)).orderBy(asc(links.createdAt));
+}
+
+export async function addLink(
+  db: Db,
+  data: { objectId: string; url: string; title?: string | null; createdById?: string | null },
+): Promise<LinkRow> {
+  const obj = await getObject(db, data.objectId);
+  if (!obj) throw new DomainError("Objet introuvable");
+  const url = normalizeUrl(data.url);
+  const title = (data.title ?? "").trim().slice(0, 200) || new URL(url).hostname.replace(/^www\./, "");
+  const [row] = await db
+    .insert(links)
+    .values({ objectId: data.objectId, url, title, createdById: data.createdById ?? null })
+    .returning();
+  return row;
+}
+
+export async function deleteLink(db: Db, id: string): Promise<void> {
+  const [row] = await db.delete(links).where(eq(links.id, id)).returning({ id: links.id });
+  if (!row) throw new DomainError("Lien introuvable");
 }
 
 // ---------- Utilitaire ----------

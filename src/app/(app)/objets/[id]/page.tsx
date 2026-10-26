@@ -7,7 +7,19 @@ import { PhotoGallery } from "@/components/photo-gallery";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { TodoRow } from "@/components/todo-row";
 import { fmtEur, fmtHours } from "@/lib/format";
-import { computeTotals, getObject, listObjects, listPhotos, listTodos, listUsers, type TodoListItem } from "@/lib/repo";
+import { ObjectDocuments } from "@/components/object-documents";
+import { ObjectLinks } from "@/components/object-links";
+import {
+  computeTotals,
+  getObject,
+  listDocuments,
+  listLinks,
+  listObjects,
+  listPhotos,
+  listTodos,
+  listUsers,
+  type TodoListItem,
+} from "@/lib/repo";
 import { storageMode, storagePrefix } from "@/lib/storage";
 import { buildForest, flatten, pathTo } from "@/lib/tree";
 
@@ -30,11 +42,14 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
   if (!obj) notFound();
 
   const showDone = terminees === "1";
-  const [all, photos, users] = await Promise.all([
+  const [all, photos, users, docs, links] = await Promise.all([
     listTodos(db, { subtreeOf: id }, "echeance"),
     listPhotos(db, { objectId: id }),
     listUsers(db),
+    listDocuments(db, id),
+    listLinks(db, id),
   ]);
+  const userName = new Map(users.map((u) => [u.id, u.name]));
   const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
   const cover = photos.find((p) => p.isCover);
   const todos = showDone ? all : all.filter((t) => t.status !== "fait");
@@ -132,17 +147,6 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
         />
       </section>
 
-      <section aria-labelledby="photos" className="grid gap-3">
-        <h2 id="photos" className="text-lg font-bold">
-          Photos {photos.length > 0 && <span className="font-normal text-muted">({photos.length})</span>}
-        </h2>
-        <PhotoGallery
-          label={obj.name}
-          photos={photos.map((p) => ({ id: p.id, isCover: p.isCover, width: p.width, height: p.height }))}
-        />
-        <PhotoUploader kind="objets" ownerId={obj.id} prefix={storagePrefix} mode={storageMode} />
-      </section>
-
       {children.length > 0 && (
         <section aria-labelledby="sous-objets" className="grid gap-2">
           <h2 id="sous-objets" className="text-lg font-bold">
@@ -197,6 +201,45 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           ))
         )}
       </section>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section aria-labelledby="documents" className="grid content-start gap-3">
+          <h2 id="documents" className="text-lg font-bold">
+            Documents {docs.length > 0 && <span className="font-normal text-muted">({docs.length})</span>}
+          </h2>
+          <ObjectDocuments
+            objectId={obj.id}
+            prefix={storagePrefix}
+            mode={storageMode}
+            docs={docs.map((d) => ({
+              id: d.id,
+              filename: d.filename,
+              contentType: d.contentType,
+              size: d.size,
+              createdAt: d.createdAt.toISOString(),
+              createdBy: d.createdById ? (userName.get(d.createdById) ?? null) : null,
+            }))}
+          />
+        </section>
+        <section aria-labelledby="liens" className="grid content-start gap-3">
+          <h2 id="liens" className="text-lg font-bold">
+            Liens {links.length > 0 && <span className="font-normal text-muted">({links.length})</span>}
+          </h2>
+          <ObjectLinks objectId={obj.id} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title }))} />
+        </section>
+      </div>
+
+      <section aria-labelledby="photos" className="grid gap-3">
+        <h2 id="photos" className="text-lg font-bold">
+          Photos {photos.length > 0 && <span className="font-normal text-muted">({photos.length})</span>}
+        </h2>
+        <PhotoGallery
+          label={obj.name}
+          photos={photos.map((p) => ({ id: p.id, isCover: p.isCover, width: p.width, height: p.height }))}
+        />
+        <PhotoUploader kind="objets" ownerId={obj.id} prefix={storagePrefix} mode={storageMode} />
+      </section>
+
     </div>
   );
 }

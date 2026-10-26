@@ -7,13 +7,18 @@ import { signIn, signOut } from "@/auth";
 import { getDb } from "@/db";
 import { STATUSES, type Todo } from "@/db/schema";
 import { type ActionState, firstError, optionalNumber, readObject, readTodo, readUser, str } from "@/lib/forms";
+import { DOCUMENT_MAX_BYTES, DOCUMENT_TYPES } from "@/lib/document-types";
 import {
+  addDocument,
+  addLink,
   addPhoto,
   createObject,
   createObjects,
   createTodo,
   createTodos,
   createUser,
+  deleteDocument,
+  deleteLink,
   deleteObject,
   deletePhoto,
   deleteTodo,
@@ -27,7 +32,7 @@ import {
   updateUser,
 } from "@/lib/repo";
 import { requireAdmin, requireUser } from "@/lib/session";
-import { exists, parsePhotoPath, remove } from "@/lib/storage";
+import { exists, parseDocumentPath, parsePhotoPath, remove } from "@/lib/storage";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const assertId = (id: string) => {
@@ -208,6 +213,78 @@ export async function createTodosBulkAction(
   } catch (err) {
     return handle(err);
   }
+}
+
+// ---------- Documents et liens ----------
+
+/** Enregistre un document déjà envoyé dans le stockage. */
+export async function addDocumentAction(input: {
+  pathname: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    const parsed = parseDocumentPath(input.pathname);
+    if (!parsed) throw new DomainError("Document invalide");
+    if (!DOCUMENT_TYPES[input.contentType]) throw new DomainError("Ce type de fichier n'est pas accepté");
+    if (!Number.isInteger(input.size) || input.size <= 0 || input.size > DOCUMENT_MAX_BYTES) {
+      throw new DomainError("Taille de fichier invalide");
+    }
+    if (!(await exists(input.pathname))) throw new DomainError("L'envoi du document n'est pas terminé. Réessaie.");
+    await addDocument(getDb(), {
+      objectId: parsed.objectId,
+      pathname: input.pathname,
+      filename: String(input.filename ?? ""),
+      contentType: input.contentType,
+      size: input.size,
+      createdById: user.id,
+    });
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteDocumentAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await remove([await deleteDocument(getDb(), id)]);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function addLinkAction(objectId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    assertId(objectId);
+    await addLink(getDb(), { objectId, url: str(fd, "url"), title: str(fd, "title"), createdById: user.id });
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function deleteLinkAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await deleteLink(getDb(), id);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
 }
 
 // ---------- Photos ----------

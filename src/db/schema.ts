@@ -113,7 +113,41 @@ export const photos = pgTable(
   ],
 );
 
+export const documents = pgTable(
+  "documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    objectId: uuid("object_id")
+      .notNull()
+      .references(() => objects.id, { onDelete: "cascade" }),
+    pathname: text("pathname").notNull(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("documents_object_idx").on(t.objectId), uniqueIndex("documents_pathname_uq").on(t.pathname)],
+);
+
+export const links = pgTable(
+  "links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    objectId: uuid("object_id")
+      .notNull()
+      .references(() => objects.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    title: text("title").notNull(),
+    createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("links_object_idx").on(t.objectId)],
+);
+
 export type User = typeof users.$inferSelect;
+export type DocumentRow = typeof documents.$inferSelect;
+export type LinkRow = typeof links.$inferSelect;
 export type Photo = typeof photos.$inferSelect;
 export type ObjectRow = typeof objects.$inferSelect;
 export type Todo = typeof todos.$inferSelect;
