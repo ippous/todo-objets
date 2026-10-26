@@ -2,13 +2,16 @@ import Link from "next/link";
 import { CATEGORY_LABEL, dueState, fmtDate, fmtEur, fmtHours, PRIORITY_LABEL } from "@/lib/format";
 import type { TodoListItem } from "@/lib/repo";
 import { QuickStatus } from "./quick-status";
+import { Thumb } from "./thumb";
 
 export function TodoRow({ todo, returnTo, showObject = true }: { todo: TodoListItem; returnTo: string; showObject?: boolean }) {
   const due = dueState(todo.dueDate, todo.status);
   const done = todo.status === "fait";
   return (
     <li className="grid gap-2 border-b border-line py-3 last:border-b-0 sm:grid-cols-[1fr_auto] sm:items-start sm:gap-4">
-      <div className="min-w-0">
+      <div className="flex min-w-0 gap-3">
+        <Thumb photoId={todo.coverPhotoId} size={44} className="mt-0.5" />
+        <div className="min-w-0">
         <div className="flex items-baseline gap-2">
           {todo.priority === "haute" && !done && (
             <span className="shrink-0 rounded bg-brick-soft px-1.5 text-xs font-bold text-brick">Priorité haute</span>
@@ -48,6 +51,7 @@ export function TodoRow({ todo, returnTo, showObject = true }: { todo: TodoListI
             <span key={t}>#{t}</span>
           ))}
         </p>
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:justify-end">
         <dl className="num flex gap-3 text-sm">

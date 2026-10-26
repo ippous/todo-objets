@@ -41,7 +41,8 @@ describe("arborescence en base", () => {
   });
 
   it("déplace un sous-arbre complet", async () => {
-    const tracteur = await createObject(db, { name: "Tracteur", type: "véhicule" });
+    const { typeIdByName } = await import("@/lib/repo");
+    const tracteur = await createObject(db, { name: "Tracteur", typeId: await typeIdByName(db, "objet", "véhicule") });
     await moveObject(db, ids["Annexe"], tracteur.id);
     const sub = await subtreeIdsDb(db, tracteur.id);
     expect(sub).toContain(ids["PoolHouse"]);
@@ -140,5 +141,42 @@ describe("utilisateurs", () => {
     const other = await createUser(db, { email: "b@x.fr", name: "B", role: "admin" });
     await updateUser(db, admin.id, { role: "membre" });
     await expect(updateUser(db, other.id, { role: "membre" })).rejects.toBeInstanceOf(DomainError);
+  });
+});
+
+describe("ajout en lot", () => {
+  it("crée plusieurs sous-objets dans l'ordre, après les frères existants", async () => {
+    const { createObjects, typeIdByName } = await import("@/lib/repo");
+    const piece = await typeIdByName(db, "objet", "pièce");
+    const created = await createObjects(db, ids["Annexe"], [" Vestiaire ", "", "Sauna", "Douches"], { typeId: piece });
+    expect(created.map((o) => o.name)).toEqual(["Vestiaire", "Sauna", "Douches"]);
+    expect(created.every((o) => o.typeId === piece && o.parentId === ids["Annexe"])).toBe(true);
+    const positions = created.map((o) => o.position);
+    expect(positions[0]).toBeGreaterThan(1); // Salle de sport (0) et PoolHouse (1) existent déjà
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    const roots = await createObjects(db, null, ["Tracteur", "Quad"]);
+    expect(roots.every((o) => o.parentId === null)).toBe(true);
+  });
+
+  it("refuse une liste vide, trop longue, ou un parent inconnu", async () => {
+    const { createObjects, BULK_MAX } = await import("@/lib/repo");
+    await expect(createObjects(db, null, ["  ", ""])).rejects.toBeInstanceOf(DomainError);
+    await expect(createObjects(db, null, Array.from({ length: BULK_MAX + 1 }, (_, i) => `O${i}`))).rejects.toBeInstanceOf(
+      DomainError,
+    );
+    await expect(createObjects(db, "00000000-0000-0000-0000-000000000000", ["X"])).rejects.toBeInstanceOf(DomainError);
+    expect(await listObjects(db)).toHaveLength(8);
+  });
+
+  it("crée plusieurs tâches avec des réglages communs", async () => {
+    const { createTodos } = await import("@/lib/repo");
+    const created = await createTodos(db, ids["La ferme"], ["Gouttières", "Volets", "Cheminée"], {
+      category: "travaux",
+      priority: "haute",
+      dueDate: "2026-12-01",
+    });
+    expect(created).toHaveLength(3);
+    const list = await listTodos(db, { subtreeOf: ids["La ferme"] });
+    expect(list.every((t) => t.category === "travaux" && t.priority === "haute" && t.dueDate === "2026-12-01")).toBe(true);
   });
 });

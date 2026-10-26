@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import { objects } from "@/db/schema";
+import { typeIdByName } from "./repo";
 
 type SeedNode = { name: string; type: string; children?: SeedNode[] };
 
@@ -33,7 +34,7 @@ export async function seedInitialTree(db: Db, tree: SeedNode[] = INITIAL_TREE): 
     for (const [i, n] of nodes.entries()) {
       const [row] = await db
         .insert(objects)
-        .values({ name: n.name, type: n.type, parentId, position: i })
+        .values({ name: n.name, typeId: await typeIdByName(db, "objet", n.type), parentId, position: i })
         .returning({ id: objects.id });
       if (n.children) await insert(n.children, row.id);
     }

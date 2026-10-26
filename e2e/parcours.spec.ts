@@ -1,7 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
+import { purge, testMarker } from "./helpers";
 
 const EMAIL = process.env.E2E_EMAIL ?? "ippous@gmail.com";
 const SECRET = process.env.E2E_SECRET ?? "test-local";
+
+// Déploiement protégé par Vercel : un lien de partage pose le cookie d'accès.
+test.beforeEach(async ({ page }) => {
+  const share = process.env.E2E_VERCEL_SHARE;
+  if (share) await page.goto(`/?_vercel_share=${encodeURIComponent(share)}`);
+});
 
 async function login(page: Page) {
   await page.goto("/connexion");
@@ -9,7 +16,13 @@ async function login(page: Page) {
   await page.getByLabel("Code de test").fill(SECRET);
   await page.getByRole("button", { name: "Se connecter", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Arbre des objets" })).toBeVisible();
+  await purge(page, testMarker(test.info())); // restes d'un essai précédent
 }
+
+// Chaque test efface ce qu'il a créé, même s'il échoue.
+test.afterEach(async ({ page }, info) => {
+  await purge(page, testMarker(info));
+});
 
 test("une adresse non autorisée est refusée", async ({ page }) => {
   await page.goto("/connexion");
@@ -20,15 +33,23 @@ test("une adresse non autorisée est refusée", async ({ page }) => {
 });
 
 test("parcours complet : objets, tâches, cumuls, déplacement, récurrence", async ({ page }, info) => {
-  const suffix = `${info.project.name}-${Date.now().toString(36)}`;
+  const suffix = testMarker(info);
   const root = `Tracteur ${suffix}`;
   const child = `Moteur ${suffix}`;
   await login(page);
 
+  // Parent d'accueil pour le déplacement (le test ne dépend pas des données existantes)
+  const home = `Atelier ${suffix}`;
+  await page.goto("/objets/nouveau");
+  await page.getByLabel("Nom").fill(home);
+  await page.getByRole("button", { name: "Créer l'objet" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: home })).toBeVisible();
+  await page.goto("/");
+
   // Nouvelle racine (les objets ne font pas forcément partie d'une propriété)
   await page.getByRole("link", { name: "Nouvel objet racine" }).click();
   await page.getByLabel("Nom").fill(root);
-  await page.getByLabel(/^Type/).fill("véhicule");
+  await page.getByLabel(/^Type/).selectOption({ label: "véhicule" });
   await page.getByRole("button", { name: "Créer l'objet" }).click();
   await expect(page.getByRole("heading", { level: 1, name: root })).toBeVisible();
 
@@ -40,7 +61,8 @@ test("parcours complet : objets, tâches, cumuls, déplacement, récurrence", as
 
   // Tâche récurrente sur le sous-objet
   await page.getByRole("link", { name: "Ajouter une tâche", exact: true }).click();
-  await page.getByLabel("Titre").fill(`Vidange ${suffix}`);
+  await expect(page.getByRole("heading", { level: 1, name: "Nouvelle tâche" })).toBeVisible();
+  await page.getByLabel("Titre", { exact: true }).fill(`Vidange ${suffix}`);
   await page.getByLabel("Durée (heures)").first().fill("2,5");
   await page.getByLabel("Valeur (€)").first().fill("150");
   await expect(page.getByText("Soit 60 €/h")).toBeVisible();
@@ -62,9 +84,9 @@ test("parcours complet : objets, tâches, cumuls, déplacement, récurrence", as
   const parentSelect = page.getByLabel("Nouveau parent");
   await expect(parentSelect.locator("option", { hasText: child })).toHaveCount(0);
   // Déplacement sous la propriété existante
-  await parentSelect.selectOption({ label: "Le Moulin FRat" });
+  await parentSelect.selectOption({ label: home });
   await page.getByRole("button", { name: "Déplacer" }).click();
-  await expect(page.getByRole("navigation", { name: "Fil d'Ariane" })).toContainText("Le Moulin FRat");
+  await expect(page.getByRole("navigation", { name: "Fil d'Ariane" })).toContainText(home);
 
   // Terminer la tâche depuis la liste à plat : saisie du réalisé + occurrence suivante
   await page.goto(`/taches?q=${encodeURIComponent(suffix)}`);
@@ -80,7 +102,7 @@ test("parcours complet : objets, tâches, cumuls, déplacement, récurrence", as
   const done = page.getByRole("listitem").filter({ hasText: `Vidange ${suffix}` });
   await expect(done).toContainText("3 h");
 
-  // Arbre : la nouvelle branche est visible sous le Moulin
+  // Arbre : la nouvelle branche est visible sous son nouveau parent
   await page.goto("/");
   await expect(page.getByRole("link", { name: root })).toBeVisible();
 });

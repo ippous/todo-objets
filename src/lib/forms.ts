@@ -24,7 +24,7 @@ const uuidOrNull = z.string().uuid().nullable();
 
 export const objectSchema = z.object({
   name: z.string().min(1, "Le nom est obligatoire").max(120),
-  type: z.string().max(60).nullable(),
+  typeId: z.string().uuid("Type invalide").nullable(),
   description: z.string().max(4000).nullable(),
   location: z.string().max(200).nullable(),
   tags: z.array(z.string().max(40)),
@@ -33,7 +33,7 @@ export const objectSchema = z.object({
 export function readObject(fd: FormData) {
   return objectSchema.safeParse({
     name: str(fd, "name"),
-    type: optionalText(fd, "type"),
+    typeId: optionalText(fd, "typeId"),
     description: optionalText(fd, "description"),
     location: optionalText(fd, "location"),
     tags: parseTags(str(fd, "tags")),

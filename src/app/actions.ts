@@ -1,27 +1,43 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn, signOut } from "@/auth";
 import { getDb } from "@/db";
 import { STATUSES, type Todo } from "@/db/schema";
 import { type ActionState, firstError, optionalNumber, readObject, readTodo, readUser, str } from "@/lib/forms";
+import { DOCUMENT_MAX_BYTES, DOCUMENT_TYPES } from "@/lib/document-types";
 import {
+  addDocument,
+  addLink,
+  addPhoto,
   createObject,
+  createObjects,
   createTodo,
+  createTodos,
   createUser,
+  deleteDocument,
+  deleteLink,
   deleteObject,
+  deletePhoto,
   deleteTodo,
   DomainError,
   getTodo,
   moveObject,
+  createType,
+  deleteType,
+  renameType,
+  setCoverPhoto,
+  setDocumentType,
+  type TypeKind,
   setTodoStatus,
   updateObject,
   updateTodo,
   updateUser,
 } from "@/lib/repo";
 import { requireAdmin, requireUser } from "@/lib/session";
+import { exists, parseDocumentPath, parsePhotoPath, remove } from "@/lib/storage";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const assertId = (id: string) => {
@@ -112,12 +128,299 @@ export async function deleteObjectAction(id: string, _: ActionState, fd: FormDat
   const parentId = str(fd, "parentId");
   try {
     assertId(id);
-    await deleteObject(getDb(), id);
+    await remove(await deleteObject(getDb(), id));
   } catch (err) {
     return handle(err);
   }
   revalidatePath("/", "layout");
   redirect(parentId && UUID.test(parentId) ? `/objets/${parentId}` : "/");
+}
+
+/** Déplacement depuis l'arbre (glisser-déposer ou mode « Déplacer »). */
+export async function moveObjectInlineAction(id: string, newParentId: string | null): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    if (newParentId) assertId(newParentId);
+    await moveObject(getDb(), id, newParentId);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+/** Suppression depuis l'arbre, après confirmation dans l'interface. */
+export async function deleteObjectInlineAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await remove(await deleteObject(getDb(), id));
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+// ---------- Types d'objets et de documents ----------
+
+const KINDS: TypeKind[] = ["objet", "document"];
+const assertKind = (k: string): TypeKind => {
+  if (!KINDS.includes(k as TypeKind)) throw new DomainError("Catégorie de type invalide");
+  return k as TypeKind;
+};
+
+export async function createTypeAction(kind: TypeKind, _: ActionState, fd: FormData): Promise<ActionState> {
+  await requireUser();
+  try {
+    await createType(getDb(), assertKind(kind), str(fd, "name"));
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function renameTypeAction(kind: TypeKind, id: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await renameType(getDb(), assertKind(kind), id, str(fd, "name"));
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function deleteTypeAction(kind: TypeKind, id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await deleteType(getDb(), assertKind(kind), id);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+// ---------- Ajout en lot ----------
+
+export type BulkResult = ActionState & { count?: number };
+
+const CATEGORY_SET = new Set(["entretien", "travaux", "administratif"]);
+const PRIORITY_SET = new Set(["haute", "moyenne", "basse"]);
+
+/** Plusieurs objets sous un même parent (ou en racines). */
+export async function createObjectsBulkAction(
+  parentId: string | null,
+  names: string[],
+  typeId: string | null,
+): Promise<BulkResult> {
+  await requireUser();
+  try {
+    if (parentId) assertId(parentId);
+    if (typeId) assertId(typeId);
+    if (!Array.isArray(names) || names.some((n) => typeof n !== "string")) throw new DomainError("Liste invalide");
+    const created = await createObjects(getDb(), parentId, names, { typeId: typeId || null });
+    revalidatePath("/", "layout");
+    refresh();
+    return { ok: true, count: created.length };
+  } catch (err) {
+    return handle(err);
+  }
+}
+
+/** Plusieurs tâches sur un même objet, avec catégorie, priorité, responsable et échéance communes. */
+export async function createTodosBulkAction(
+  objectId: string,
+  titles: string[],
+  common: { category?: string; priority?: string; assigneeId?: string | null; dueDate?: string | null },
+): Promise<BulkResult> {
+  const user = await requireUser();
+  try {
+    assertId(objectId);
+    if (!Array.isArray(titles) || titles.some((t) => typeof t !== "string")) throw new DomainError("Liste invalide");
+    const category = CATEGORY_SET.has(common.category ?? "") ? (common.category as Todo["category"]) : "entretien";
+    const priority = PRIORITY_SET.has(common.priority ?? "") ? (common.priority as Todo["priority"]) : "moyenne";
+    const assigneeId = common.assigneeId && UUID.test(common.assigneeId) ? common.assigneeId : null;
+    const dueDate = common.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(common.dueDate) ? common.dueDate : null;
+    const created = await createTodos(getDb(), objectId, titles, {
+      category,
+      priority,
+      assigneeId,
+      dueDate,
+      createdById: user.id,
+    });
+    revalidatePath("/", "layout");
+    refresh();
+    return { ok: true, count: created.length };
+  } catch (err) {
+    return handle(err);
+  }
+}
+
+// ---------- Documents et liens ----------
+
+/** Enregistre un document déjà envoyé dans le stockage. */
+export async function addDocumentAction(input: {
+  typeId: string;
+  pathname: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    const parsed = parseDocumentPath(input.pathname);
+    if (!parsed) throw new DomainError("Document invalide");
+    assertId(input.typeId);
+    if (!DOCUMENT_TYPES[input.contentType]) throw new DomainError("Ce type de fichier n'est pas accepté");
+    if (!Number.isInteger(input.size) || input.size <= 0 || input.size > DOCUMENT_MAX_BYTES) {
+      throw new DomainError("Taille de fichier invalide");
+    }
+    if (!(await exists(input.pathname))) throw new DomainError("L'envoi du document n'est pas terminé. Réessaie.");
+    await addDocument(getDb(), {
+      objectId: parsed.objectId,
+      typeId: input.typeId,
+      pathname: input.pathname,
+      filename: String(input.filename ?? ""),
+      contentType: input.contentType,
+      size: input.size,
+      createdById: user.id,
+    });
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function setDocumentTypeAction(id: string, typeId: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    assertId(typeId);
+    await setDocumentType(getDb(), id, typeId);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteDocumentAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await remove([await deleteDocument(getDb(), id)]);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function addLinkAction(objectId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    assertId(objectId);
+    await addLink(getDb(), { objectId, url: str(fd, "url"), title: str(fd, "title"), createdById: user.id });
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function deleteLinkAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await deleteLink(getDb(), id);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+// ---------- Photos ----------
+
+/** Enregistre une photo déjà envoyée dans le stockage (image + vignette). */
+export async function addPhotoAction(input: {
+  pathname: string;
+  thumbPathname: string;
+  width: number;
+  height: number;
+}): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    const main = parsePhotoPath(input.pathname);
+    const thumb = parsePhotoPath(input.thumbPathname);
+    if (
+      !main ||
+      !thumb ||
+      main.thumb ||
+      !thumb.thumb ||
+      main.kind !== thumb.kind ||
+      main.ownerId !== thumb.ownerId ||
+      main.fileId !== thumb.fileId
+    ) {
+      throw new DomainError("Photo invalide");
+    }
+    if (!(await exists(input.pathname)) || !(await exists(input.thumbPathname))) {
+      throw new DomainError("L'envoi de la photo n'est pas terminé. Réessaie.");
+    }
+    const dims = (n: number) => (Number.isInteger(n) && n > 0 && n < 20000 ? n : null);
+    await addPhoto(getDb(), main.kind === "objets" ? { objectId: main.ownerId } : { todoId: main.ownerId }, {
+      pathname: input.pathname,
+      thumbPathname: input.thumbPathname,
+      width: dims(input.width),
+      height: dims(input.height),
+      createdById: user.id,
+    });
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function setCoverPhotoAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await setCoverPhoto(getDb(), id);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function deletePhotoAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await remove(await deletePhoto(getDb(), id));
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
 }
 
 // ---------- Tâches ----------
@@ -186,7 +489,7 @@ export async function deleteTodoAction(id: string, _: ActionState, fd: FormData)
   await requireUser();
   try {
     assertId(id);
-    await deleteTodo(getDb(), id);
+    await remove(await deleteTodo(getDb(), id));
   } catch (err) {
     return handle(err);
   }

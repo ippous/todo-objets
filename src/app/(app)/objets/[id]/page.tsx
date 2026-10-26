@@ -2,9 +2,26 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
+import { BulkAddButton } from "@/components/bulk-add";
+import { PhotoGallery } from "@/components/photo-gallery";
+import { PhotoUploader } from "@/components/photo-uploader";
 import { TodoRow } from "@/components/todo-row";
 import { fmtEur, fmtHours } from "@/lib/format";
-import { computeTotals, getObject, listObjects, listTodos, type TodoListItem } from "@/lib/repo";
+import { ObjectDocuments } from "@/components/object-documents";
+import { ObjectLinks } from "@/components/object-links";
+import {
+  computeTotals,
+  getObject,
+  listDocuments,
+  listLinks,
+  listObjects,
+  listPhotos,
+  listTodos,
+  listTypes,
+  listUsers,
+  type TodoListItem,
+} from "@/lib/repo";
+import { storageMode, storagePrefix } from "@/lib/storage";
 import { buildForest, flatten, pathTo } from "@/lib/tree";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -26,7 +43,18 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
   if (!obj) notFound();
 
   const showDone = terminees === "1";
-  const all = await listTodos(db, { subtreeOf: id }, "echeance");
+  const [all, photos, users, docs, links, objectTypes, docTypes] = await Promise.all([
+    listTodos(db, { subtreeOf: id }, "echeance"),
+    listPhotos(db, { objectId: id }),
+    listUsers(db),
+    listDocuments(db, id),
+    listLinks(db, id),
+    listTypes(db, "objet"),
+    listTypes(db, "document"),
+  ]);
+  const userName = new Map(users.map((u) => [u.id, u.name]));
+  const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
+  const cover = photos.find((p) => p.isCover);
   const todos = showDone ? all : all.filter((t) => t.status !== "fait");
   const totals = computeTotals(all);
 
@@ -70,9 +98,21 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
       </nav>
 
       <header className="grid gap-3">
-        <div className="flex flex-wrap items-baseline gap-x-3">
-          <h1 className="text-2xl font-bold">{obj.name}</h1>
-          {obj.type && <span className="text-muted">{obj.type}</span>}
+        <div className="flex items-center gap-4">
+          {cover && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/photos/${cover.id}?v=1`}
+              alt=""
+              width={72}
+              height={72}
+              className="size-18 shrink-0 rounded-xl bg-moss-soft object-cover"
+            />
+          )}
+          <div className="flex flex-wrap items-baseline gap-x-3">
+            <h1 className="text-2xl font-bold">{obj.name}</h1>
+            {obj.type && <span className="text-muted">{obj.type}</span>}
+          </div>
         </div>
         {(obj.description || obj.location || obj.tags.length > 0) && (
           <div className="grid max-w-prose gap-1 text-muted">
@@ -91,6 +131,16 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           <Link href={`/objets/${id}/modifier`} className="btn btn-ghost">
             Modifier ou déplacer
           </Link>
+          <BulkAddButton
+            target={{ kind: "taches", objectId: id, objectName: obj.name }}
+            users={activeUsers}
+            label="Plusieurs tâches"
+          />
+          <BulkAddButton
+            target={{ kind: "objets", parentId: id, parentName: obj.name }}
+            objectTypes={objectTypes}
+            label="Plusieurs sous-objets"
+          />
         </div>
       </header>
 
@@ -158,6 +208,48 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           ))
         )}
       </section>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section aria-labelledby="documents" className="grid content-start gap-3">
+          <h2 id="documents" className="text-lg font-bold">
+            Documents {docs.length > 0 && <span className="font-normal text-muted">({docs.length})</span>}
+          </h2>
+          <ObjectDocuments
+            objectId={obj.id}
+            prefix={storagePrefix}
+            mode={storageMode}
+            docTypes={docTypes.map((t) => ({ id: t.id, name: t.name }))}
+            docs={docs.map((d) => ({
+              id: d.id,
+              typeId: d.typeId,
+              typeName: d.typeName,
+              filename: d.filename,
+              contentType: d.contentType,
+              size: d.size,
+              createdAt: d.createdAt.toISOString(),
+              createdBy: d.createdById ? (userName.get(d.createdById) ?? null) : null,
+            }))}
+          />
+        </section>
+        <section aria-labelledby="liens" className="grid content-start gap-3">
+          <h2 id="liens" className="text-lg font-bold">
+            Liens {links.length > 0 && <span className="font-normal text-muted">({links.length})</span>}
+          </h2>
+          <ObjectLinks objectId={obj.id} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title }))} />
+        </section>
+      </div>
+
+      <section aria-labelledby="photos" className="grid gap-3">
+        <h2 id="photos" className="text-lg font-bold">
+          Photos {photos.length > 0 && <span className="font-normal text-muted">({photos.length})</span>}
+        </h2>
+        <PhotoGallery
+          label={obj.name}
+          photos={photos.map((p) => ({ id: p.id, isCover: p.isCover, width: p.width, height: p.height }))}
+        />
+        <PhotoUploader kind="objets" ownerId={obj.id} prefix={storagePrefix} mode={storageMode} />
+      </section>
+
     </div>
   );
 }

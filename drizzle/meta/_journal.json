@@ -8,6 +8,27 @@
       "when": 1793012354800,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793017403668,
+      "tag": "0001_photos",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793024605860,
+      "tag": "0002_documents_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793026138764,
+      "tag": "0003_types",
+      "breakpoints": true
     }
   ]
 }
