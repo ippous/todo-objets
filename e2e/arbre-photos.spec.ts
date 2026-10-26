@@ -256,7 +256,8 @@ test("documents et liens d'un objet", async ({ page }, info) => {
   const s = `${info.project.name}-${Date.now().toString(36)}`;
   const name = `Chaudière ${s}`;
   const id = await createRoot(page, name);
-  await page.waitForLoadState("networkidle");
+  // Pas de « networkidle » : les aperçus Vercel gardent des connexions ouvertes
+  await page.waitForLoadState("load");
 
   // Document PDF
   const pdf = Buffer.from(
