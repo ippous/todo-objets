@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getDb } from "@/db";
+import { BulkAddButton } from "@/components/bulk-add";
 import { TreeView, type TreeViewNode } from "@/components/tree-view";
 import { fmtEur, fmtHours } from "@/lib/format";
-import { listObjects, objectCovers, openStatsByObject, todoCountByObject } from "@/lib/repo";
+import { listObjects, listUsers, objectCovers, openStatsByObject, todoCountByObject } from "@/lib/repo";
 import { buildForest, emptyStats, type TreeNode } from "@/lib/tree";
 import type { ObjectRow } from "@/db/schema";
 
@@ -24,12 +25,14 @@ function toView(n: TreeNode<ObjectRow>, counts: Map<string, number>, covers: Map
 
 export default async function ArbrePage() {
   const db = getDb();
-  const [objs, stats, counts, covers] = await Promise.all([
+  const [objs, stats, counts, covers, users] = await Promise.all([
     listObjects(db),
     openStatsByObject(db),
     todoCountByObject(db),
     objectCovers(db),
+    listUsers(db),
   ]);
+  const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
   const forest = buildForest(objs, stats);
   const all = forest.reduce(
     (acc, r) => ({
@@ -53,9 +56,15 @@ export default async function ArbrePage() {
             Glisse un objet sur un autre pour le déplacer, ou utilise le menu « … » de chaque ligne.
           </p>
         </div>
-        <Link href="/objets/nouveau" className="btn btn-ghost">
-          Nouvel objet racine
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/objets/nouveau" className="btn btn-ghost">
+            Nouvel objet racine
+          </Link>
+          <BulkAddButton
+            target={{ kind: "objets", parentId: null, parentName: null }}
+            label="Plusieurs objets racines"
+          />
+        </div>
       </div>
 
       {forest.length === 0 ? (
@@ -67,7 +76,7 @@ export default async function ArbrePage() {
         </div>
       ) : (
         <section aria-label="Arborescences" className="rounded-xl bg-surface p-3 sm:p-5">
-          <TreeView forest={forest.map((n) => toView(n, counts, covers))} />
+          <TreeView forest={forest.map((n) => toView(n, counts, covers))} users={activeUsers} />
         </section>
       )}
     </div>

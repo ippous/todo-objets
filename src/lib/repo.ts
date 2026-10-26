@@ -40,6 +40,57 @@ export async function createObject(db: Db, data: NewObject): Promise<ObjectRow> 
   return row;
 }
 
+export const BULK_MAX = 50;
+
+/** Crée plusieurs objets d'un coup sous le même parent (ou en racines), dans l'ordre saisi. */
+export async function createObjects(
+  db: Db,
+  parentId: string | null,
+  names: string[],
+  common: { type?: string | null } = {},
+): Promise<ObjectRow[]> {
+  const clean = names.map((n) => n.trim()).filter(Boolean);
+  if (clean.length === 0) throw new DomainError("Saisis au moins un nom");
+  if (clean.length > BULK_MAX) throw new DomainError(`${BULK_MAX} objets au maximum à la fois`);
+  if (clean.some((n) => n.length > 120)) throw new DomainError("Un nom dépasse 120 caractères");
+  return db.transaction(async (tx) => {
+    if (parentId) {
+      const [parent] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.id, parentId)).for("update");
+      if (!parent) throw new DomainError("Objet parent introuvable");
+    }
+    const [{ max }] = await tx
+      .select({ max: sql<number | null>`max(${objects.position})` })
+      .from(objects)
+      .where(parentId ? eq(objects.parentId, parentId) : isNull(objects.parentId));
+    const start = (max ?? -1) + 1;
+    return tx
+      .insert(objects)
+      .values(clean.map((name, i) => ({ name, parentId, type: common.type || null, position: start + i })))
+      .returning();
+  });
+}
+
+/** Crée plusieurs tâches d'un coup sur le même objet, avec des réglages communs. */
+export async function createTodos(
+  db: Db,
+  objectId: string,
+  titles: string[],
+  common: Pick<NewTodo, "category" | "priority" | "assigneeId" | "dueDate" | "createdById"> = {},
+): Promise<Todo[]> {
+  const clean = titles.map((t) => t.trim()).filter(Boolean);
+  if (clean.length === 0) throw new DomainError("Saisis au moins un titre");
+  if (clean.length > BULK_MAX) throw new DomainError(`${BULK_MAX} tâches au maximum à la fois`);
+  if (clean.some((t) => t.length > 200)) throw new DomainError("Un titre dépasse 200 caractères");
+  return db.transaction(async (tx) => {
+    const [obj] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.id, objectId)).for("update");
+    if (!obj) throw new DomainError("Objet introuvable");
+    return tx
+      .insert(todos)
+      .values(clean.map((title) => ({ ...common, objectId, title })))
+      .returning();
+  });
+}
+
 export async function updateObject(
   db: Db,
   id: string,

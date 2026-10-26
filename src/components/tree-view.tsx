@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { deleteObjectInlineAction, moveObjectInlineAction } from "@/app/actions";
 import { fmtEur, fmtHours } from "@/lib/format";
+import { BulkAddDialog, type BulkTarget } from "./bulk-add";
 import type { Stats } from "@/lib/tree";
 
 export type TreeViewNode = {
@@ -66,12 +67,14 @@ type Ctx = {
   startMove: (n: TreeViewNode) => void;
   moveTo: (id: string, parentId: string | null) => void;
   remove: (n: TreeViewNode) => void;
+  openBulk: (t: BulkTarget) => void;
   menuOpen: string | null;
   setMenuOpen: (id: string | null) => void;
   pending: boolean;
 };
 
-export function TreeView({ forest }: { forest: TreeViewNode[] }) {
+export function TreeView({ forest, users = [] }: { forest: TreeViewNode[]; users?: { id: string; name: string }[] }) {
+  const [bulk, setBulk] = useState<BulkTarget | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [movingId, setMovingId] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -138,6 +141,11 @@ export function TreeView({ forest }: { forest: TreeViewNode[] }) {
     },
     moveTo,
     remove,
+    openBulk: (t) => {
+      setMenuOpen(null);
+      setMessage(null);
+      setBulk(t);
+    },
     menuOpen,
     setMenuOpen,
     pending,
@@ -188,6 +196,16 @@ export function TreeView({ forest }: { forest: TreeViewNode[] }) {
           Déposer ici pour en faire une racine
         </div>
       )}
+
+      <BulkAddDialog
+        target={bulk}
+        users={users}
+        onClose={() => setBulk(null)}
+        onDone={(text) => {
+          setMessage({ kind: "ok", text });
+          if (bulk?.kind === "objets" && bulk.parentId && collapsed.has(bulk.parentId)) toggle(bulk.parentId);
+        }}
+      />
 
       <ul className={`tree grid gap-0.5 ${pending ? "opacity-70" : ""}`} aria-busy={pending}>
         {forest.map((n) => (
@@ -397,6 +415,22 @@ function NodeMenu({ node, ctx }: { node: TreeViewNode; ctx: Ctx }) {
               >
                 Ajouter une tâche
               </Link>
+              <button
+                type="button"
+                role="menuitem"
+                className={item}
+                onClick={() => ctx.openBulk({ kind: "objets", parentId: node.id, parentName: node.name })}
+              >
+                Ajouter plusieurs sous-objets…
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className={item}
+                onClick={() => ctx.openBulk({ kind: "taches", objectId: node.id, objectName: node.name })}
+              >
+                Ajouter plusieurs tâches…
+              </button>
               <Link role="menuitem" href={`/objets/${node.id}/modifier`} className={item}>
                 Modifier
               </Link>

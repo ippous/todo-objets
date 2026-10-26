@@ -10,7 +10,9 @@ import { type ActionState, firstError, optionalNumber, readObject, readTodo, rea
 import {
   addPhoto,
   createObject,
+  createObjects,
   createTodo,
+  createTodos,
   createUser,
   deleteObject,
   deletePhoto,
@@ -151,6 +153,61 @@ export async function deleteObjectInlineAction(id: string): Promise<ActionState>
   revalidatePath("/", "layout");
   refresh();
   return { ok: true };
+}
+
+// ---------- Ajout en lot ----------
+
+export type BulkResult = ActionState & { count?: number };
+
+const CATEGORY_SET = new Set(["entretien", "travaux", "administratif"]);
+const PRIORITY_SET = new Set(["haute", "moyenne", "basse"]);
+
+/** Plusieurs objets sous un même parent (ou en racines). */
+export async function createObjectsBulkAction(
+  parentId: string | null,
+  names: string[],
+  type: string | null,
+): Promise<BulkResult> {
+  await requireUser();
+  try {
+    if (parentId) assertId(parentId);
+    if (!Array.isArray(names) || names.some((n) => typeof n !== "string")) throw new DomainError("Liste invalide");
+    const created = await createObjects(getDb(), parentId, names, { type: type?.trim().slice(0, 60) || null });
+    revalidatePath("/", "layout");
+    refresh();
+    return { ok: true, count: created.length };
+  } catch (err) {
+    return handle(err);
+  }
+}
+
+/** Plusieurs tâches sur un même objet, avec catégorie, priorité, responsable et échéance communes. */
+export async function createTodosBulkAction(
+  objectId: string,
+  titles: string[],
+  common: { category?: string; priority?: string; assigneeId?: string | null; dueDate?: string | null },
+): Promise<BulkResult> {
+  const user = await requireUser();
+  try {
+    assertId(objectId);
+    if (!Array.isArray(titles) || titles.some((t) => typeof t !== "string")) throw new DomainError("Liste invalide");
+    const category = CATEGORY_SET.has(common.category ?? "") ? (common.category as Todo["category"]) : "entretien";
+    const priority = PRIORITY_SET.has(common.priority ?? "") ? (common.priority as Todo["priority"]) : "moyenne";
+    const assigneeId = common.assigneeId && UUID.test(common.assigneeId) ? common.assigneeId : null;
+    const dueDate = common.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(common.dueDate) ? common.dueDate : null;
+    const created = await createTodos(getDb(), objectId, titles, {
+      category,
+      priority,
+      assigneeId,
+      dueDate,
+      createdById: user.id,
+    });
+    revalidatePath("/", "layout");
+    refresh();
+    return { ok: true, count: created.length };
+  } catch (err) {
+    return handle(err);
+  }
 }
 
 // ---------- Photos ----------

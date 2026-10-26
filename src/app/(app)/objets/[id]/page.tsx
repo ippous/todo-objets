@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
+import { BulkAddButton } from "@/components/bulk-add";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { TodoRow } from "@/components/todo-row";
 import { fmtEur, fmtHours } from "@/lib/format";
-import { computeTotals, getObject, listObjects, listPhotos, listTodos, type TodoListItem } from "@/lib/repo";
+import { computeTotals, getObject, listObjects, listPhotos, listTodos, listUsers, type TodoListItem } from "@/lib/repo";
 import { storageMode, storagePrefix } from "@/lib/storage";
 import { buildForest, flatten, pathTo } from "@/lib/tree";
 
@@ -29,7 +30,12 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
   if (!obj) notFound();
 
   const showDone = terminees === "1";
-  const [all, photos] = await Promise.all([listTodos(db, { subtreeOf: id }, "echeance"), listPhotos(db, { objectId: id })]);
+  const [all, photos, users] = await Promise.all([
+    listTodos(db, { subtreeOf: id }, "echeance"),
+    listPhotos(db, { objectId: id }),
+    listUsers(db),
+  ]);
+  const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
   const cover = photos.find((p) => p.isCover);
   const todos = showDone ? all : all.filter((t) => t.status !== "fait");
   const totals = computeTotals(all);
@@ -107,6 +113,12 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           <Link href={`/objets/${id}/modifier`} className="btn btn-ghost">
             Modifier ou déplacer
           </Link>
+          <BulkAddButton
+            target={{ kind: "taches", objectId: id, objectName: obj.name }}
+            users={activeUsers}
+            label="Plusieurs tâches"
+          />
+          <BulkAddButton target={{ kind: "objets", parentId: id, parentName: obj.name }} label="Plusieurs sous-objets" />
         </div>
       </header>
 

@@ -196,3 +196,58 @@ test("les photos ne sont pas accessibles sans connexion", async ({ browser }) =>
   expect(res.status()).toBe(401);
   await ctx.close();
 });
+
+test("ajout en lot d'objets et de tâches", async ({ page }, info) => {
+  const s = `${info.project.name}-${Date.now().toString(36)}`;
+  const parent = `Verger ${s}`;
+  const id = await createRoot(page, parent);
+
+  // Plusieurs sous-objets : saisie ligne à ligne avec Entrée, puis collage d'une liste
+  await page.getByRole("button", { name: "Plusieurs sous-objets" }).click();
+  const dialog = page.getByRole("dialog", { name: `Ajouter des sous-objets à « ${parent} »` });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Nom 1").fill(`Pommier ${s}`);
+  await dialog.getByLabel("Nom 1").press("Enter");
+  await expect(dialog.getByLabel("Nom 2")).toBeFocused();
+  await dialog.getByLabel("Nom 2").fill(`Poirier ${s}`);
+  await dialog.getByLabel("Nom 2").press("Enter");
+  await page.evaluate((text) => {
+    const input = document.activeElement as HTMLInputElement;
+    const data = new DataTransfer();
+    data.setData("text", text);
+    input.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  }, `- Cerisier ${s}\n- Prunier ${s}\n\n`);
+  await expect(dialog.getByLabel("Nom 4")).toHaveValue(`Prunier ${s}`);
+  await dialog.getByLabel("Type").fill("arbre");
+  await dialog.getByRole("button", { name: "Créer 4 objets" }).click();
+  await expect(page.getByText(`4 objets créés sous « ${parent} ».`)).toBeVisible();
+  await expect(dialog).toBeHidden();
+  await page.reload();
+  for (const n of ["Pommier", "Poirier", "Cerisier", "Prunier"]) {
+    await expect(page.getByRole("link", { name: `${n} ${s}` })).toBeVisible();
+  }
+
+  // Plusieurs tâches avec réglages communs, depuis le menu de l'arbre
+  await page.goto("/");
+  await row(page, `Pommier ${s}`).getByRole("button", { name: `Actions pour Pommier ${s}` }).click();
+  await page.getByRole("menuitem", { name: "Ajouter plusieurs tâches…" }).click();
+  const d2 = page.getByRole("dialog", { name: `Ajouter des tâches à « Pommier ${s} »` });
+  await d2.getByLabel("Titre 1").fill(`Tailler ${s}`);
+  await d2.getByLabel("Titre 1").press("Enter");
+  await d2.getByLabel("Titre 2").fill(`Traiter ${s}`);
+  await d2.getByLabel("Titre 2").press("Enter");
+  await d2.getByLabel("Titre 3").fill("à retirer");
+  await d2.getByRole("button", { name: "Retirer la ligne 3" }).click();
+  await d2.getByLabel("Catégorie").selectOption("travaux");
+  await d2.getByLabel("Priorité").selectOption("haute");
+  await d2.getByRole("button", { name: "Créer 2 tâches" }).click();
+  await expect(page.getByText(`2 tâches créées sur « Pommier ${s} ».`)).toBeVisible();
+
+  // Les tâches remontent sur le parent, avec la priorité commune
+  await page.goto(`/objets/${id}`);
+  for (const t of [`Tailler ${s}`, `Traiter ${s}`]) {
+    const r = page.getByRole("listitem").filter({ hasText: t });
+    await expect(r).toContainText("Priorité haute");
+    await expect(r).toContainText("Travaux");
+  }
+});
