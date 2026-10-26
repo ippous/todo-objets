@@ -2,7 +2,7 @@
 
 [← Retour au README](../README.md)
 
-On peut ajouter des photos aux **objets** et aux **tâches**.
+On peut ajouter des photos aux **objets** et aux **tâches**. Sur la fiche d'un objet, la section Photos est juste sous l'en-tête (bouton *Photos* pour y aller directement).
 
 ## Ajouter
 
@@ -17,7 +17,7 @@ Les fichiers partent **directement du navigateur vers le stockage privé** (Verc
 ## Vignette
 
 - La **première photo** d'un objet ou d'une tâche devient automatiquement sa vignette.
-- **« Choisir comme vignette »** sur une autre photo la remplace.
+- **« Utiliser comme vignette »** sur une autre photo la remplace ; la vignette porte la mention « Vignette ».
 - Si l'on supprime la vignette, la photo suivante prend sa place.
 
 Les vignettes s'affichent dans l'arbre, dans l'en-tête de la fiche d'un objet et dans la liste des tâches.
