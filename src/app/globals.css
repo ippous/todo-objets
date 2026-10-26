@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+/* Palette « carnet de terrain » : papier sauge froid, encre vert-noir,
+   mousse pour l'action, ocre pour l'échéance, brique pour l'urgence. */
+:root {
+  --paper: #eef1ec;
+  --surface: #ffffff;
+  --ink: #1d2a24;
+  --muted: #5b6862;
+  --line: #d3dad4;
+  --moss: #2f5d3a;
+  --moss-soft: #e1ebe2;
+  --ochre: #9a6410;
+  --ochre-soft: #f6ead4;
+  --brick: #a23a2a;
+  --brick-soft: #f5e1dc;
+  --branch: #a9b8ad;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #141a17;
+    --surface: #1b2420;
+    --ink: #e4ebe6;
+    --muted: #9aa8a1;
+    --line: #2e3a34;
+    --moss: #8cc49a;
+    --moss-soft: #22362a;
+    --ochre: #e0b05c;
+    --ochre-soft: #3a2f1a;
+    --brick: #ec8f7e;
+    --brick-soft: #3d231e;
+    --branch: #3e4d45;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-moss: var(--moss);
+  --color-moss-soft: var(--moss-soft);
+  --color-ochre: var(--ochre);
+  --color-ochre-soft: var(--ochre-soft);
+  --color-brick: var(--brick);
+  --color-brick-soft: var(--brick-soft);
+  --color-branch: var(--branch);
+  --font-sans: "Atkinson Hyperlegible", ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--moss);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Champs de formulaire */
+.field {
+  display: grid;
+  gap: 0.25rem;
+}
+.field > span {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.input {
+  width: 100%;
+  min-height: 2.75rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+}
+textarea.input {
+  min-height: 6rem;
+}
+.input:focus {
+  outline: 2px solid var(--moss);
+  outline-offset: 0;
+  border-color: transparent;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.btn-primary {
+  background: var(--moss);
+  color: var(--surface);
+}
+.btn-ghost {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+.btn-danger {
+  border-color: var(--brick);
+  color: var(--brick);
+  background: transparent;
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Arbre : branches dessinées comme sur un plan de propriété */
+.tree ul {
+  margin-left: 0.85rem;
+  padding-left: 0.9rem;
+  border-left: 1.5px solid var(--branch);
+}
+.tree li {
+  position: relative;
+}
+.tree ul > li::before {
+  content: "";
+  position: absolute;
+  left: -0.9rem;
+  top: 1.45rem;
+  width: 0.7rem;
+  border-top: 1.5px solid var(--branch);
+}
+.tree ul > li:last-child::after {
+  /* coupe la branche verticale sous le dernier enfant */
+  content: "";
+  position: absolute;
+  left: calc(-0.9rem - 1.5px);
+  top: 1.5rem;
+  bottom: 0;
+  border-left: 1.5px solid var(--surface);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  details[open] > .reveal {
+    animation: reveal 160ms ease-out;
+  }
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
