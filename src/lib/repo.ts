@@ -3,7 +3,7 @@
 import { and, asc, desc, eq, inArray, isNull, lte, ne, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@/db";
-import { objects, todos, users, type NewObject, type NewTodo, type ObjectRow, type Todo } from "@/db/schema";
+import { objects, photos, todos, users, type NewObject, type NewTodo, type ObjectRow, type Photo, type Todo } from "@/db/schema";
 import { emptyStats, nextDueDate, round2, type Recurrence, type Stats } from "./tree";
 
 export class DomainError extends Error {}
@@ -76,12 +76,35 @@ export async function moveObject(db: Db, id: string, newParentId: string | null)
   });
 }
 
-export async function deleteObject(db: Db, id: string): Promise<void> {
-  const [child] = await db.select({ id: objects.id }).from(objects).where(eq(objects.parentId, id)).limit(1);
-  if (child) throw new DomainError("Cet objet contient des sous-objets : déplace-les ou supprime-les d'abord");
-  const [todo] = await db.select({ id: todos.id }).from(todos).where(eq(todos.objectId, id)).limit(1);
-  if (todo) throw new DomainError("Cet objet a des tâches : supprime-les ou rattache-les à un autre objet d'abord");
-  await db.delete(objects).where(eq(objects.id, id));
+/**
+ * Supprime un objet sans sous-objet ni tâche. Ses photos sont supprimées avec lui ;
+ * retourne les chemins des fichiers à effacer du stockage.
+ */
+export async function deleteObject(db: Db, id: string): Promise<string[]> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`LOCK TABLE objects IN SHARE ROW EXCLUSIVE MODE`);
+    const [obj] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.id, id));
+    if (!obj) throw new DomainError("Objet introuvable");
+    const [child] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.parentId, id)).limit(1);
+    if (child) throw new DomainError("Cet objet contient des sous-objets : déplace-les ou supprime-les d'abord");
+    const [todo] = await tx.select({ id: todos.id }).from(todos).where(eq(todos.objectId, id)).limit(1);
+    if (todo) throw new DomainError("Cet objet a des tâches : supprime-les ou rattache-les à un autre objet d'abord");
+    const files = await tx
+      .select({ p: photos.pathname, t: photos.thumbPathname })
+      .from(photos)
+      .where(eq(photos.objectId, id));
+    await tx.delete(objects).where(eq(objects.id, id));
+    return files.flatMap((f) => [f.p, f.t]);
+  });
+}
+
+/** Nombre total de tâches (toutes, y compris faites) par objet. */
+export async function todoCountByObject(db: Db): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ objectId: todos.objectId, n: sql<number>`count(*)::int` })
+    .from(todos)
+    .groupBy(todos.objectId);
+  return new Map(rows.map((r) => [r.objectId, Number(r.n)]));
 }
 
 /** Statistiques propres à chaque objet (tâches non terminées uniquement). */
@@ -127,6 +150,7 @@ export type TodoListItem = Todo & {
   assigneeName: string | null;
   createdByName: string | null;
   valuePerHour: number | null;
+  coverPhotoId: string | null;
 };
 
 const priorityRank = sql`CASE ${todos.priority} WHEN 'haute' THEN 0 WHEN 'moyenne' THEN 1 ELSE 2 END`;
@@ -172,6 +196,7 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
       assigneeName: assignee.name,
       createdByName: creator.name,
       ratio: ratioExpr,
+      coverPhotoId: sql<string | null>`(SELECT p.id FROM photos p WHERE p.todo_id = ${todos.id} AND p.is_cover LIMIT 1)`,
     })
     .from(todos)
     .innerJoin(objects, eq(objects.id, todos.objectId))
@@ -186,6 +211,7 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
     assigneeName: r.assigneeName,
     createdByName: r.createdByName,
     valuePerHour: r.ratio == null ? null : round2(Number(r.ratio)),
+    coverPhotoId: r.coverPhotoId ?? null,
   }));
 }
 
@@ -209,8 +235,14 @@ export async function updateTodo(db: Db, id: string, data: Partial<NewTodo>): Pr
   await db.update(todos).set({ ...data, updatedAt: new Date() }).where(eq(todos.id, id));
 }
 
-export async function deleteTodo(db: Db, id: string): Promise<void> {
+/** Supprime une tâche et ses photos ; retourne les chemins des fichiers à effacer. */
+export async function deleteTodo(db: Db, id: string): Promise<string[]> {
+  const files = await db
+    .select({ p: photos.pathname, t: photos.thumbPathname })
+    .from(photos)
+    .where(eq(photos.todoId, id));
   await db.delete(todos).where(eq(todos.id, id));
+  return files.flatMap((f) => [f.p, f.t]);
 }
 
 /**
@@ -371,6 +403,96 @@ export async function ensureAdmins(db: Db, emails: string[]) {
     const existing = await getUserByEmail(db, email);
     if (!existing) await db.insert(users).values({ email, name: email.split("@")[0], role: "admin" });
   }
+}
+
+// ---------- Photos ----------
+
+export type PhotoOwner = { objectId: string } | { todoId: string };
+
+const ownerCond = (o: PhotoOwner) =>
+  "objectId" in o ? eq(photos.objectId, o.objectId) : eq(photos.todoId, o.todoId);
+
+export async function listPhotos(db: Db, owner: PhotoOwner): Promise<Photo[]> {
+  return db
+    .select()
+    .from(photos)
+    .where(ownerCond(owner))
+    .orderBy(desc(photos.isCover), asc(photos.createdAt));
+}
+
+export async function getPhoto(db: Db, id: string): Promise<Photo | undefined> {
+  const [row] = await db.select().from(photos).where(eq(photos.id, id));
+  return row;
+}
+
+/** Ajoute une photo ; la première photo d'un objet ou d'une tâche devient sa vignette. */
+export async function addPhoto(
+  db: Db,
+  owner: PhotoOwner,
+  data: { pathname: string; thumbPathname: string; width?: number | null; height?: number | null; createdById?: string | null },
+): Promise<Photo> {
+  return db.transaction(async (tx) => {
+    if ("objectId" in owner) {
+      const [o] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.id, owner.objectId)).for("update");
+      if (!o) throw new DomainError("Objet introuvable");
+    } else {
+      const [t] = await tx.select({ id: todos.id }).from(todos).where(eq(todos.id, owner.todoId)).for("update");
+      if (!t) throw new DomainError("Tâche introuvable");
+    }
+    const [cover] = await tx
+      .select({ id: photos.id })
+      .from(photos)
+      .where(and(ownerCond(owner), eq(photos.isCover, true)))
+      .limit(1);
+    const [row] = await tx
+      .insert(photos)
+      .values({ ...data, ...owner, isCover: !cover })
+      .returning();
+    return row;
+  });
+}
+
+/** Fait de cette photo la vignette de son objet ou de sa tâche. */
+export async function setCoverPhoto(db: Db, id: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [p] = await tx.select().from(photos).where(eq(photos.id, id)).for("update");
+    if (!p) throw new DomainError("Photo introuvable");
+    const owner: PhotoOwner = p.objectId ? { objectId: p.objectId } : { todoId: p.todoId! };
+    await tx.update(photos).set({ isCover: false }).where(and(ownerCond(owner), eq(photos.isCover, true)));
+    await tx.update(photos).set({ isCover: true }).where(eq(photos.id, id));
+  });
+}
+
+/**
+ * Supprime une photo. Si c'était la vignette, la plus ancienne des photos restantes
+ * prend le relais. Retourne les chemins des fichiers à effacer.
+ */
+export async function deletePhoto(db: Db, id: string): Promise<string[]> {
+  return db.transaction(async (tx) => {
+    const [p] = await tx.select().from(photos).where(eq(photos.id, id)).for("update");
+    if (!p) throw new DomainError("Photo introuvable");
+    await tx.delete(photos).where(eq(photos.id, id));
+    if (p.isCover) {
+      const owner: PhotoOwner = p.objectId ? { objectId: p.objectId } : { todoId: p.todoId! };
+      const [next] = await tx
+        .select({ id: photos.id })
+        .from(photos)
+        .where(ownerCond(owner))
+        .orderBy(asc(photos.createdAt))
+        .limit(1);
+      if (next) await tx.update(photos).set({ isCover: true }).where(eq(photos.id, next.id));
+    }
+    return [p.pathname, p.thumbPathname];
+  });
+}
+
+/** Vignette (identifiant de photo) de chaque objet qui en a une. */
+export async function objectCovers(db: Db): Promise<Map<string, string>> {
+  const rows = await db
+    .select({ objectId: photos.objectId, id: photos.id })
+    .from(photos)
+    .where(and(eq(photos.isCover, true), sql`${photos.objectId} IS NOT NULL`));
+  return new Map(rows.map((r) => [r.objectId!, r.id]));
 }
 
 // ---------- Utilitaire ----------

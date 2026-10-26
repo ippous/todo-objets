@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
+import { PhotoGallery } from "@/components/photo-gallery";
+import { PhotoUploader } from "@/components/photo-uploader";
 import { TodoRow } from "@/components/todo-row";
 import { fmtEur, fmtHours } from "@/lib/format";
-import { computeTotals, getObject, listObjects, listTodos, type TodoListItem } from "@/lib/repo";
+import { computeTotals, getObject, listObjects, listPhotos, listTodos, type TodoListItem } from "@/lib/repo";
+import { storageMode, storagePrefix } from "@/lib/storage";
 import { buildForest, flatten, pathTo } from "@/lib/tree";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -26,7 +29,8 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
   if (!obj) notFound();
 
   const showDone = terminees === "1";
-  const all = await listTodos(db, { subtreeOf: id }, "echeance");
+  const [all, photos] = await Promise.all([listTodos(db, { subtreeOf: id }, "echeance"), listPhotos(db, { objectId: id })]);
+  const cover = photos.find((p) => p.isCover);
   const todos = showDone ? all : all.filter((t) => t.status !== "fait");
   const totals = computeTotals(all);
 
@@ -70,9 +74,21 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
       </nav>
 
       <header className="grid gap-3">
-        <div className="flex flex-wrap items-baseline gap-x-3">
-          <h1 className="text-2xl font-bold">{obj.name}</h1>
-          {obj.type && <span className="text-muted">{obj.type}</span>}
+        <div className="flex items-center gap-4">
+          {cover && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/photos/${cover.id}?v=1`}
+              alt=""
+              width={72}
+              height={72}
+              className="size-18 shrink-0 rounded-xl bg-moss-soft object-cover"
+            />
+          )}
+          <div className="flex flex-wrap items-baseline gap-x-3">
+            <h1 className="text-2xl font-bold">{obj.name}</h1>
+            {obj.type && <span className="text-muted">{obj.type}</span>}
+          </div>
         </div>
         {(obj.description || obj.location || obj.tags.length > 0) && (
           <div className="grid max-w-prose gap-1 text-muted">
@@ -102,6 +118,17 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           label="Réalisé (tâches faites)"
           value={`${fmtHours(totals.done.actualHours)} · ${fmtEur(totals.done.actualValueEur)}`}
         />
+      </section>
+
+      <section aria-labelledby="photos" className="grid gap-3">
+        <h2 id="photos" className="text-lg font-bold">
+          Photos {photos.length > 0 && <span className="font-normal text-muted">({photos.length})</span>}
+        </h2>
+        <PhotoGallery
+          label={obj.name}
+          photos={photos.map((p) => ({ id: p.id, isCover: p.isCover, width: p.width, height: p.height }))}
+        />
+        <PhotoUploader kind="objets" ownerId={obj.id} prefix={storagePrefix} mode={storageMode} />
       </section>
 
       {children.length > 0 && (

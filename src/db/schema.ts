@@ -90,7 +90,31 @@ export const todos = pgTable(
   ],
 );
 
+export const photos = pgTable(
+  "photos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    objectId: uuid("object_id").references(() => objects.id, { onDelete: "cascade" }),
+    todoId: uuid("todo_id").references(() => todos.id, { onDelete: "cascade" }),
+    pathname: text("pathname").notNull(),
+    thumbPathname: text("thumb_pathname").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    isCover: boolean("is_cover").notNull().default(false),
+    createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("photos_object_idx").on(t.objectId),
+    index("photos_todo_idx").on(t.todoId),
+    check("photos_one_owner", sql`(${t.objectId} IS NULL) <> (${t.todoId} IS NULL)`),
+    uniqueIndex("photos_object_cover_uq").on(t.objectId).where(sql`${t.isCover} AND ${t.objectId} IS NOT NULL`),
+    uniqueIndex("photos_todo_cover_uq").on(t.todoId).where(sql`${t.isCover} AND ${t.todoId} IS NOT NULL`),
+  ],
+);
+
 export type User = typeof users.$inferSelect;
+export type Photo = typeof photos.$inferSelect;
 export type ObjectRow = typeof objects.$inferSelect;
 export type Todo = typeof todos.$inferSelect;
 export type NewTodo = typeof todos.$inferInsert;

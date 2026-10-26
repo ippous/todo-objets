@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn, signOut } from "@/auth";
@@ -8,20 +8,24 @@ import { getDb } from "@/db";
 import { STATUSES, type Todo } from "@/db/schema";
 import { type ActionState, firstError, optionalNumber, readObject, readTodo, readUser, str } from "@/lib/forms";
 import {
+  addPhoto,
   createObject,
   createTodo,
   createUser,
   deleteObject,
+  deletePhoto,
   deleteTodo,
   DomainError,
   getTodo,
   moveObject,
+  setCoverPhoto,
   setTodoStatus,
   updateObject,
   updateTodo,
   updateUser,
 } from "@/lib/repo";
 import { requireAdmin, requireUser } from "@/lib/session";
+import { exists, parsePhotoPath, remove } from "@/lib/storage";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const assertId = (id: string) => {
@@ -112,12 +116,110 @@ export async function deleteObjectAction(id: string, _: ActionState, fd: FormDat
   const parentId = str(fd, "parentId");
   try {
     assertId(id);
-    await deleteObject(getDb(), id);
+    await remove(await deleteObject(getDb(), id));
   } catch (err) {
     return handle(err);
   }
   revalidatePath("/", "layout");
   redirect(parentId && UUID.test(parentId) ? `/objets/${parentId}` : "/");
+}
+
+/** Déplacement depuis l'arbre (glisser-déposer ou mode « Déplacer »). */
+export async function moveObjectInlineAction(id: string, newParentId: string | null): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    if (newParentId) assertId(newParentId);
+    await moveObject(getDb(), id, newParentId);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+/** Suppression depuis l'arbre, après confirmation dans l'interface. */
+export async function deleteObjectInlineAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await remove(await deleteObject(getDb(), id));
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+// ---------- Photos ----------
+
+/** Enregistre une photo déjà envoyée dans le stockage (image + vignette). */
+export async function addPhotoAction(input: {
+  pathname: string;
+  thumbPathname: string;
+  width: number;
+  height: number;
+}): Promise<ActionState> {
+  const user = await requireUser();
+  try {
+    const main = parsePhotoPath(input.pathname);
+    const thumb = parsePhotoPath(input.thumbPathname);
+    if (
+      !main ||
+      !thumb ||
+      main.thumb ||
+      !thumb.thumb ||
+      main.kind !== thumb.kind ||
+      main.ownerId !== thumb.ownerId ||
+      main.fileId !== thumb.fileId
+    ) {
+      throw new DomainError("Photo invalide");
+    }
+    if (!(await exists(input.pathname)) || !(await exists(input.thumbPathname))) {
+      throw new DomainError("L'envoi de la photo n'est pas terminé. Réessaie.");
+    }
+    const dims = (n: number) => (Number.isInteger(n) && n > 0 && n < 20000 ? n : null);
+    await addPhoto(getDb(), main.kind === "objets" ? { objectId: main.ownerId } : { todoId: main.ownerId }, {
+      pathname: input.pathname,
+      thumbPathname: input.thumbPathname,
+      width: dims(input.width),
+      height: dims(input.height),
+      createdById: user.id,
+    });
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function setCoverPhotoAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await setCoverPhoto(getDb(), id);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function deletePhotoAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await remove(await deletePhoto(getDb(), id));
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
 }
 
 // ---------- Tâches ----------
@@ -186,7 +288,7 @@ export async function deleteTodoAction(id: string, _: ActionState, fd: FormData)
   await requireUser();
   try {
     assertId(id);
-    await deleteTodo(getDb(), id);
+    await remove(await deleteTodo(getDb(), id));
   } catch (err) {
     return handle(err);
   }
