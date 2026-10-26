@@ -189,6 +189,9 @@ test("photos d'une tâche et vignette dans la liste", async ({ page }, info) => 
 
 test("les photos ne sont pas accessibles sans connexion", async ({ browser }) => {
   const ctx = await browser.newContext();
+  const share = process.env.E2E_VERCEL_SHARE;
+  // Sur un déploiement protégé, on passe la protection Vercel sans ouvrir de session Carnet
+  if (share) await ctx.request.get(`/?_vercel_share=${encodeURIComponent(share)}`);
   const res = await ctx.request.get("/api/photos/00000000-0000-0000-0000-000000000000?v=1");
   expect(res.status()).toBe(401);
   await ctx.close();
