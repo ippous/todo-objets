@@ -131,6 +131,9 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           <Link href={`/objets/${id}/modifier`} className="btn btn-ghost">
             Modifier ou déplacer
           </Link>
+          <a href="#photos" className="btn btn-ghost">
+            Photos{photos.length > 0 ? ` (${photos.length})` : ""}
+          </a>
           <BulkAddButton
             target={{ kind: "taches", objectId: id, objectName: obj.name }}
             users={activeUsers}
@@ -143,6 +146,22 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           />
         </div>
       </header>
+
+      <section aria-labelledby="photos" className="grid scroll-mt-4 gap-3">
+        <h2 id="photos" className="text-lg font-bold">
+          Photos {photos.length > 0 && <span className="font-normal text-muted">({photos.length})</span>}
+        </h2>
+        <PhotoGallery
+          label={obj.name}
+          photos={photos.map((p) => ({ id: p.id, isCover: p.isCover, width: p.width, height: p.height }))}
+        />
+        <PhotoUploader kind="objets" ownerId={obj.id} prefix={storagePrefix} mode={storageMode} />
+        <p className="text-sm text-muted">
+          {photos.length === 0
+            ? "La première photo devient la vignette de l'objet (affichée dans l'arbre) ; tu pourras en choisir une autre."
+            : "« Utiliser comme vignette » sous une photo pour en faire la vignette de l'objet."}
+        </p>
+      </section>
 
       <section aria-label="Bilan" className="num grid grid-cols-2 gap-3 rounded-xl bg-surface p-4 sm:grid-cols-4">
         <Stat label="Tâches ouvertes" value={String(totals.open.openCount)} />
@@ -238,17 +257,6 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           <ObjectLinks objectId={obj.id} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title }))} />
         </section>
       </div>
-
-      <section aria-labelledby="photos" className="grid gap-3">
-        <h2 id="photos" className="text-lg font-bold">
-          Photos {photos.length > 0 && <span className="font-normal text-muted">({photos.length})</span>}
-        </h2>
-        <PhotoGallery
-          label={obj.name}
-          photos={photos.map((p) => ({ id: p.id, isCover: p.isCover, width: p.width, height: p.height }))}
-        />
-        <PhotoUploader kind="objets" ownerId={obj.id} prefix={storagePrefix} mode={storageMode} />
-      </section>
 
     </div>
   );

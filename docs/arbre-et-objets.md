@@ -45,12 +45,12 @@ La suppression demande une **confirmation**. Elle n'est possible **que si l'obje
 De haut en bas :
 
 1. **Fil d'Ariane** jusqu'à la racine.
-2. **En-tête** : vignette, nom, type, description, emplacement, tags ; boutons *Modifier* et *Ajouter une tâche*.
-3. **Bilan** de l'objet et de tous ses descendants : tâches ouvertes, heures et € estimés, heures et € réalisés (tâches faites), ratio €/h.
-4. **Sous-objets** directs, avec *Ajouter un sous-objet* et « Plusieurs sous-objets » (ajout en lot).
-5. **Tâches** de l'objet et de ses descendants, regroupées par sous-objet ; un lien permet d'afficher aussi les tâches terminées. Bouton « Plusieurs tâches » pour l'ajout en lot.
-6. **Documents et liens** (voir [documents-et-liens.md](documents-et-liens.md)).
-7. **Photos** (voir [photos.md](photos.md)).
+2. **En-tête** : vignette, nom, type, description, emplacement, tags ; boutons *Ajouter une tâche*, *Ajouter un sous-objet*, *Modifier ou déplacer*, *Photos* (va à la section Photos), *Plusieurs tâches*, *Plusieurs sous-objets*.
+3. **Photos** : ajout de photos et choix de la vignette (voir [photos.md](photos.md)).
+4. **Bilan** de l'objet et de tous ses descendants : tâches ouvertes, heures et € estimés, heures et € réalisés (tâches faites).
+5. **Sous-objets** directs.
+6. **Tâches** de l'objet et de ses descendants, regroupées par sous-objet ; un lien permet d'afficher aussi les tâches faites.
+7. **Documents et liens** (voir [documents-et-liens.md](documents-et-liens.md)).
 
 ## Champs d'un objet
 
