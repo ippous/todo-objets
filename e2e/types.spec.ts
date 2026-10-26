@@ -63,7 +63,8 @@ test("types d'objets et de documents : ajout, renommage, suppression bloquée si
   await page.goto(`${objectUrl}/modifier`);
   await page.getByLabel(/^Type/).selectOption({ label: "Sans type" });
   await page.getByRole("button", { name: /Enregistrer/ }).click();
-  await expect(page.getByRole("heading", { level: 1, name: `Abri ${m}` })).toBeVisible();
+  await expect(page).toHaveURL(objectUrl); // retour sur la fiche : l'enregistrement est terminé
+  await expect(page.getByRole("heading", { level: 1, name: `Abri ${m}`, exact: true })).toBeVisible();
   await page.goto("/types");
   await objSection().getByRole("button", { name: `Supprimer Serre chauffée ${m}` }).click();
   await objSection().getByRole("button", { name: "Oui, supprimer" }).click();
