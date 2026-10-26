@@ -28,6 +28,7 @@ Ils tournent sur deux profils : **mobile** (Pixel 7) et **desktop**.
 | `e2e/parcours.spec.ts` | connexion, refus d'une adresse inconnue, objets, sous-objets, tâches, cumuls, déplacement, récurrence |
 | `e2e/arbre-photos.spec.ts` | mode Déplacer, glisser-déposer, suppression, photos et vignettes, ajout en lot, documents et liens, accès anonyme refusé |
 | `e2e/types.spec.ts` | gestion des types, suppression bloquée tant qu'un objet utilise le type |
+| `e2e/camera.spec.ts` | prise de vue : appareil photo natif sur mobile, webcam simulée par Chromium sur PC (plusieurs prises, retrait, annulation) |
 | `e2e/visionneuses.spec.ts` | aperçu PDF, Word, ODT, Excel, ODS, PowerPoint, CSV, texte, ZIP ; visionneuse refusée sans connexion |
 
 Les fichiers d'exemple sont dans `e2e/fixtures/`.

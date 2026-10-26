@@ -6,7 +6,16 @@ On peut ajouter des photos aux **objets** et aux **tâches**. Sur la fiche d'un 
 
 ## Ajouter
 
-Le bouton **« Ajouter des photos »** permet de choisir une ou plusieurs images. Sur téléphone, il propose aussi l'appareil photo. Avant l'envoi, le navigateur :
+Deux boutons :
+
+- **« Ajouter des photos »** : choisir une ou plusieurs images déjà enregistrées.
+- **« Prendre une photo »**, quand l'appareil a une caméra :
+  - **téléphone ou tablette** (écran tactile) : ouvre directement l'appareil photo du système, caméra arrière ;
+  - **PC avec webcam** : ouvre une fenêtre de prise de vue. *Déclencher* prend une photo, et on peut en prendre plusieurs à la suite. Les miniatures s'affichent ; **×** en retire une. Si plusieurs caméras sont branchées, une liste permet d'en changer. *Ajouter les photos* envoie le tout, *Annuler* ne garde rien.
+
+  À la première utilisation, le navigateur demande l'autorisation d'utiliser la caméra. En cas de refus, un message explique comment la réactiver (icône à gauche de l'adresse). Le bouton n'apparaît pas si le navigateur n'a pas accès à une caméra.
+
+Avant l'envoi, le navigateur :
 
 - redimensionne la photo à **1600 px** au plus (JPEG, qualité 82 %) ;
 - crée une **vignette de 400 px** ;
