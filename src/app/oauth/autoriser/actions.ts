@@ -37,7 +37,7 @@ export async function approveAction(fd: FormData) {
   let target: string;
   try {
     await validateAuthorize(db, req); // revérifiée : le formulaire vient du navigateur
-    const code = await createAuthCode(db, user.id, req);
+    const code = await createAuthCode(db, user.id, req, fd.get("ecriture") === "on");
     target = back(req.redirectUri, { code, state: req.state });
   } catch (err) {
     if (err instanceof OAuthError) redirect(`/oauth/autoriser?erreur=${encodeURIComponent(err.description)}`);

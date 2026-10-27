@@ -161,7 +161,8 @@ test("OAuth : enregistrement, connexion, consentement, jetons, rafraîchissement
   await expect(p2).toHaveURL(/\/connexion\?retour=/);
   await login(p2, true);
   await expect(p2.getByRole("heading", { name: `Autoriser « Test MCP ${m} » ?` })).toBeVisible();
-  await expect(p2.getByText("lecture seule")).toBeVisible();
+  const writeBox = p2.getByRole("checkbox", { name: /Autoriser aussi les modifications/ });
+  await expect(writeBox).not.toBeChecked(); // portée « lecture » demandée : décochée par défaut
 
   let callback = "";
   await p2.route("http://127.0.0.1:8765/**", async (route) => {
@@ -177,26 +178,30 @@ test("OAuth : enregistrement, connexion, consentement, jetons, rafraîchissement
   // 3. Échange du code (un mauvais verifier est refusé)
   const bad = await tokenRequest(page.request, { grant_type: "authorization_code", code, client_id, redirect_uri: redirect, code_verifier: "x".repeat(43) });
   expect(bad.status).toBe(400);
-  // Le code a été consommé par la tentative ratée : on recommence l'autorisation
+  // Le code a été consommé par la tentative ratée : on recommence l'autorisation, cette fois avec écriture
   callback = "";
   await p2.goto(`/oauth/autoriser?${qs}`);
+  await p2.getByRole("checkbox", { name: /Autoriser aussi les modifications/ }).check();
   await p2.getByRole("button", { name: "Autoriser" }).click();
   await expect.poll(() => callback).toContain("code=");
   const code2 = new URL(callback).searchParams.get("code")!;
   const ok = await tokenRequest(page.request, { grant_type: "authorization_code", code: code2, client_id, redirect_uri: redirect, code_verifier: verifier });
   expect(ok.status).toBe(200);
   expect(ok.body.token_type).toBe("Bearer");
+  expect(ok.body.scope).toBe("lecture ecriture");
 
-  // 4. Le jeton d'accès ouvre le MCP
+  // 4. Le jeton d'accès ouvre le MCP, avec les outils d'écriture
   const client = await mcpClient(baseURL!, ok.body.access_token, await vercelCookie(page));
   const found = parse(await client.callTool({ name: "rechercher_taches", arguments: { recherche: m } }));
   expect(found.total).toBe(1);
+  expect((await client.listTools()).tools.map((t) => t.name)).toContain("creer_tache");
   await client.close();
 
   // 5. Rafraîchissement avec rotation
   const ref = await tokenRequest(page.request, { grant_type: "refresh_token", refresh_token: ok.body.refresh_token, client_id });
   expect(ref.status).toBe(200);
   expect(ref.body.access_token).not.toBe(ok.body.access_token);
+  expect(ref.body.scope).toBe("lecture ecriture");
 
   // 6. L'application apparaît dans « Connexion IA » et peut être révoquée
   await page.goto("/connexion-ia");
@@ -211,4 +216,65 @@ test("OAuth : enregistrement, connexion, consentement, jetons, rafraîchissement
   await p2.getByRole("button", { name: "Refuser" }).click();
   await expect.poll(() => callback).toContain("error=access_denied");
   await ctx.close();
+});
+
+test("jeton en écriture : créer, modifier, terminer, déplacer, lier — visible dans l'appli", async ({ page, baseURL }, info) => {
+  const m = testMarker(info);
+  const pumpId = await seed(page, m);
+
+  await page.goto("/connexion-ia");
+  await page.getByLabel("Nom du jeton").fill(`Jeton ${m}`);
+  await page.getByLabel("Lecture et écriture").check();
+  await page.getByRole("button", { name: "Créer un jeton" }).click();
+  const token = (await page.getByTestId("nouveau-jeton").textContent())!.trim();
+  await page.reload();
+  await expect(page.getByText(`Jeton ${m}`).locator("..")).toContainText("lecture et écriture");
+
+  const client = await mcpClient(baseURL!, token, await vercelCookie(page));
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const r = await client.callTool({ name, arguments: args });
+    expect(r.isError, JSON.stringify(r.content)).toBeFalsy();
+    return parse(r);
+  };
+
+  // Objets : une racine de test, un enfant, puis déplacement de la pompe dessous
+  const atelier = await call("creer_objet", { nom: `Atelier ${m}`, description: "## Outillage\n- **perceuse**" });
+  const etabli = await call("creer_objet", { nom: `Établi ${m}`, parent_id: atelier.id, emplacement: "Mur est" });
+  await call("modifier_objet", { id: etabli.id, nom: `Grand établi ${m}` });
+  await call("deplacer_objet", { id: pumpId, nouveau_parent_id: atelier.id });
+  const loop = await client.callTool({ name: "deplacer_objet", arguments: { id: atelier.id, nouveau_parent_id: etabli.id } });
+  expect(loop.isError).toBe(true);
+
+  // Tâche : création, modification, fin avec récurrence, lien
+  const t = await call("creer_tache", {
+    objet_id: etabli.id,
+    titre: `Huiler ${m}`,
+    description: "Huile de lin, **2 couches**",
+    echeance: "2030-01-15",
+    recurrence: "annuelle",
+    responsable: "moi",
+    heures_estimees: 1.5,
+  });
+  await call("modifier_tache", { id: t.id, priorite: "haute", valeur_estimee_eur: 30 });
+  await call("ajouter_lien", { tache_id: t.id, url: "https://exemple.fr/huile", titre: `Fiche ${m}` });
+  const done = await call("modifier_tache", { id: t.id, statut: "fait", heures_realisees: 2 });
+  expect((done.occurrence_suivante as { id: string } | null)?.id).toBeTruthy();
+  await client.close();
+
+  // Vérification dans l'appli
+  await page.goto(`/objets/${atelier.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: `Atelier ${m}` })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Outillage" })).toBeVisible();
+  await expect(page.locator("strong", { hasText: "perceuse" })).toBeVisible();
+  await expect(page.getByRole("link", { name: `Grand établi ${m}` }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: `Pompe ${m}` }).first()).toBeVisible();
+
+  await page.goto(`/taches/${t.id}`);
+  await expect(page.getByRole("heading", { level: 1, name: `Huiler ${m}` })).toBeVisible();
+  await expect(page.locator("strong", { hasText: "2 couches" })).toBeVisible();
+  await expect(page.getByRole("link", { name: new RegExp(`Fiche ${m}`) })).toBeVisible();
+  // Occurrence suivante créée par la récurrence
+  await page.goto(`/taches/${(done.occurrence_suivante as { id: string }).id}`);
+  await expect(page.getByRole("heading", { level: 1, name: `Huiler ${m}` })).toBeVisible();
+  await expect(page.getByLabel("Échéance")).toHaveValue("2031-01-15");
 });

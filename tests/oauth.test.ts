@@ -15,6 +15,7 @@ import {
   revokeByToken,
   validateAuthorize,
   verifyBearer,
+  verifyBearerAccess,
 } from "@/lib/oauth";
 import { createTestDb } from "./helpers";
 import { eq } from "drizzle-orm";
@@ -34,7 +35,7 @@ const pkce = () => {
   return { verifier, challenge };
 };
 
-async function authorize(redirect = "https://claude.ai/api/mcp/auth_callback") {
+async function authorize(redirect = "https://claude.ai/api/mcp/auth_callback", write = false) {
   const client = await registerClient(db, { client_name: "Claude", redirect_uris: [redirect] });
   const { verifier, challenge } = pkce();
   const req = {
@@ -42,11 +43,11 @@ async function authorize(redirect = "https://claude.ai/api/mcp/auth_callback") {
     redirectUri: redirect,
     codeChallenge: challenge,
     codeChallengeMethod: "S256",
-    scope: "lecture",
+    scope: write ? "lecture ecriture" : "lecture",
     resource: null,
   };
   await validateAuthorize(db, { ...req, responseType: "code" });
-  const code = await createAuthCode(db, userId, req);
+  const code = await createAuthCode(db, userId, req, write);
   return { client, code, verifier, redirect };
 }
 
@@ -107,7 +108,7 @@ describe("OAuth 2.1", () => {
     const base = { clientId: client.id, redirectUri: "https://claude.ai/cb", codeChallenge: pkce().challenge, codeChallengeMethod: "S256", scope: "", resource: null, responseType: "code" };
     await expect(validateAuthorize(db, { ...base, codeChallengeMethod: "plain" })).rejects.toBeInstanceOf(OAuthError);
     await expect(validateAuthorize(db, { ...base, redirectUri: "https://claude.ai/autre" })).rejects.toBeInstanceOf(OAuthError);
-    await expect(validateAuthorize(db, { ...base, scope: "ecriture" })).rejects.toBeInstanceOf(OAuthError);
+    await expect(validateAuthorize(db, { ...base, scope: "suppression" })).rejects.toBeInstanceOf(OAuthError);
     await expect(validateAuthorize(db, { ...base, clientId: "inconnu" })).rejects.toBeInstanceOf(OAuthError);
     await expect(registerClient(db, { redirect_uris: ["http://evil.fr/cb"] })).rejects.toBeInstanceOf(OAuthError);
   });
@@ -138,5 +139,31 @@ describe("OAuth 2.1", () => {
     await revokeByToken(db, t2.refresh_token);
     expect(await verifyBearer(db, t2.access_token)).toBeNull();
     await revokeByToken(db, "inconnu"); // silencieux
+  });
+
+  it("droits d'écriture : portée émise, conservée au rafraîchissement", async () => {
+    const r = await authorize(undefined, false);
+    const t = await exchangeCode(db, { code: r.code, clientId: r.client.id, redirectUri: r.redirect, codeVerifier: r.verifier });
+    expect(t.scope).toBe("lecture");
+    expect((await verifyBearerAccess(db, t.access_token))?.write).toBe(false);
+
+    const w = await authorize(undefined, true);
+    const tw = await exchangeCode(db, { code: w.code, clientId: w.client.id, redirectUri: w.redirect, codeVerifier: w.verifier });
+    expect(tw.scope).toBe("lecture ecriture");
+    expect((await verifyBearerAccess(db, tw.access_token))?.write).toBe(true);
+    const tw2 = await refreshTokens(db, { refreshToken: tw.refresh_token, clientId: w.client.id });
+    expect(tw2.scope).toBe("lecture ecriture");
+    expect((await verifyBearerAccess(db, tw2.access_token))?.write).toBe(true);
+  });
+});
+
+describe("droits des jetons personnels", () => {
+  it("lecture seule par défaut, écriture sur demande", async () => {
+    const ro = await createPersonalToken(db, userId, "lecture");
+    const rw = await createPersonalToken(db, userId, "écriture", true);
+    expect(await verifyBearerAccess(db, ro.token)).toMatchObject({ write: false });
+    expect(await verifyBearerAccess(db, rw.token)).toMatchObject({ write: true });
+    const list = await listAccess(db, userId);
+    expect(Object.fromEntries(list.map((a) => [a.name, a.write]))).toEqual({ lecture: false, écriture: true });
   });
 });

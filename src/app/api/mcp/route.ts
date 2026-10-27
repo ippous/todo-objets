@@ -1,9 +1,9 @@
-// Serveur MCP (transport « Streamable HTTP », sans état) — lecture seule.
+// Serveur MCP (transport « Streamable HTTP », sans état) — lecture, et écriture selon les droits du jeton.
 // Authentification : jeton OAuth ou jeton personnel dans « Authorization: Bearer … ».
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { getDb } from "@/db";
 import { buildMcpServer } from "@/lib/mcp-server";
-import { verifyBearer } from "@/lib/oauth";
+import { verifyBearerAccess } from "@/lib/oauth";
 import { CORS, MCP_PATH, originOf, preflight } from "@/lib/oauth-http";
 
 export const maxDuration = 60;
@@ -26,10 +26,10 @@ async function handle(request: Request): Promise<Response> {
   const token = auth.match(/^Bearer\s+(\S+)$/i)?.[1];
   if (!token) return unauthorized(origin, "Authentification requise");
   const db = getDb();
-  const user = await verifyBearer(db, token);
-  if (!user) return unauthorized(origin, "Jeton invalide, expiré ou révoqué");
+  const access = await verifyBearerAccess(db, token);
+  if (!access) return unauthorized(origin, "Jeton invalide, expiré ou révoqué");
 
-  const server = buildMcpServer(db, user, origin);
+  const server = buildMcpServer(db, access.user, origin, access.write);
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   await server.connect(transport);
   try {

@@ -1,5 +1,5 @@
 import "server-only";
-import { OAuthError, SCOPE } from "./oauth";
+import { OAuthError, SCOPES } from "./oauth";
 
 /** Origine publique (https://todo.jaume-eric.com) d'après la requête. */
 export function originOf(request: Request): string {
@@ -38,7 +38,7 @@ export function protectedResourceMetadata(origin: string) {
   return {
     resource: `${origin}${MCP_PATH}`,
     authorization_servers: [origin],
-    scopes_supported: [SCOPE],
+    scopes_supported: [...SCOPES],
     bearer_methods_supported: ["header"],
     resource_name: "Carnet",
     resource_documentation: `${origin}/connexion-ia`,
@@ -57,7 +57,7 @@ export function authorizationServerMetadata(origin: string) {
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     revocation_endpoint_auth_methods_supported: ["none"],
-    scopes_supported: [SCOPE],
+    scopes_supported: [...SCOPES],
     service_documentation: `${origin}/connexion-ia`,
   };
 }

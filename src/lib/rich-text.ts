@@ -57,3 +57,69 @@ export function richTextToPlain(value: string | null): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function inlineMd(s: string): string {
+  return esc(s)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, '<a href="$2">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+    .replace(/~~([^~]+)~~/g, "<s>$1</s>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
+/**
+ * Description envoyée par un assistant (MCP) : Markdown simple (titres ##, listes -, 1., citations >,
+ * **gras**, *italique*, ~~barré~~, `code`, [lien](https://…), ---) ou HTML ; renvoie le HTML nettoyé.
+ */
+export function markdownToRichText(text: string | null | undefined): string | null {
+  if (!text?.trim()) return null;
+  if (isHtml(text)) return sanitizeRichText(text);
+  const out: string[] = [];
+  let list: "ul" | "ol" | null = null;
+  let para: string[] = [];
+  const flushPara = () => {
+    if (para.length) out.push(`<p>${para.map(inlineMd).join("<br>")}</p>`);
+    para = [];
+  };
+  const closeList = () => {
+    if (list) out.push(`</${list}>`);
+    list = null;
+  };
+  for (const raw of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const line = raw.trimEnd();
+    let m: RegExpMatchArray | null;
+    if (!line.trim()) {
+      flushPara();
+      closeList();
+    } else if ((m = line.match(/^\s*(#{1,6})\s+(.*)$/))) {
+      flushPara();
+      closeList();
+      out.push(m[1].length <= 2 ? `<h2>${inlineMd(m[2])}</h2>` : `<h3>${inlineMd(m[2])}</h3>`);
+    } else if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+      flushPara();
+      closeList();
+      out.push("<hr>");
+    } else if ((m = line.match(/^\s*[-*•]\s+(.*)$/)) || (m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
+      flushPara();
+      const kind = /^\s*\d/.test(line) ? "ol" : "ul";
+      if (list !== kind) {
+        closeList();
+        out.push(`<${kind}>`);
+        list = kind;
+      }
+      out.push(`<li><p>${inlineMd(m[1])}</p></li>`);
+    } else if ((m = line.match(/^\s*>\s?(.*)$/))) {
+      flushPara();
+      closeList();
+      out.push(`<blockquote><p>${inlineMd(m[1])}</p></blockquote>`);
+    } else {
+      closeList();
+      para.push(line.trim());
+    }
+  }
+  flushPara();
+  closeList();
+  return sanitizeRichText(out.join(""));
+}

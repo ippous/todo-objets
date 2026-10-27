@@ -34,6 +34,15 @@ export function CreateToken() {
           <span>Nom du jeton</span>
           <input className="input" name="name" maxLength={80} placeholder="Claude Desktop sur le PC" required />
         </label>
+        <fieldset className="flex flex-wrap gap-x-4 gap-y-1">
+          <legend className="sr-only">Droits du jeton</legend>
+          <label className="flex min-h-11 items-center gap-2">
+            <input type="radio" name="droits" value="lecture" defaultChecked /> Lecture seule
+          </label>
+          <label className="flex min-h-11 items-center gap-2">
+            <input type="radio" name="droits" value="ecriture" /> Lecture et écriture
+          </label>
+        </fieldset>
         <Submit className="btn btn-primary" pendingLabel="Création…">
           Créer un jeton
         </Submit>
@@ -45,7 +54,10 @@ export function CreateToken() {
       )}
       {state.token && (
         <div role="status" className="grid gap-2 rounded-xl border-2 border-moss bg-moss-soft p-4">
-          <p className="font-bold">Jeton « {state.name} » créé. Copie-le maintenant : il ne sera plus jamais affiché.</p>
+          <p className="font-bold">
+            Jeton « {state.name} » ({state.write ? "lecture et écriture" : "lecture seule"}) créé. Copie-le maintenant : il ne
+            sera plus jamais affiché.
+          </p>
           <div className="flex flex-wrap items-center gap-2">
             <code data-testid="nouveau-jeton" className="min-w-0 flex-1 break-all rounded-lg bg-surface px-3 py-2 text-sm">
               {state.token}
@@ -91,5 +103,13 @@ export function RevokeButton({ id, label }: { id: string; label: string }) {
       </button>
       {error && <span className="text-sm text-brick">{error}</span>}
     </span>
+  );
+}
+
+export function RightsBadge({ write }: { write: boolean }) {
+  return write ? (
+    <span className="rounded-full bg-ochre-soft px-2 py-0.5 text-xs font-bold text-ochre">lecture et écriture</span>
+  ) : (
+    <span className="rounded-full bg-moss-soft px-2 py-0.5 text-xs font-bold text-moss">lecture seule</span>
   );
 }
