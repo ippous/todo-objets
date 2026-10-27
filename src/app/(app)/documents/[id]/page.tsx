@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { DocumentViewer } from "@/components/document-viewer";
 import { getDb } from "@/db";
 import { DOCUMENT_TYPES, formatSize, viewerKind } from "@/lib/document-types";
-import { getDocument, listObjects, listTypes } from "@/lib/repo";
+import { getDocument, getTodo, listObjects, listTypes } from "@/lib/repo";
 import { pathTo } from "@/lib/tree";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,8 +23,13 @@ export default async function DocumentPage(props: PageProps<"/documents/[id]">) 
   const db = getDb();
   const doc = await getDocument(db, id);
   if (!doc) notFound();
-  const [objs, types] = await Promise.all([listObjects(db), listTypes(db, "document")]);
-  const path = pathTo(objs, doc.objectId);
+  const [objs, types, todo] = await Promise.all([
+    listObjects(db),
+    listTypes(db, "document"),
+    doc.todoId ? getTodo(db, doc.todoId) : undefined,
+  ]);
+  const ownerObjectId = doc.objectId ?? todo?.objectId;
+  const path = ownerObjectId ? pathTo(objs, ownerObjectId) : [];
   const typeName = types.find((t) => t.id === doc.typeId)?.name ?? "";
   const src = `/api/documents/${doc.id}`;
 
@@ -40,11 +45,19 @@ export default async function DocumentPage(props: PageProps<"/documents/[id]">) 
           {path.map((o) => (
             <li key={o.id} className="flex gap-1">
               <span aria-hidden>›</span>
-              <Link href={`/objets/${o.id}#documents`} className="underline-offset-4 hover:underline">
+              <Link href={`/objets/${o.id}${todo ? "" : "#documents"}`} className="underline-offset-4 hover:underline">
                 {o.name}
               </Link>
             </li>
           ))}
+          {todo && (
+            <li className="flex gap-1">
+              <span aria-hidden>›</span>
+              <Link href={`/taches/${todo.id}#documents`} className="underline-offset-4 hover:underline">
+                Tâche : {todo.title}
+              </Link>
+            </li>
+          )}
         </ol>
       </nav>
 

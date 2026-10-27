@@ -15,7 +15,7 @@ Ils s'exécutent sur un **Postgres en mémoire** (PGlite), avec les vraies migra
 | `tests/tree.test.ts` | forêt, cumuls par branche, chemins, prochaine échéance |
 | `tests/repo.test.ts` | objets, déplacement anti-boucle, suppression, tâches, filtres, tris, récurrence, ajout en lot |
 | `tests/photos.test.ts` | vignette automatique, changement de vignette, suppression |
-| `tests/documents.test.ts` | documents, liens, normalisation des URL |
+| `tests/documents.test.ts` | documents et liens des objets et des tâches, normalisation des URL |
 | `tests/types.test.ts` | création, renommage, doublons insensibles à la casse, suppression bloquée si utilisé |
 | `tests/rich-text.test.ts` | nettoyage du HTML des descriptions, conversion de l'ancien texte brut |
 | `tests/purge.test.ts` | purge des données de test (sous-arbres, fichiers, types, jokers) |
@@ -30,6 +30,7 @@ Ils tournent sur deux profils : **mobile** (Pixel 7) et **desktop**.
 | `e2e/arbre-photos.spec.ts` | mode Déplacer, glisser-déposer, suppression, photos et vignettes, ajout en lot, documents et liens, accès anonyme refusé |
 | `e2e/types.spec.ts` | gestion des types, suppression bloquée tant qu'un objet utilise le type |
 | `e2e/description.spec.ts` | éditeur WYSIWYG des descriptions : gras, liste, lien, modification, tâche, recherche dans le texte |
+| `e2e/taches-documents.spec.ts` | documents et liens d'une tâche, visionneuse, suppression de la tâche avec ses fichiers |
 | `e2e/camera.spec.ts` | prise de vue : appareil photo natif sur mobile, webcam simulée par Chromium sur PC (plusieurs prises, retrait, annulation) |
 | `e2e/visionneuses.spec.ts` | aperçu PDF, Word, ODT, Excel, ODS, PowerPoint, CSV, texte, ZIP ; visionneuse refusée sans connexion |
 

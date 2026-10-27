@@ -335,8 +335,9 @@ export async function deleteTodo(db: Db, id: string): Promise<string[]> {
     .select({ p: photos.pathname, t: photos.thumbPathname })
     .from(photos)
     .where(eq(photos.todoId, id));
+  const docs = await db.select({ p: documents.pathname }).from(documents).where(eq(documents.todoId, id));
   await db.delete(todos).where(eq(todos.id, id));
-  return files.flatMap((f) => [f.p, f.t]);
+  return [...files.flatMap((f) => [f.p, f.t]), ...docs.map((d) => d.p)];
 }
 
 /**
@@ -591,12 +592,25 @@ export async function objectCovers(db: Db): Promise<Map<string, string>> {
 
 // ---------- Documents ----------
 
-export async function listDocuments(db: Db, objectId: string): Promise<(DocumentRow & { typeName: string })[]> {
+export type AttachmentOwner = { objectId: string } | { todoId: string };
+
+const docOwnerCond = (o: AttachmentOwner) =>
+  "objectId" in o ? eq(documents.objectId, o.objectId) : eq(documents.todoId, o.todoId);
+const linkOwnerCond = (o: AttachmentOwner) =>
+  "objectId" in o ? eq(links.objectId, o.objectId) : eq(links.todoId, o.todoId);
+
+async function assertOwner(db: Db, o: AttachmentOwner) {
+  if ("objectId" in o) {
+    if (!(await getObject(db, o.objectId))) throw new DomainError("Objet introuvable");
+  } else if (!(await getTodo(db, o.todoId))) throw new DomainError("Tâche introuvable");
+}
+
+export async function listDocuments(db: Db, owner: AttachmentOwner): Promise<(DocumentRow & { typeName: string })[]> {
   const rows = await db
     .select({ doc: documents, typeName: documentTypes.name })
     .from(documents)
     .innerJoin(documentTypes, eq(documentTypes.id, documents.typeId))
-    .where(eq(documents.objectId, objectId))
+    .where(docOwnerCond(owner))
     .orderBy(asc(documentTypes.name), desc(documents.createdAt));
   return rows.map((r) => ({ ...r.doc, typeName: r.typeName }));
 }
@@ -609,7 +623,7 @@ export async function getDocument(db: Db, id: string): Promise<DocumentRow | und
 export async function addDocument(
   db: Db,
   data: {
-    objectId: string;
+    owner: AttachmentOwner;
     typeId: string;
     pathname: string;
     filename: string;
@@ -618,12 +632,15 @@ export async function addDocument(
     createdById?: string | null;
   },
 ): Promise<DocumentRow> {
-  const obj = await getObject(db, data.objectId);
-  if (!obj) throw new DomainError("Objet introuvable");
+  await assertOwner(db, data.owner);
   const [t] = await db.select({ id: documentTypes.id }).from(documentTypes).where(eq(documentTypes.id, data.typeId));
   if (!t) throw new DomainError("Type de document introuvable");
   const filename = data.filename.trim().slice(0, 200) || "document";
-  const [row] = await db.insert(documents).values({ ...data, filename }).returning();
+  const { owner, ...rest } = data;
+  const [row] = await db
+    .insert(documents)
+    .values({ ...rest, ...owner, filename })
+    .returning();
   return row;
 }
 
@@ -739,21 +756,20 @@ export function normalizeUrl(raw: string): string {
   return url.href;
 }
 
-export async function listLinks(db: Db, objectId: string): Promise<LinkRow[]> {
-  return db.select().from(links).where(eq(links.objectId, objectId)).orderBy(asc(links.createdAt));
+export async function listLinks(db: Db, owner: AttachmentOwner): Promise<LinkRow[]> {
+  return db.select().from(links).where(linkOwnerCond(owner)).orderBy(asc(links.createdAt));
 }
 
 export async function addLink(
   db: Db,
-  data: { objectId: string; url: string; title?: string | null; createdById?: string | null },
+  data: { owner: AttachmentOwner; url: string; title?: string | null; createdById?: string | null },
 ): Promise<LinkRow> {
-  const obj = await getObject(db, data.objectId);
-  if (!obj) throw new DomainError("Objet introuvable");
+  await assertOwner(db, data.owner);
   const url = normalizeUrl(data.url);
   const title = (data.title ?? "").trim().slice(0, 200) || new URL(url).hostname.replace(/^www\./, "");
   const [row] = await db
     .insert(links)
-    .values({ objectId: data.objectId, url, title, createdById: data.createdById ?? null })
+    .values({ ...data.owner, url, title, createdById: data.createdById ?? null })
     .returning();
   return row;
 }
@@ -821,6 +837,8 @@ export async function purgeTestData(db: Db, marker: string, opts: { dryRun?: boo
       files.push(...docs.map((d) => d.p));
     }
     if (todoIds.length) {
+      const tdocs = await tx.select({ p: documents.pathname }).from(documents).where(inArray(documents.todoId, todoIds));
+      files.push(...tdocs.map((d) => d.p));
       // Les occurrences récurrentes peuvent se référencer entre elles : on coupe le lien d'abord.
       await tx.update(todos).set({ previousOccurrenceId: null }).where(inArray(todos.previousOccurrenceId, todoIds));
       await tx.delete(todos).where(inArray(todos.id, todoIds));

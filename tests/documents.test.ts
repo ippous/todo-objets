@@ -4,9 +4,11 @@ import {
   addDocument,
   addLink,
   addPhoto,
+  createTodo,
   deleteDocument,
   deleteLink,
   deleteObject,
+  deleteTodo,
   DomainError,
   listDocuments,
   listLinks,
@@ -36,13 +38,13 @@ describe("liens", () => {
   });
 
   it("ajoute un lien avec un titre par défaut, puis le supprime", async () => {
-    const l = await addLink(db, { objectId: ids["PoolHouse"], url: "www.piscine-pompes.fr/modele-x" });
+    const l = await addLink(db, { owner: { objectId: ids["PoolHouse"] }, url: "www.piscine-pompes.fr/modele-x" });
     expect(l.title).toBe("piscine-pompes.fr");
-    const l2 = await addLink(db, { objectId: ids["PoolHouse"], url: "https://a.fr", title: "  Garantie  " });
+    const l2 = await addLink(db, { owner: { objectId: ids["PoolHouse"] }, url: "https://a.fr", title: "  Garantie  " });
     expect(l2.title).toBe("Garantie");
-    expect((await listLinks(db, ids["PoolHouse"])).map((x) => x.title)).toEqual(["piscine-pompes.fr", "Garantie"]);
+    expect((await listLinks(db, { objectId: ids["PoolHouse"] })).map((x) => x.title)).toEqual(["piscine-pompes.fr", "Garantie"]);
     await deleteLink(db, l.id);
-    expect(await listLinks(db, ids["PoolHouse"])).toHaveLength(1);
+    expect(await listLinks(db, { objectId: ids["PoolHouse"] })).toHaveLength(1);
     await expect(deleteLink(db, l.id)).rejects.toBeInstanceOf(DomainError);
   });
 });
@@ -50,31 +52,68 @@ describe("liens", () => {
 describe("documents", () => {
   it("ajoute, liste et supprime des documents", async () => {
     const d = await addDocument(db, {
-      objectId: ids["La ferme"],
+      owner: { objectId: ids["La ferme"] },
       typeId: await typeIdByName(db, "document", "Facture"),
       pathname: "test/documents/x/facture.pdf",
       filename: "Facture couvreur.pdf",
       contentType: "application/pdf",
       size: 12345,
     });
-    expect((await listDocuments(db, ids["La ferme"]))[0].filename).toBe("Facture couvreur.pdf");
+    expect((await listDocuments(db, { objectId: ids["La ferme"] }))[0].filename).toBe("Facture couvreur.pdf");
     expect(await deleteDocument(db, d.id)).toBe("test/documents/x/facture.pdf");
-    expect(await listDocuments(db, ids["La ferme"])).toHaveLength(0);
+    expect(await listDocuments(db, { objectId: ids["La ferme"] })).toHaveLength(0);
   });
 
   it("la suppression d'un objet emporte ses documents, liens et photos", async () => {
     await addDocument(db, {
-      objectId: ids["Prairies"],
+      owner: { objectId: ids["Prairies"] },
       typeId: await typeIdByName(db, "document", "Plan"),
       pathname: "test/documents/p/plan.pdf",
       filename: "plan.pdf",
       contentType: "application/pdf",
       size: 1,
     });
-    await addLink(db, { objectId: ids["Prairies"], url: "cadastre.gouv.fr" });
+    await addLink(db, { owner: { objectId: ids["Prairies"] }, url: "cadastre.gouv.fr" });
     await addPhoto(db, { objectId: ids["Prairies"] }, { pathname: "test/a.jpg", thumbPathname: "test/a-v.jpg" });
     const files = await deleteObject(db, ids["Prairies"]);
     expect(files.sort()).toEqual(["test/a-v.jpg", "test/a.jpg", "test/documents/p/plan.pdf"]);
-    expect(await listLinks(db, ids["Prairies"])).toHaveLength(0);
+    expect(await listLinks(db, { objectId: ids["Prairies"] })).toHaveLength(0);
+  });
+
+  it("documents et liens d'une tâche : séparés de ceux de l'objet, supprimés avec la tâche", async () => {
+    const t = await createTodo(db, { objectId: ids["La ferme"], title: "Changer la chaudière" });
+    const d = await addDocument(db, {
+      owner: { todoId: t.id },
+      typeId: await typeIdByName(db, "document", "Devis"),
+      pathname: "test/documents/taches/t/devis.pdf",
+      filename: "devis.pdf",
+      contentType: "application/pdf",
+      size: 10,
+    });
+    await addLink(db, { owner: { todoId: t.id }, url: "chauffagiste.fr/rdv", title: "Prise de rendez-vous" });
+    expect((await listDocuments(db, { todoId: t.id })).map((x) => x.id)).toEqual([d.id]);
+    expect(await listDocuments(db, { objectId: ids["La ferme"] })).toHaveLength(0);
+    expect((await listLinks(db, { todoId: t.id }))[0].title).toBe("Prise de rendez-vous");
+    expect(await listLinks(db, { objectId: ids["La ferme"] })).toHaveLength(0);
+
+    const files = await deleteTodo(db, t.id);
+    expect(files).toEqual(["test/documents/taches/t/devis.pdf"]);
+    expect(await listDocuments(db, { todoId: t.id })).toHaveLength(0);
+    expect(await listLinks(db, { todoId: t.id })).toHaveLength(0);
+  });
+
+  it("refuse une tâche inexistante", async () => {
+    const missing = "00000000-0000-4000-8000-000000000000";
+    await expect(addLink(db, { owner: { todoId: missing }, url: "a.fr" })).rejects.toBeInstanceOf(DomainError);
+    await expect(
+      addDocument(db, {
+        owner: { todoId: missing },
+        typeId: await typeIdByName(db, "document", "Autre"),
+        pathname: "test/x.pdf",
+        filename: "x.pdf",
+        contentType: "application/pdf",
+        size: 1,
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
   });
 });

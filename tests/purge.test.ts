@@ -36,7 +36,7 @@ describe("purge des données de test", () => {
     await addPhoto(db, { objectId: child.id }, { pathname: "local/objets/a.jpg", thumbPathname: "local/objets/a-t.jpg" });
     await addPhoto(db, { todoId: loose.id }, { pathname: "local/taches/b.jpg", thumbPathname: "local/taches/b-t.jpg" });
     await addDocument(db, {
-      objectId: root.id,
+      owner: { objectId: root.id },
       typeId: await typeIdByName(db, "document", "Facture"),
       pathname: "local/documents/x/y/f.pdf",
       filename: "f.pdf",

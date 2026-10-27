@@ -2,7 +2,7 @@
 
 [← Retour au README](../README.md)
 
-Chaque objet a une section **« Documents et liens »** sur sa fiche.
+Les **objets** et les **tâches** ont chacun leurs documents et leurs liens : sections *Documents* et *Liens* sur la fiche de l'objet, et sur la fiche de la tâche (sous les photos). Ils fonctionnent de la même façon ; ceux d'une tâche ne s'affichent que sur la tâche.
 
 ## Documents
 
@@ -38,7 +38,7 @@ Un clic sur le nom ouvre la **visionneuse**.
 
 ### Visionneuse (`/documents/[id]`)
 
-La page affiche un fil d'Ariane vers l'objet, le type, le format, la taille et la date, ainsi que les boutons **Ouvrir à part** et **Télécharger**. L'aperçu dépend du format :
+La page affiche un fil d'Ariane vers l'objet (et vers la tâche pour un document de tâche), le type, le format, la taille et la date, ainsi que les boutons **Ouvrir à part** et **Télécharger**. L'aperçu dépend du format :
 
 | Format | Aperçu |
 |---|---|
@@ -75,4 +75,4 @@ On peut ajouter des **liens web** à un objet : fiche produit, notice en ligne, 
 - Les liens s'ouvrent dans un nouvel onglet.
 - **Supprimer** demande une confirmation.
 
-Supprimer un objet supprime ses documents (fichiers compris) et ses liens.
+Supprimer un objet ou une tâche supprime ses documents (fichiers compris) et ses liens.

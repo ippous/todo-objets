@@ -74,7 +74,7 @@ describe("types de documents", () => {
     const facture = await typeIdByName(db, "document", "Facture");
     const garantie = await typeIdByName(db, "document", "Garantie");
     const d = await addDocument(db, {
-      objectId: ids["PoolHouse"],
+      owner: { objectId: ids["PoolHouse"] },
       typeId: facture,
       pathname: "test/documents/a/f.pdf",
       filename: "f.pdf",

@@ -54,7 +54,7 @@ Tris possibles : **échéance**, **priorité**, **ratio €/h**, **plus récente
 
 ## Fiche d'une tâche (`/taches/[id]`)
 
-Elle permet de modifier tous les champs, de gérer les [photos](photos.md) de la tâche et de la supprimer, avec confirmation. La suppression efface aussi les photos de la tâche.
+De haut en bas : les [photos](photos.md), les [documents et liens](documents-et-liens.md) de la tâche, puis le formulaire *Détails de la tâche* pour modifier tous les champs, et la suppression (avec confirmation), qui efface aussi les photos, documents et liens de la tâche.
 
 ## Créer des tâches
 

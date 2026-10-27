@@ -29,7 +29,8 @@ export async function POST(request: Request) {
     if (type !== "image/jpeg") return NextResponse.json({ error: "Format non accepté" }, { status: 415 });
     max = PHOTO_MAX_BYTES;
   } else if (doc) {
-    if (!(await getObject(db, doc.objectId))) return NextResponse.json({ error: "Objet introuvable" }, { status: 404 });
+    const found = "todoId" in doc.owner ? await getTodo(db, doc.owner.todoId) : await getObject(db, doc.owner.objectId);
+    if (!found) return NextResponse.json({ error: "Objet ou tâche introuvable" }, { status: 404 });
     if (!DOCUMENT_TYPES[type]) return NextResponse.json({ error: "Format non accepté" }, { status: 415 });
     max = DOCUMENT_MAX_BYTES;
   } else {

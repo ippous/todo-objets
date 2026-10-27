@@ -28,12 +28,20 @@ export function parsePhotoPath(pathname: string): ParsedPath | null {
   return { kind: m[1] as ParsedPath["kind"], ownerId: m[2], fileId: m[3], thumb: Boolean(m[4]) };
 }
 
-const DOC_RE = new RegExp(`^${storagePrefix}/documents/(${UUID})/(${UUID})/([A-Za-z0-9._-]{1,100})$`);
+const DOC_RE = new RegExp(`^${storagePrefix}/documents/(?:(taches)/)?(${UUID})/(${UUID})/([A-Za-z0-9._-]{1,100})$`);
 
-/** Chemin d'un document : <env>/documents/<objet>/<id>/<nom-sûr>. */
-export function parseDocumentPath(pathname: string): { objectId: string; fileId: string } | null {
+export type DocumentOwner = { objectId: string } | { todoId: string };
+
+/**
+ * Chemin d'un document :
+ * - objet : <env>/documents/<objet>/<id>/<nom-sûr>
+ * - tâche : <env>/documents/taches/<tâche>/<id>/<nom-sûr>
+ */
+export function parseDocumentPath(pathname: string): { owner: DocumentOwner; ownerId: string; fileId: string } | null {
   const m = DOC_RE.exec(pathname);
-  return m ? { objectId: m[1], fileId: m[2] } : null;
+  if (!m) return null;
+  const owner = m[1] ? { todoId: m[2] } : { objectId: m[2] };
+  return { owner, ownerId: m[2], fileId: m[3] };
 }
 
 const LOCAL_ROOT = resolve(process.cwd(), ".uploads");

@@ -48,8 +48,8 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
     listTodos(db, { subtreeOf: id }, "echeance"),
     listPhotos(db, { objectId: id }),
     listUsers(db),
-    listDocuments(db, id),
-    listLinks(db, id),
+    listDocuments(db, { objectId: id }),
+    listLinks(db, { objectId: id }),
     listTypes(db, "objet"),
     listTypes(db, "document"),
   ]);
@@ -237,7 +237,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
             Documents {docs.length > 0 && <span className="font-normal text-muted">({docs.length})</span>}
           </h2>
           <ObjectDocuments
-            objectId={obj.id}
+            owner={{ kind: "objets", id: obj.id }}
             prefix={storagePrefix}
             mode={storageMode}
             docTypes={docTypes.map((t) => ({ id: t.id, name: t.name }))}
@@ -257,7 +257,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           <h2 id="liens" className="text-lg font-bold">
             Liens {links.length > 0 && <span className="font-normal text-muted">({links.length})</span>}
           </h2>
-          <ObjectLinks objectId={obj.id} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title }))} />
+          <ObjectLinks owner={{ kind: "objets", id: obj.id }} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title }))} />
         </section>
       </div>
 

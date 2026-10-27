@@ -55,8 +55,8 @@ users ──< todos (assignee_id, created_by_id)
 object_types ──< objects ──< objects (parent_id, arbre)
                     │  ├──< todos ──< photos (todo_id)
                     │  ├──< photos (object_id)
-                    │  ├──< documents >── document_types
-                    │  └──< links
+                    │  ├──< documents >── document_types   (documents et liens :
+                    │  └──< links                          objet OU tâche)
 ```
 
 | Table | Points clés |
@@ -64,8 +64,8 @@ object_types ──< objects ──< objects (parent_id, arbre)
 | `objects` | `parent_id` auto-référencé (`RESTRICT`), contrainte « pas son propre parent », `type_id` → `object_types` (`RESTRICT`), `position` pour l'ordre |
 | `todos` | `object_id` (`RESTRICT`), valeurs numériques estimées/réalisées, enums priorité/statut/catégorie/récurrence, `previous_occurrence_id` unique (une seule occurrence suivante) |
 | `photos` | rattachée à un objet **ou** à une tâche (contrainte), `is_cover`, chemins de la photo et de la vignette |
-| `documents` | `type_id` → `document_types` (`RESTRICT`), nom d'origine, type MIME, taille, chemin |
-| `links` | URL http(s) normalisée, titre facultatif |
+| `documents` | rattaché à un objet **ou** à une tâche (contrainte `documents_one_owner`), `type_id` → `document_types` (`RESTRICT`), nom d'origine, type MIME, taille, chemin (`<env>/documents/<objet>/…` ou `<env>/documents/taches/<tâche>/…`) |
+| `links` | rattaché à un objet **ou** à une tâche (contrainte `links_one_owner`), URL http(s) normalisée, titre facultatif |
 | `object_types`, `document_types` | `name` unique sans tenir compte de la casse (index sur `lower(name)`) |
 | `users` | e-mail unique, rôle, actif, heures/semaine, compétences |
 
