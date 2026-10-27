@@ -35,4 +35,4 @@ Tout le site, sauf `/connexion`, y compris les fichiers : les photos et les docu
 
 ## Assistants IA
 
-Chaque utilisateur peut autoriser des assistants IA à **lire** Carnet (page *Connexion IA*) : voir [mcp.md](mcp.md).
+Chaque utilisateur peut autoriser des assistants IA à **lire** Carnet, et s'il le choisit à le **modifier** (sans suppression), depuis la page *Connexion IA* : voir [mcp.md](mcp.md). Un assistant agit avec les droits de l'utilisateur qui l'a autorisé.

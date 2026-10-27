@@ -52,3 +52,23 @@ describe("texte pour le MCP", () => {
     expect(richTextToPlain(null)).toBe("");
   });
 });
+
+describe("Markdown envoyé par un assistant", () => {
+  it("convertit le Markdown simple en texte enrichi nettoyé", async () => {
+    const { markdownToRichText, richTextToPlain } = await import("@/lib/rich-text");
+    const html = markdownToRichText(
+      "## Accès\nPortail **code 1234**, *à huiler*\n\n- clé chez le voisin\n- [notice](https://a.fr/n)\n\n1. un\n2. deux\n\n> attention <script>x</script>",
+    )!;
+    expect(html).toContain("<h2>Accès</h2>");
+    expect(html).toContain("<strong>code 1234</strong>");
+    expect(html).toContain("<em>à huiler</em>");
+    expect(html).toContain("<ul><li><p>clé chez le voisin</p></li>");
+    expect(html).toContain('<a href="https://a.fr/n" target="_blank" rel="noopener noreferrer nofollow">notice</a>');
+    expect(html).toContain("<ol><li><p>un</p></li><li><p>deux</p></li></ol>");
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>");
+    expect(richTextToPlain(html)).toContain("## Accès");
+    expect(markdownToRichText("  ")).toBeNull();
+    expect(markdownToRichText("<p>déjà <strong>HTML</strong></p>")).toBe("<p>déjà <strong>HTML</strong></p>");
+  });
+});

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
-import { OAuthError, SCOPE, validateAuthorize } from "@/lib/oauth";
+import { OAuthError, requestsWrite, validateAuthorize } from "@/lib/oauth";
 import { getCurrentUser } from "@/lib/session";
 import { approveAction, denyAction } from "./actions";
 
@@ -67,6 +67,7 @@ export default async function AutoriserPage(props: PageProps<"/oauth/autoriser">
       </Shell>
     );
   }
+  const wantsWrite = requestsWrite(get("scope"));
   const redirectHost = (() => {
     try {
       const u = new URL(get("redirect_uri"));
@@ -91,14 +92,21 @@ export default async function AutoriserPage(props: PageProps<"/oauth/autoriser">
           <li>lire l&apos;arbre des objets, leurs descriptions, documents et liens ;</li>
           <li>lire les tâches et leur détail.</li>
         </ul>
-        <p className="text-sm text-muted">
-          Accès en <strong>lecture seule</strong> (portée « {SCOPE} ») : elle ne pourra rien modifier ni supprimer. Tu peux
-          retirer cet accès à tout moment dans « Connexion IA ».
-        </p>
         <p className="text-sm text-muted">Retour vers : {redirectHost}</p>
       </div>
+      <label className="flex gap-3 rounded-xl border-2 border-ochre bg-ochre-soft p-4">
+        <input type="checkbox" name="ecriture" form="autoriser" defaultChecked={wantsWrite} className="mt-1 size-5 shrink-0" />
+        <span className="grid gap-1">
+          <span className="font-bold">Autoriser aussi les modifications</span>
+          <span className="text-sm">
+            Créer et modifier des tâches (statut, échéance, durée, valeur…), créer, modifier et déplacer des objets, ajouter
+            des liens. Aucune suppression n&apos;est possible par ce biais. Sans cette case, l&apos;accès reste en lecture seule.
+          </span>
+        </span>
+      </label>
+      <p className="text-sm text-muted">Tu peux retirer cet accès à tout moment dans « Connexion IA ».</p>
       <div className="flex flex-wrap gap-2">
-        <form action={approveAction}>
+        <form id="autoriser" action={approveAction}>
           {hidden}
           <button type="submit" className="btn btn-primary">
             Autoriser

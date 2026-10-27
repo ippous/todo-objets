@@ -8,6 +8,12 @@ import type { Db } from "@/db";
 import { apiTokens, oauthClients, oauthCodes, users, type ApiToken, type OAuthClient, type User } from "@/db/schema";
 
 export const SCOPE = "lecture";
+export const WRITE_SCOPE = "ecriture";
+export const SCOPES = [SCOPE, WRITE_SCOPE] as const;
+/** Portée enregistrée : « lecture » ou « lecture ecriture » (l'écriture inclut la lecture). */
+export const scopeFor = (write: boolean) => (write ? `${SCOPE} ${WRITE_SCOPE}` : SCOPE);
+export const canWrite = (scope: string | null | undefined) => (scope ?? "").split(/\s+/).includes(WRITE_SCOPE);
+export const requestsWrite = (raw: string) => raw.split(/\s+/).includes(WRITE_SCOPE);
 export const ACCESS_TTL_S = 60 * 60; // 1 h
 export const REFRESH_TTL_S = 60 * 60 * 24 * 30; // 30 jours
 export const CODE_TTL_S = 10 * 60; // 10 min
@@ -35,12 +41,12 @@ function newToken(kind: Kind) {
 
 // ---------- Jetons personnels ----------
 
-export async function createPersonalToken(db: Db, userId: string, rawName: string) {
+export async function createPersonalToken(db: Db, userId: string, rawName: string, write = false) {
   const name = rawName.trim().slice(0, 80) || "Jeton personnel";
   const t = newToken("personnel");
   const [row] = await db
     .insert(apiTokens)
-    .values({ kind: "personnel", tokenHash: t.hash, prefix: t.prefix, name, userId })
+    .values({ kind: "personnel", tokenHash: t.hash, prefix: t.prefix, name, userId, scope: scopeFor(write) })
     .returning();
   return { token: t.token, row };
 }
@@ -52,6 +58,7 @@ export type AccessEntry = {
   prefix: string | null;
   createdAt: Date;
   lastUsedAt: Date | null;
+  write: boolean;
 };
 
 /** Jetons personnels actifs et applications OAuth autorisées (une ligne par autorisation). */
@@ -66,14 +73,14 @@ export async function listAccess(db: Db, userId: string): Promise<AccessEntry[]>
   const grants = new Map<string, AccessEntry>();
   for (const r of rows) {
     if (r.kind === "personnel") {
-      out.push({ id: r.id, kind: "personnel", name: r.name, prefix: r.prefix, createdAt: r.createdAt, lastUsedAt: r.lastUsedAt });
+      out.push({ id: r.id, kind: "personnel", name: r.name, prefix: r.prefix, createdAt: r.createdAt, lastUsedAt: r.lastUsedAt, write: canWrite(r.scope) });
       continue;
     }
     if (!r.grantId || (r.expiresAt && r.expiresAt < now)) continue;
     const g = grants.get(r.grantId);
     const last = r.lastUsedAt;
     if (!g) {
-      grants.set(r.grantId, { id: r.grantId, kind: "application", name: r.name, prefix: null, createdAt: r.createdAt, lastUsedAt: last });
+      grants.set(r.grantId, { id: r.grantId, kind: "application", name: r.name, prefix: null, createdAt: r.createdAt, lastUsedAt: last, write: canWrite(r.scope) });
     } else if (last && (!g.lastUsedAt || last > g.lastUsedAt)) g.lastUsedAt = last;
   }
   // Date de première autorisation : le plus ancien jeton encore valide de l'autorisation
@@ -99,8 +106,15 @@ export async function revokeAccess(db: Db, userId: string, id: string): Promise<
 
 // ---------- Vérification d'un jeton présenté au MCP ----------
 
+export type BearerAccess = { user: User; write: boolean };
+
 /** Utilisateur actif correspondant à un jeton d'accès ou personnel valide, sinon null. */
 export async function verifyBearer(db: Db, token: string): Promise<User | null> {
+  return (await verifyBearerAccess(db, token))?.user ?? null;
+}
+
+/** Comme verifyBearer, avec les droits du jeton (écriture ou non). */
+export async function verifyBearerAccess(db: Db, token: string): Promise<BearerAccess | null> {
   if (!/^carnet_(pat|at)_[A-Za-z0-9_-]{20,}$/.test(token)) return null;
   const now = new Date();
   const [row] = await db
@@ -120,7 +134,7 @@ export async function verifyBearer(db: Db, token: string): Promise<User | null> 
   if (!row.t.lastUsedAt || now.getTime() - row.t.lastUsedAt.getTime() > 5 * 60_000) {
     await db.update(apiTokens).set({ lastUsedAt: now }).where(eq(apiTokens.id, row.t.id));
   }
-  return row.u;
+  return { user: row.u, write: canWrite(row.t.scope) };
 }
 
 // ---------- Clients OAuth ----------
@@ -185,11 +199,14 @@ export async function validateAuthorize(db: Db, req: AuthorizeRequest & { respon
     throw new OAuthError("invalid_request", "PKCE (code_challenge, méthode S256) est obligatoire.");
   }
   const scopes = req.scope.split(/\s+/).filter(Boolean);
-  if (scopes.some((s) => s !== SCOPE)) throw new OAuthError("invalid_scope", `Seule la portée « ${SCOPE} » existe.`);
+  if (scopes.some((s) => !(SCOPES as readonly string[]).includes(s))) {
+    throw new OAuthError("invalid_scope", `Portées possibles : ${SCOPES.join(", ")}.`);
+  }
   return client;
 }
 
-export async function createAuthCode(db: Db, userId: string, req: AuthorizeRequest): Promise<string> {
+/** Code d'autorisation ; `write` = l'utilisateur a accepté l'écriture sur l'écran de consentement. */
+export async function createAuthCode(db: Db, userId: string, req: AuthorizeRequest, write = false): Promise<string> {
   const code = random(32);
   await db.insert(oauthCodes).values({
     codeHash: sha256(code),
@@ -197,7 +214,7 @@ export async function createAuthCode(db: Db, userId: string, req: AuthorizeReque
     userId,
     redirectUri: req.redirectUri,
     codeChallenge: req.codeChallenge,
-    scope: SCOPE,
+    scope: scopeFor(write),
     resource: req.resource,
     expiresAt: new Date(Date.now() + CODE_TTL_S * 1000),
   });
@@ -214,7 +231,7 @@ export type TokenResponse = {
   scope: string;
 };
 
-async function issueTokens(db: Db, userId: string, client: OAuthClient, grantId: string): Promise<TokenResponse> {
+async function issueTokens(db: Db, userId: string, client: OAuthClient, grantId: string, scope: string): Promise<TokenResponse> {
   const access = newToken("acces");
   const refresh = newToken("rafraichissement");
   const now = Date.now();
@@ -227,6 +244,7 @@ async function issueTokens(db: Db, userId: string, client: OAuthClient, grantId:
       userId,
       clientId: client.id,
       grantId,
+      scope,
       expiresAt: new Date(now + ACCESS_TTL_S * 1000),
     },
     {
@@ -237,10 +255,11 @@ async function issueTokens(db: Db, userId: string, client: OAuthClient, grantId:
       userId,
       clientId: client.id,
       grantId,
+      scope,
       expiresAt: new Date(now + REFRESH_TTL_S * 1000),
     },
   ]);
-  return { access_token: access.token, token_type: "Bearer", expires_in: ACCESS_TTL_S, refresh_token: refresh.token, scope: SCOPE };
+  return { access_token: access.token, token_type: "Bearer", expires_in: ACCESS_TTL_S, refresh_token: refresh.token, scope };
 }
 
 function pkceMatches(verifier: string, challenge: string) {
@@ -270,7 +289,7 @@ export async function exchangeCode(
   if (!pkceMatches(p.codeVerifier ?? "", code.codeChallenge)) throw new OAuthError("invalid_grant", "code_verifier incorrect");
   const [user] = await db.select().from(users).where(eq(users.id, code.userId));
   if (!user?.active) throw new OAuthError("invalid_grant", "Utilisateur désactivé");
-  return issueTokens(db, user.id, client, crypto.randomUUID());
+  return issueTokens(db, user.id, client, crypto.randomUUID(), code.scope);
 }
 
 /** Rafraîchissement avec rotation ; la réutilisation d'un ancien jeton révoque toute l'autorisation. */
@@ -297,7 +316,7 @@ export async function refreshTokens(db: Db, p: { refreshToken: string; clientId:
     .where(and(eq(apiTokens.id, row.id), isNull(apiTokens.revokedAt)))
     .returning({ id: apiTokens.id });
   if (!revoked) throw new OAuthError("invalid_grant", "Jeton de rafraîchissement déjà utilisé");
-  return issueTokens(db, user.id, client, row.grantId);
+  return issueTokens(db, user.id, client, row.grantId, row.scope);
 }
 
 /** Révocation RFC 7009 : silencieuse si le jeton est inconnu. */

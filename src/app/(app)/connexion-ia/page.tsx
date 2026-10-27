@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { getDb } from "@/db";
 import { listAccess } from "@/lib/oauth";
 import { requireUser } from "@/lib/session";
-import { CopyButton, CreateToken, RevokeButton } from "./token-panel";
+import { CopyButton, CreateToken, RevokeButton, RightsBadge } from "./token-panel";
 
 export const metadata: Metadata = { title: "Connexion IA" };
 
@@ -41,8 +41,9 @@ export default async function ConnexionIaPage() {
         <h1 className="text-2xl font-bold">Connexion IA (MCP)</h1>
         <p className="text-muted">
           Les assistants compatibles MCP (Claude, ChatGPT, Cursor, Copilot…) peuvent <strong>lire</strong> tes objets et tes
-          tâches : arbre, détails, descriptions, documents, liens, recherche de tâches. Aucune modification n&apos;est
-          possible par ce biais.
+          tâches (arbre, détails, descriptions, documents, liens, recherche de tâches) et, si tu l&apos;autorises pour cet
+          accès, les <strong>modifier</strong> : créer et modifier des tâches et des objets, déplacer des objets, ajouter des
+          liens. Aucune suppression n&apos;est possible par ce biais.
         </p>
       </div>
 
@@ -66,7 +67,8 @@ export default async function ConnexionIaPage() {
         <p className="text-sm">
           Pour claude.ai (web, mobile, Desktop), ChatGPT et les assistants qui proposent d&apos;« ajouter un connecteur » :
           colle l&apos;adresse ci-dessus. L&apos;assistant ouvre une page Carnet ; tu te connectes avec Google et tu cliques sur
-          <strong> Autoriser</strong>. Aucun jeton à copier.
+          <strong> Autoriser</strong> ; coche « Autoriser aussi les modifications » si l&apos;assistant doit pouvoir écrire. Aucun
+          jeton à copier.
         </p>
         <Snippet title="claude.ai / Claude Desktop" code={mcpUrl}>
           <p>Paramètres → Connecteurs → <em>Ajouter un connecteur personnalisé</em> → nom « Carnet », adresse ci-dessous → Ajouter, puis Se connecter.</p>
@@ -83,7 +85,9 @@ export default async function ConnexionIaPage() {
             {apps.map((a) => (
               <li key={a.id} className="flex flex-wrap items-center gap-3 border-b border-line py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold">{a.name}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-bold">
+                    {a.name} <RightsBadge write={a.write} />
+                  </p>
                   <p className="text-sm text-muted">
                     Autorisée le {dt.format(a.createdAt)}
                     {a.lastUsedAt ? ` · dernière utilisation ${dt.format(a.lastUsedAt)}` : ""}
@@ -110,7 +114,9 @@ export default async function ConnexionIaPage() {
             {tokens.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center gap-3 border-b border-line py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
-                  <p className="font-bold">{t.name}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-bold">
+                    {t.name} <RightsBadge write={t.write} />
+                  </p>
                   <p className="text-sm text-muted">
                     <code>{t.prefix}…</code> · créé le {dt.format(t.createdAt)}
                     {t.lastUsedAt ? ` · dernière utilisation ${dt.format(t.lastUsedAt)}` : " · jamais utilisé"}

@@ -1,5 +1,5 @@
 import "server-only";
-// Serveur MCP de Carnet : outils en LECTURE SEULE sur les objets et les tâches.
+// Serveur MCP de Carnet : outils de lecture, et outils d'écriture si l'accès le permet (sans suppression).
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Db } from "@/db";
@@ -19,6 +19,7 @@ import {
   type TodoListItem,
   type TodoSort,
 } from "./repo";
+import { registerWriteTools } from "./mcp-write-tools";
 import { richTextToPlain } from "./rich-text";
 import { buildForest, flatten, pathTo, subtreeIds, type TreeNode } from "./tree";
 
@@ -39,13 +40,16 @@ function error(message: string) {
 
 const UUID = z.string().uuid();
 
-export function buildMcpServer(db: Db, user: User, origin: string): McpServer {
+export function buildMcpServer(db: Db, user: User, origin: string, write = false): McpServer {
   const server = new McpServer(
     { name: "carnet", title: "Carnet — objets et tâches", version: "1.0.0" },
     {
       instructions:
         "Carnet gère des tâches rattachées à des objets classés en arbres (propriété › bâtiment › pièce, véhicule, projet…). " +
-        "Accès en lecture seule. Commence par `vue_ensemble`, puis `lister_objets` pour l'arbre, `rechercher_taches` pour les tâches, " +
+        (write
+          ? "Cet accès permet de lire ET de modifier (créer/modifier des tâches, créer/modifier/déplacer des objets, ajouter des liens ; aucune suppression). Vérifie l'objet ou la tâche avant de modifier. "
+          : "Accès en lecture seule. ") +
+        "Commence par `vue_ensemble`, puis `lister_objets` pour l'arbre, `rechercher_taches` pour les tâches, " +
         "et `obtenir_objet` / `obtenir_tache` pour le détail (description, documents, liens). Les montants sont en euros, les durées en heures, " +
         "les dates au format AAAA-MM-JJ (fuseau Europe/Paris). Chaque résultat contient une `url` vers la page Carnet correspondante.",
     },
@@ -107,6 +111,7 @@ export function buildMcpServer(db: Db, user: User, origin: string): McpServer {
       const open = todos.filter((t) => t.status !== "fait");
       return result({
         utilisateur_connecte: user.name,
+        droits: write ? "lecture et écriture" : "lecture seule",
         objets: nodes.length,
         taches: {
           ouvertes: open.length,
@@ -346,6 +351,8 @@ export function buildMcpServer(db: Db, user: User, origin: string): McpServer {
       });
     },
   );
+
+  if (write) registerWriteTools(server, { db, user, objectUrl, todoUrl });
 
   return server;
 }
