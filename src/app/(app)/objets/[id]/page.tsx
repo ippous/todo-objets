@@ -21,6 +21,7 @@ import {
   listUsers,
   type TodoListItem,
 } from "@/lib/repo";
+import { renderRichText } from "@/lib/rich-text";
 import { storageMode, storagePrefix } from "@/lib/storage";
 import { buildForest, flatten, pathTo } from "@/lib/tree";
 
@@ -116,7 +117,9 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
         </div>
         {(obj.description || obj.location || obj.tags.length > 0) && (
           <div className="grid max-w-prose gap-1 text-muted">
-            {obj.description && <p className="whitespace-pre-line text-ink">{obj.description}</p>}
+            {obj.description && (
+              <div className="rich text-ink" dangerouslySetInnerHTML={{ __html: renderRichText(obj.description) }} />
+            )}
             {obj.location && <p>Emplacement : {obj.location}</p>}
             {obj.tags.length > 0 && <p>{obj.tags.map((t) => `#${t}`).join(" ")}</p>}
           </div>

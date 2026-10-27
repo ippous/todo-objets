@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import type { Todo } from "@/db/schema";
 import { CATEGORY_LABEL, fmtNum, PRIORITY_LABEL, RECURRENCE_LABEL, STATUS_LABEL } from "@/lib/format";
 import type { ActionState } from "@/lib/forms";
+import { RichTextEditor } from "./rich-text-editor";
 import type { ObjectOption } from "@/lib/options";
 import { FormError, Submit } from "./submit";
 
@@ -70,10 +71,7 @@ export function TodoForm({
           ))}
         </select>
       </label>
-      <label className="field">
-        <span>Description</span>
-        <textarea className="input" name="description" maxLength={8000} defaultValue={values?.description ?? ""} />
-      </label>
+      <RichTextEditor name="description" label="Description" defaultValue={values?.description} />
 
       <fieldset className="grid gap-3 sm:grid-cols-3">
         <legend className="sr-only">Classement</legend>

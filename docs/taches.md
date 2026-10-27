@@ -10,7 +10,7 @@ Une **tâche** est toujours rattachée à **un objet**. Elle apparaît sur la fi
 |---|---|---|
 | Titre | texte | obligatoire |
 | Objet | un objet de l'arbre | obligatoire, modifiable : la tâche change alors d'objet |
-| Description | texte | facultatif |
+| Description | texte enrichi | facultatif, éditeur WYSIWYG (voir [arbre-et-objets.md](arbre-et-objets.md#description-en-texte-enrichi)) |
 | Durée estimée / réalisée | heures, décimales acceptées (`2,5`) | |
 | Valeur estimée / réalisée | euros | coût ou gain, au choix de l'utilisateur |
 | Priorité | haute, moyenne, basse | moyenne par défaut |
@@ -43,7 +43,7 @@ C'est la vue « à plat » de toutes les tâches, avec leur vignette quand elles
 
 | Filtre | Effet |
 |---|---|
-| Recherche | dans le titre et la description |
+| Recherche | dans le titre et le texte de la description (pas dans la mise en forme) |
 | Statut | ouvertes (par défaut), à faire, en cours, faites, toutes |
 | Responsable | tout le monde, moi, personne, ou un utilisateur |
 | Catégorie, Priorité, Tag | |
