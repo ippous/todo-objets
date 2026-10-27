@@ -66,7 +66,8 @@ async function seed(page: Page, m: string) {
   return objectId;
 }
 
-test("sans jeton : 401 et métadonnées OAuth publiées", async ({ request, baseURL }) => {
+test("sans jeton : 401 et métadonnées OAuth publiées", async ({ page }) => {
+  const request = page.request; // garde le cookie de partage Vercel (dev protégé)
   const res = await request.post("/api/mcp", { data: { jsonrpc: "2.0", id: 1, method: "tools/list" } });
   expect(res.status()).toBe(401);
   const www = res.headers()["www-authenticate"];
@@ -77,7 +78,6 @@ test("sans jeton : 401 et métadonnées OAuth publiées", async ({ request, base
   expect(as.code_challenge_methods_supported).toEqual(["S256"]);
   expect(as.authorization_endpoint).toMatch(/\/oauth\/autoriser$/);
   expect((await request.post("/api/mcp", { headers: { Authorization: "Bearer carnet_pat_faux_jeton_12345678901234567890" }, data: {} })).status()).toBe(401);
-  void baseURL;
 });
 
 test("jeton personnel : outils en lecture, puis révocation", async ({ page, baseURL }, info) => {
