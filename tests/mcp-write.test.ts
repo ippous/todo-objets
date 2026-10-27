@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Db } from "@/db";
 import { users, type User } from "@/db/schema";
 import { buildMcpServer } from "@/lib/mcp-server";
-import { createObject, getObject, getTodo, listLinks } from "@/lib/repo";
+import sharp from "sharp";
+import { createObject, createTodo, getObject, getTodo, listLinks, listPhotos } from "@/lib/repo";
+import { exists, remove } from "@/lib/storage";
 import { createTestDb } from "./helpers";
 
 let db: Db;
@@ -29,7 +31,7 @@ async function connect(write: boolean) {
   return { client, call };
 }
 
-const WRITE_TOOLS = ["creer_tache", "modifier_tache", "creer_objet", "modifier_objet", "deplacer_objet", "ajouter_lien"];
+const WRITE_TOOLS = ["creer_tache", "modifier_tache", "creer_objet", "modifier_objet", "deplacer_objet", "ajouter_lien", "ajouter_photo"];
 
 describe("MCP — droits", () => {
   it("lecture seule : aucun outil d'écriture", async () => {
@@ -109,5 +111,45 @@ describe("MCP — écriture", () => {
     await call("ajouter_lien", { objet_id: obj.id, url: "exemple.fr" });
     expect((await listLinks(db, { todoId: t.data.id })).map((l) => l.title)).toEqual(["Notice"]);
     expect((await listLinks(db, { objectId: obj.id })).map((l) => l.url)).toEqual(["https://exemple.fr/"]);
+  });
+});
+
+describe("MCP — photos", () => {
+  it("ajoute une même photo à plusieurs tâches et à un objet (JPEG + vignette), refuse le non-image", async () => {
+    const obj = await createObject(db, { name: "Pâture" });
+    const t1 = await createTodo(db, { objectId: obj.id, title: "A", createdById: user.id });
+    const t2 = await createTodo(db, { objectId: obj.id, title: "B", createdById: user.id });
+    const png = await sharp({ create: { width: 2400, height: 1200, channels: 3, background: "#336699" } }).png().toBuffer();
+    const { call } = await connect(true);
+    const files: string[] = [];
+    try {
+      const r = await call("ajouter_photo", {
+        image_base64: `data:image/png;base64,${png.toString("base64")}`,
+        tache_ids: [t1.id, t2.id, t2.id, "00000000-0000-4000-8000-000000000000"],
+        objet_ids: [obj.id],
+      });
+      expect(r.error).toBe(false);
+      expect(r.data.ajoutees).toBe(3);
+      expect(r.data.dimensions).toBe("1600×800");
+      expect(r.data.erreurs).toHaveLength(1);
+      for (const owner of [{ todoId: t1.id }, { todoId: t2.id }, { objectId: obj.id }]) {
+        const [p] = await listPhotos(db, owner);
+        expect(p).toMatchObject({ isCover: true, width: 1600, height: 800 });
+        files.push(p.pathname, p.thumbPathname);
+        expect(await exists(p.pathname)).toBe(true);
+        expect(await exists(p.thumbPathname)).toBe(true);
+      }
+
+      expect((await call("ajouter_photo", { image_base64: Buffer.from("pas une image du tout").toString("base64"), tache_ids: [t1.id] })).error).toBe(true);
+      expect((await call("ajouter_photo", { image_base64: png.toString("base64") })).error).toBe(true);
+      expect(await listPhotos(db, { todoId: t1.id })).toHaveLength(1);
+    } finally {
+      await remove(files); // nettoyage des fichiers créés par le test
+    }
+  });
+
+  it("lecture seule : pas d'outil photo", async () => {
+    const { client } = await connect(false);
+    expect((await client.listTools()).tools.map((t) => t.name)).not.toContain("ajouter_photo");
   });
 });

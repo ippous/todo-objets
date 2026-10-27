@@ -76,6 +76,13 @@ export async function exists(pathname: string): Promise<boolean> {
   }
 }
 
+/** Écrit un fichier côté serveur (outils MCP) — privé, sans suffixe aléatoire. */
+export async function save(pathname: string, data: Uint8Array, contentType: string) {
+  if (storageMode === "local") return saveLocal(pathname, data);
+  const { put } = await import("@vercel/blob");
+  await put(pathname, Buffer.from(data), { access: "private", contentType, addRandomSuffix: false });
+}
+
 export async function read(pathname: string): Promise<ReadableStream<Uint8Array> | null> {
   if (storageMode === "local") {
     if (!(await exists(pathname))) return null;

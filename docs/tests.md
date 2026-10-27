@@ -19,7 +19,7 @@ Ils s'exécutent sur un **Postgres en mémoire** (PGlite), avec les vraies migra
 | `tests/types.test.ts` | création, renommage, doublons insensibles à la casse, suppression bloquée si utilisé |
 | `tests/rich-text.test.ts` | nettoyage du HTML des descriptions, conversion de l'ancien texte brut |
 | `tests/oauth.test.ts` | jetons personnels, adresses de retour, code + PKCE à usage unique, rotation des jetons de rafraîchissement, révocations, droits lecture / écriture |
-| `tests/mcp-write.test.ts` | outils MCP selon les droits, création / modification / déplacement d'objets, tâches (récurrence, responsable), liens |
+| `tests/mcp-write.test.ts` | outils MCP selon les droits, création / modification / déplacement d'objets, tâches (récurrence, responsable), liens, photos (redimensionnement, vignette, refus du non-image) |
 | `tests/purge.test.ts` | purge des données de test (sous-arbres, fichiers, types, jokers) |
 
 ## Tests de bout en bout (Playwright)
@@ -34,7 +34,7 @@ Ils tournent sur deux profils : **mobile** (Pixel 7) et **desktop**.
 | `e2e/description.spec.ts` | éditeur WYSIWYG des descriptions : gras, liste, lien, modification, tâche, recherche dans le texte |
 | `e2e/taches-documents.spec.ts` | documents et liens d'une tâche, visionneuse, suppression de la tâche avec ses fichiers |
 | `e2e/coller-photo.spec.ts` | photo collée (Ctrl+V) sur un objet et une tâche, collage ignoré dans un champ de saisie, bouton « Coller une image » |
-| `e2e/mcp.spec.ts` | serveur MCP avec le client MCP officiel : 401 et métadonnées, jeton personnel (outils, révocation), parcours OAuth complet (enregistrement, connexion, consentement, PKCE, rafraîchissement, révocation, refus, droit d'écriture), jeton en écriture (objets, tâches, récurrence, liens, vérifiés dans l'appli) |
+| `e2e/mcp.spec.ts` | serveur MCP avec le client MCP officiel : 401 et métadonnées, jeton personnel (outils, révocation), parcours OAuth complet (enregistrement, connexion, consentement, PKCE, rafraîchissement, révocation, refus, droit d'écriture), jeton en écriture (objets, tâches, récurrence, liens, photo, vérifiés dans l'appli) |
 | `e2e/camera.spec.ts` | prise de vue : appareil photo natif sur mobile, webcam simulée par Chromium sur PC (plusieurs prises, retrait, annulation) |
 | `e2e/visionneuses.spec.ts` | aperçu PDF, Word, ODT, Excel, ODS, PowerPoint, CSV, texte, ZIP ; visionneuse refusée sans connexion |
 

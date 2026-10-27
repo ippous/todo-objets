@@ -100,7 +100,7 @@ export default async function AutoriserPage(props: PageProps<"/oauth/autoriser">
           <span className="font-bold">Autoriser aussi les modifications</span>
           <span className="text-sm">
             Créer et modifier des tâches (statut, échéance, durée, valeur…), créer, modifier et déplacer des objets, ajouter
-            des liens. Aucune suppression n&apos;est possible par ce biais. Sans cette case, l&apos;accès reste en lecture seule.
+            des liens et des photos. Aucune suppression n&apos;est possible par ce biais. Sans cette case, l&apos;accès reste en lecture seule.
           </span>
         </span>
       </label>

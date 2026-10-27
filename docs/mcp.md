@@ -7,7 +7,7 @@ Carnet expose un **serveur MCP** (Model Context Protocol) qui permet à un assis
 Chaque accès a l'un de ces deux niveaux de droits :
 
 - **lecture seule** (par défaut) : uniquement les outils de lecture ;
-- **lecture et écriture** : en plus, créer et modifier des tâches, créer, modifier et déplacer des objets, ajouter des liens. **Aucune suppression** n'est possible par le MCP, ni l'ajout de photos ou de documents : cela reste dans l'application.
+- **lecture et écriture** : en plus, créer et modifier des tâches, créer, modifier et déplacer des objets, ajouter des liens et des photos. **Aucune suppression** n'est possible par le MCP ; les documents (PDF, Word…) s'ajoutent dans l'application.
 
 | | |
 |---|---|
@@ -75,6 +75,7 @@ Ils n'apparaissent que si le jeton a le droit d'écriture. Seuls les champs four
 | `modifier_objet` | `id`, `nom`, `type`, `description`, `emplacement`, `tags` | modifie (le parent ne change pas) |
 | `deplacer_objet` | `id`, `nouveau_parent_id` (ou `null` = racine) | déplace l'objet avec son sous-arbre ; les boucles sont refusées |
 | `ajouter_lien` | `objet_id` **ou** `tache_id`, `url`, `titre` | ajoute un lien `http(s)` |
+| `ajouter_photo` | `image_base64` (ou `data:image/…;base64,…`, 10 Mo max), `tache_ids` et/ou `objet_ids` (50 au plus) | ajoute la **même photo** à chaque élément : redimensionnée côté serveur (1600 px, JPEG) avec vignette 400 px, comme depuis l'appli ; la première photo d'un élément devient sa vignette ; les identifiants introuvables sont listés dans `erreurs` |
 
 Annotations MCP : `readOnlyHint: false` ; création et ajout `destructiveHint: false` ; modification et déplacement `destructiveHint: true`, `idempotentHint: true` — les assistants demandent en général confirmation avant ces derniers.
 

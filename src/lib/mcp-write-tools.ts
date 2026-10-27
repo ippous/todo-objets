@@ -1,12 +1,15 @@
 import "server-only";
 // Outils MCP d'ÉCRITURE (accès « lecture ecriture » uniquement).
-// Aucune suppression : créer / modifier des tâches, créer / modifier / déplacer des objets, ajouter des liens.
+// Aucune suppression : créer / modifier des tâches, créer / modifier / déplacer des objets, ajouter des liens et des photos.
+import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Db } from "@/db";
 import { CATEGORIES, PRIORITIES, RECURRENCES, STATUSES, type NewTodo, type User } from "@/db/schema";
+import { decodeBase64Image, ImageError, processImage } from "./photo-processing";
 import {
   addLink,
+  addPhoto,
   createObject,
   createTodo,
   DomainError,
@@ -20,6 +23,7 @@ import {
   updateTodo,
 } from "./repo";
 import { markdownToRichText } from "./rich-text";
+import { remove, save, storagePrefix } from "./storage";
 
 const CREATE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
 const UPDATE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } as const;
@@ -296,6 +300,72 @@ export function registerWriteTools(server: McpServer, { db, user, objectUrl, tod
           url_lien: l.url,
           page: a.objet_id ? objectUrl(a.objet_id) : todoUrl(a.tache_id!),
         });
+      }),
+  );
+  // ---------- ajouter_photo ----------
+  server.registerTool(
+    "ajouter_photo",
+    {
+      title: "Ajouter une photo",
+      description:
+        "Ajoute une même photo à une ou plusieurs tâches et/ou objets (50 au plus). L'image (JPEG, PNG, WebP, GIF, HEIC…, 10 Mo max) " +
+        "est envoyée en base64 ; elle est redimensionnée (1600 px) et une vignette est créée. La première photo d'un élément devient sa vignette.",
+      inputSchema: {
+        image_base64: z.string().min(16).max(14_000_000).describe("Contenu de l'image en base64 (ou adresse data:image/…;base64,…)"),
+        tache_ids: z.array(UUID).max(50).optional(),
+        objet_ids: z.array(UUID).max(50).optional(),
+      },
+      annotations: CREATE,
+    },
+    async (a) =>
+      guard(async () => {
+        const targets = [
+          ...[...new Set(a.tache_ids ?? [])].map((id) => ({ kind: "taches" as const, id })),
+          ...[...new Set(a.objet_ids ?? [])].map((id) => ({ kind: "objets" as const, id })),
+        ];
+        if (targets.length === 0) return fail("Indique au moins une tâche (tache_ids) ou un objet (objet_ids).");
+        if (targets.length > 50) return fail("50 éléments au plus par appel.");
+        let img: Awaited<ReturnType<typeof processImage>>;
+        try {
+          img = await processImage(decodeBase64Image(a.image_base64));
+        } catch (err) {
+          if (err instanceof ImageError) return fail(err.message);
+          throw err;
+        }
+        const ajoutees: Record<string, unknown>[] = [];
+        const erreurs: Record<string, unknown>[] = [];
+        for (const t of targets) {
+          const exists = t.kind === "taches" ? await getTodo(db, t.id) : await getObject(db, t.id);
+          if (!exists) {
+            erreurs.push({ [t.kind === "taches" ? "tache_id" : "objet_id"]: t.id, erreur: t.kind === "taches" ? "Tâche introuvable" : "Objet introuvable" });
+            continue;
+          }
+          const base = `${storagePrefix}/${t.kind}/${t.id}/${randomUUID()}`;
+          const pathname = `${base}.jpg`;
+          const thumbPathname = `${base}-v.jpg`;
+          await save(pathname, img.full, "image/jpeg");
+          await save(thumbPathname, img.thumb, "image/jpeg");
+          try {
+            const p = await addPhoto(db, t.kind === "taches" ? { todoId: t.id } : { objectId: t.id }, {
+              pathname,
+              thumbPathname,
+              width: img.width,
+              height: img.height,
+              createdById: user.id,
+            });
+            ajoutees.push({
+              photo_id: p.id,
+              ...(t.kind === "taches" ? { tache_id: t.id } : { objet_id: t.id }),
+              vignette: p.isCover,
+              url: t.kind === "taches" ? todoUrl(t.id) : objectUrl(t.id),
+            });
+          } catch (err) {
+            await remove([pathname, thumbPathname]);
+            if (err instanceof DomainError) erreurs.push({ id: t.id, erreur: err.message });
+            else throw err;
+          }
+        }
+        return ok({ ajoutees: ajoutees.length, dimensions: `${img.width}×${img.height}`, photos: ajoutees, erreurs });
       }),
   );
 }

@@ -218,7 +218,7 @@ test("OAuth : enregistrement, connexion, consentement, jetons, rafraîchissement
   await ctx.close();
 });
 
-test("jeton en écriture : créer, modifier, terminer, déplacer, lier — visible dans l'appli", async ({ page, baseURL }, info) => {
+test("jeton en écriture : créer, modifier, terminer, déplacer, lier, photo — visible dans l'appli", async ({ page, baseURL }, info) => {
   const m = testMarker(info);
   const pumpId = await seed(page, m);
 
@@ -257,6 +257,10 @@ test("jeton en écriture : créer, modifier, terminer, déplacer, lier — visib
   });
   await call("modifier_tache", { id: t.id, priorite: "haute", valeur_estimee_eur: 30 });
   await call("ajouter_lien", { tache_id: t.id, url: "https://exemple.fr/huile", titre: `Fiche ${m}` });
+  // Photo (PNG 1×1 rouge) ajoutée à la tâche et à l'atelier en un appel
+  const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+  const ph = await call("ajouter_photo", { image_base64: PNG, tache_ids: [t.id], objet_ids: [atelier.id] });
+  expect(ph.ajoutees).toBe(2);
   const done = await call("modifier_tache", { id: t.id, statut: "fait", heures_realisees: 2 });
   expect((done.occurrence_suivante as { id: string } | null)?.id).toBeTruthy();
   await client.close();
@@ -273,6 +277,9 @@ test("jeton en écriture : créer, modifier, terminer, déplacer, lier — visib
   await expect(page.getByRole("heading", { level: 1, name: `Huiler ${m}` })).toBeVisible();
   await expect(page.locator("strong", { hasText: "2 couches" })).toBeVisible();
   await expect(page.getByRole("link", { name: new RegExp(`Fiche ${m}`) })).toBeVisible();
+  const img = page.locator('img[src^="/api/photos/"]').first();
+  await expect(img).toBeVisible();
+  expect((await page.request.get((await img.getAttribute("src"))!)).headers()["content-type"]).toContain("image/jpeg");
   // Occurrence suivante créée par la récurrence
   await page.goto(`/taches/${(done.occurrence_suivante as { id: string }).id}`);
   await expect(page.getByRole("heading", { level: 1, name: `Huiler ${m}` })).toBeVisible();
