@@ -4,9 +4,11 @@ import { and, asc, desc, eq, inArray, isNull, lte, ne, sql, type SQL } from "dri
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@/db";
 import {
+  apiTokens,
   documentTypes,
   documents,
   links,
+  oauthClients,
   objectTypes,
   objects,
   photos,
@@ -849,6 +851,10 @@ export async function purgeTestData(db: Db, marker: string, opts: { dryRun?: boo
       const ids = tree.filter((r) => r.depth === d).map((r) => r.id);
       await tx.delete(objects).where(inArray(objects.id, ids));
     }
+
+    // Jetons personnels et applications OAuth créés par les tests
+    await tx.delete(apiTokens).where(sql`${apiTokens.kind} = 'personnel' AND ${apiTokens.name} ILIKE ${like}`);
+    await tx.delete(oauthClients).where(sql`${oauthClients.name} ILIKE ${like}`);
 
     let types = 0;
     for (const [table, col] of [

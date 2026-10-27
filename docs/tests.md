@@ -18,6 +18,7 @@ Ils s'exécutent sur un **Postgres en mémoire** (PGlite), avec les vraies migra
 | `tests/documents.test.ts` | documents et liens des objets et des tâches, normalisation des URL |
 | `tests/types.test.ts` | création, renommage, doublons insensibles à la casse, suppression bloquée si utilisé |
 | `tests/rich-text.test.ts` | nettoyage du HTML des descriptions, conversion de l'ancien texte brut |
+| `tests/oauth.test.ts` | jetons personnels, adresses de retour, code + PKCE à usage unique, rotation des jetons de rafraîchissement, révocations |
 | `tests/purge.test.ts` | purge des données de test (sous-arbres, fichiers, types, jokers) |
 
 ## Tests de bout en bout (Playwright)
@@ -32,6 +33,7 @@ Ils tournent sur deux profils : **mobile** (Pixel 7) et **desktop**.
 | `e2e/description.spec.ts` | éditeur WYSIWYG des descriptions : gras, liste, lien, modification, tâche, recherche dans le texte |
 | `e2e/taches-documents.spec.ts` | documents et liens d'une tâche, visionneuse, suppression de la tâche avec ses fichiers |
 | `e2e/coller-photo.spec.ts` | photo collée (Ctrl+V) sur un objet et une tâche, collage ignoré dans un champ de saisie, bouton « Coller une image » |
+| `e2e/mcp.spec.ts` | serveur MCP avec le client MCP officiel : 401 et métadonnées, jeton personnel (outils, révocation), parcours OAuth complet (enregistrement, connexion, consentement, PKCE, rafraîchissement, révocation, refus) |
 | `e2e/camera.spec.ts` | prise de vue : appareil photo natif sur mobile, webcam simulée par Chromium sur PC (plusieurs prises, retrait, annulation) |
 | `e2e/visionneuses.spec.ts` | aperçu PDF, Word, ODT, Excel, ODS, PowerPoint, CSV, texte, ZIP ; visionneuse refusée sans connexion |
 
@@ -62,7 +64,7 @@ Les tests ne tournent jamais contre la production : la connexion de test et la r
 
 - Chaque test utilise un **marqueur** propre et stable, `e2e-<profil>-<empreinte du test>` (voir `e2e/helpers.ts`). Il figure dans le nom de chaque objet, tâche ou type créé.
 - Avant le test (restes d'un essai interrompu) et après (`afterEach`), `purge()` appelle `POST /api/test/purge` avec ce marqueur.
-- La route supprime les objets dont le nom contient le marqueur, avec tout leur sous-arbre, leurs tâches, photos, documents et liens. Elle supprime aussi les tâches dont le titre le contient et les types inutilisés qui le contiennent, puis efface les fichiers correspondants du stockage.
+- La route supprime les objets dont le nom contient le marqueur, avec tout leur sous-arbre, leurs tâches, photos, documents et liens. Elle supprime aussi les tâches dont le titre le contient, les types inutilisés, les jetons personnels et les applications OAuth qui le contiennent, puis efface les fichiers correspondants du stockage.
 
 La route `/api/test/purge` :
 

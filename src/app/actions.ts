@@ -51,20 +51,24 @@ function handle(err: unknown): ActionState {
 }
 
 /** N'accepte qu'un chemin interne comme destination de retour. */
-function safeReturn(fd: FormData, fallback: string) {
-  const r = str(fd, "returnTo");
+function safeReturn(fd: FormData, fallback: string, field = "returnTo") {
+  const r = str(fd, field);
   return r.startsWith("/") && !r.startsWith("//") ? r : fallback;
 }
 
 // ---------- Connexion ----------
 
-export async function signInWithGoogle() {
-  await signIn("google", { redirectTo: "/" });
+export async function signInWithGoogle(fd: FormData) {
+  await signIn("google", { redirectTo: safeReturn(fd, "/", "retour") });
 }
 
 export async function signInWithDevLogin(_: ActionState, fd: FormData): Promise<ActionState> {
   try {
-    await signIn("dev-login", { email: str(fd, "email"), secret: str(fd, "secret"), redirectTo: "/" });
+    await signIn("dev-login", {
+      email: str(fd, "email"),
+      secret: str(fd, "secret"),
+      redirectTo: safeReturn(fd, "/", "retour"),
+    });
   } catch (err) {
     if (err instanceof AuthError) return { error: "Adresse non autorisée ou code incorrect" };
     throw err; // redirection après succès

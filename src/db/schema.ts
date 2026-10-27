@@ -182,6 +182,73 @@ export const links = pgTable(
 export type User = typeof users.$inferSelect;
 export type DocumentRow = typeof documents.$inferSelect;
 export type LinkRow = typeof links.$inferSelect;
+// ---------- Accès des assistants IA (MCP) ----------
+
+/** Applications clientes OAuth (enregistrement dynamique, RFC 7591). */
+export const oauthClients = pgTable("oauth_clients", {
+  id: text("id").primaryKey(), // client_id
+  name: text("name").notNull(),
+  redirectUris: text("redirect_uris").array().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Codes d'autorisation OAuth (usage unique, courte durée, PKCE obligatoire). */
+export const oauthCodes = pgTable(
+  "oauth_codes",
+  {
+    codeHash: text("code_hash").primaryKey(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    redirectUri: text("redirect_uri").notNull(),
+    codeChallenge: text("code_challenge").notNull(),
+    scope: text("scope").notNull(),
+    resource: text("resource"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [index("oauth_codes_expires_idx").on(t.expiresAt)],
+);
+
+export const tokenKindEnum = pgEnum("token_kind", ["personnel", "acces", "rafraichissement"]);
+
+/**
+ * Jetons d'accès au MCP. Seule l'empreinte SHA-256 est stockée.
+ * - personnel : créé par l'utilisateur, sans expiration (révocable) ;
+ * - acces / rafraichissement : émis par OAuth pour un client, liés par grantId.
+ */
+export const apiTokens = pgTable(
+  "api_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: tokenKindEnum("kind").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    prefix: text("prefix").notNull(),
+    name: text("name").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clientId: text("client_id").references(() => oauthClients.id, { onDelete: "cascade" }),
+    grantId: uuid("grant_id"),
+    scope: text("scope").notNull().default("lecture"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("api_tokens_hash_uq").on(t.tokenHash),
+    index("api_tokens_user_idx").on(t.userId),
+    index("api_tokens_grant_idx").on(t.grantId),
+  ],
+);
+
+export type OAuthClient = typeof oauthClients.$inferSelect;
+export type ApiToken = typeof apiTokens.$inferSelect;
+
 export type Photo = typeof photos.$inferSelect;
 export type ObjectBase = typeof objects.$inferSelect;
 /** Objet avec le nom de son type (jointure). */
