@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { addDocumentAction, deleteDocumentAction, setDocumentTypeAction } from "@/app/actions";
+import type { AttachmentOwnerRef } from "./object-links";
 import { ACCEPT_ATTR, DOCUMENT_MAX_BYTES, DOCUMENT_TYPES, documentType, formatSize, safeFileName } from "@/lib/document-types";
 
 export type DocItem = {
@@ -35,13 +36,13 @@ async function send(mode: "blob" | "local", pathname: string, file: File, conten
 }
 
 export function ObjectDocuments({
-  objectId,
+  owner,
   docs,
   docTypes,
   prefix,
   mode,
 }: {
-  objectId: string;
+  owner: AttachmentOwnerRef;
   docs: DocItem[];
   docTypes: TypeOption[];
   prefix: string;
@@ -72,7 +73,8 @@ export function ObjectDocuments({
         if (!type) throw new Error(`« ${file.name} » : ce type de fichier n'est pas accepté`);
         if (file.size > DOCUMENT_MAX_BYTES) throw new Error(`« ${file.name} » dépasse 25 Mo`);
         if (file.size === 0) throw new Error(`« ${file.name} » est vide`);
-        const pathname = `${prefix}/documents/${objectId}/${crypto.randomUUID()}/${safeFileName(file.name)}`;
+        const base = owner.kind === "taches" ? `${prefix}/documents/taches/${owner.id}` : `${prefix}/documents/${owner.id}`;
+        const pathname = `${base}/${crypto.randomUUID()}/${safeFileName(file.name)}`;
         await send(mode, pathname, file, type);
         const r = await addDocumentAction({
           typeId: uploadType,

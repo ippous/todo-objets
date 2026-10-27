@@ -14,8 +14,10 @@ const host = (url: string) => {
   }
 };
 
-export function ObjectLinks({ objectId, links }: { objectId: string; links: LinkItem[] }) {
-  const [state, action] = useActionState(addLinkAction.bind(null, objectId), {});
+export type AttachmentOwnerRef = { kind: "objets" | "taches"; id: string };
+
+export function ObjectLinks({ owner, links }: { owner: AttachmentOwnerRef; links: LinkItem[] }) {
+  const [state, action] = useActionState(addLinkAction.bind(null, owner), {});
   const form = useRef<HTMLFormElement>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

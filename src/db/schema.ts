@@ -138,9 +138,9 @@ export const documents = pgTable(
   "documents",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    objectId: uuid("object_id")
-      .notNull()
-      .references(() => objects.id, { onDelete: "cascade" }),
+    // Un document appartient à un objet OU à une tâche
+    objectId: uuid("object_id").references(() => objects.id, { onDelete: "cascade" }),
+    todoId: uuid("todo_id").references(() => todos.id, { onDelete: "cascade" }),
     pathname: text("pathname").notNull(),
     filename: text("filename").notNull(),
     contentType: text("content_type").notNull(),
@@ -153,7 +153,9 @@ export const documents = pgTable(
   },
   (t) => [
     index("documents_object_idx").on(t.objectId),
+    index("documents_todo_idx").on(t.todoId),
     index("documents_type_idx").on(t.typeId),
+    check("documents_one_owner", sql`(${t.objectId} IS NULL) <> (${t.todoId} IS NULL)`),
     uniqueIndex("documents_pathname_uq").on(t.pathname),
   ],
 );
@@ -162,15 +164,19 @@ export const links = pgTable(
   "links",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    objectId: uuid("object_id")
-      .notNull()
-      .references(() => objects.id, { onDelete: "cascade" }),
+    // Un lien appartient à un objet OU à une tâche
+    objectId: uuid("object_id").references(() => objects.id, { onDelete: "cascade" }),
+    todoId: uuid("todo_id").references(() => todos.id, { onDelete: "cascade" }),
     url: text("url").notNull(),
     title: text("title").notNull(),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("links_object_idx").on(t.objectId)],
+  (t) => [
+    index("links_object_idx").on(t.objectId),
+    index("links_todo_idx").on(t.todoId),
+    check("links_one_owner", sql`(${t.objectId} IS NULL) <> (${t.todoId} IS NULL)`),
+  ],
 );
 
 export type User = typeof users.$inferSelect;

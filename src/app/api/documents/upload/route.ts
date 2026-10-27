@@ -2,7 +2,7 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { NextResponse } from "next/server";
 import { getDb } from "@/db";
 import { DOCUMENT_MAX_BYTES, DOCUMENT_TYPES } from "@/lib/document-types";
-import { getObject } from "@/lib/repo";
+import { getObject, getTodo } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/session";
 import { parseDocumentPath } from "@/lib/storage";
 
@@ -18,7 +18,10 @@ export async function POST(request: Request) {
       onBeforeGenerateToken: async (pathname) => {
         const parsed = parseDocumentPath(pathname);
         if (!parsed) throw new Error("Chemin de document invalide");
-        if (!(await getObject(getDb(), parsed.objectId))) throw new Error("Objet introuvable");
+        const db = getDb();
+        const found =
+          "todoId" in parsed.owner ? await getTodo(db, parsed.owner.todoId) : await getObject(db, parsed.owner.objectId);
+        if (!found) throw new Error("Objet ou tâche introuvable");
         return {
           allowedContentTypes: Object.keys(DOCUMENT_TYPES),
           maximumSizeInBytes: DOCUMENT_MAX_BYTES,

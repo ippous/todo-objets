@@ -286,7 +286,7 @@ export async function addDocumentAction(input: {
     }
     if (!(await exists(input.pathname))) throw new DomainError("L'envoi du document n'est pas terminé. Réessaie.");
     await addDocument(getDb(), {
-      objectId: parsed.objectId,
+      owner: parsed.owner,
       typeId: input.typeId,
       pathname: input.pathname,
       filename: String(input.filename ?? ""),
@@ -329,11 +329,20 @@ export async function deleteDocumentAction(id: string): Promise<ActionState> {
   return { ok: true };
 }
 
-export async function addLinkAction(objectId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+export async function addLinkAction(
+  owner: { kind: "objets" | "taches"; id: string },
+  _: ActionState,
+  fd: FormData,
+): Promise<ActionState> {
   const user = await requireUser();
   try {
-    assertId(objectId);
-    await addLink(getDb(), { objectId, url: str(fd, "url"), title: str(fd, "title"), createdById: user.id });
+    assertId(owner.id);
+    await addLink(getDb(), {
+      owner: owner.kind === "taches" ? { todoId: owner.id } : { objectId: owner.id },
+      url: str(fd, "url"),
+      title: str(fd, "title"),
+      createdById: user.id,
+    });
   } catch (err) {
     return handle(err);
   }
