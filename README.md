@@ -17,7 +17,7 @@ Carnet est une application web personnelle, multi-utilisateurs, pour gérer des 
 | Photos | photos sur les objets et les tâches, une vignette par élément | [docs/photos.md](docs/photos.md) |
 | Documents et liens | factures, garanties, modes d'emploi… classés par type, avec visionneuse intégrée ; liens web | [docs/documents-et-liens.md](docs/documents-et-liens.md) |
 | Types | listes modifiables des types d'objets et de documents, suppression bloquée tant qu'ils sont utilisés | [docs/types.md](docs/types.md) |
-| Assistants IA (MCP) | serveur MCP pour Claude, ChatGPT, Cursor… : lecture de l'arbre, des objets et des tâches, et sur autorisation création / modification de tâches et d'objets, liens (sans suppression) ; connexion OAuth ou jeton personnel | [docs/mcp.md](docs/mcp.md) |
+| Assistants IA (MCP) | serveur MCP pour Claude, ChatGPT, Cursor… : lecture de l'arbre, des objets et des tâches, et sur autorisation création / modification de tâches et d'objets, liens et photos (sans suppression) ; connexion OAuth ou jeton personnel | [docs/mcp.md](docs/mcp.md) |
 | Utilisateurs et accès | connexion Google, liste d'adresses autorisées, rôles | [docs/utilisateurs-et-acces.md](docs/utilisateurs-et-acces.md) |
 
 ## Pour les développeurs
