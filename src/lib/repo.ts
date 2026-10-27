@@ -258,7 +258,10 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
   if (filters.dueBefore) conds.push(lte(todos.dueDate, filters.dueBefore));
   if (filters.q) {
     const like = `%${filters.q}%`;
-    conds.push(sql`(${todos.title} ILIKE ${like} OR ${todos.description} ILIKE ${like})`);
+    // La description est du HTML : on cherche dans le texte, pas dans les balises
+    conds.push(
+      sql`(${todos.title} ILIKE ${like} OR regexp_replace(coalesce(${todos.description}, ''), '<[^>]*>', ' ', 'g') ILIKE ${like})`,
+    );
   }
   if (filters.subtreeOf) {
     conds.push(sql`${todos.objectId} IN (

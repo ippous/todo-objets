@@ -59,10 +59,30 @@ De haut en bas :
 | Nom | oui | |
 | Type | non | liste gérée dans [Types](types.md), avec un choix « Sans type » |
 | Parent | non | vide = racine |
-| Description | non | texte libre, retours à la ligne conservés |
+| Description | non | texte enrichi (voir ci-dessous) |
 | Emplacement | non | texte libre |
 | Tags | non | séparés par des virgules |
 
 ## Arbre de départ
 
 Si la base est vide au premier déploiement, un arbre d'exemple est créé : *Le Moulin FRat*, avec ses bâtiments, pièces et terrains. On peut le renommer, le déplacer ou le supprimer comme n'importe quel objet.
+
+## Description en texte enrichi
+
+Les descriptions des **objets** et des **tâches** se saisissent dans un éditeur WYSIWYG : on voit le résultat pendant la saisie. Barre d'outils :
+
+| Bouton | Effet | Raccourci |
+|---|---|---|
+| **G**, *I*, S, B | gras, italique, souligné, barré | Ctrl+B, Ctrl+I, Ctrl+U |
+| T1, T2 | titre et sous-titre de section | |
+| •, 1. | liste à puces, liste numérotée | `- ` ou `1. ` en début de ligne |
+| ❝ | citation | `> ` en début de ligne |
+| — | ligne de séparation | `---` |
+| 🔗 | lien : saisir l'adresse (`https://` ajouté si besoin) ; adresse vide = retirer le lien | |
+| ↶ ↷ | annuler, rétablir | Ctrl+Z, Ctrl+Y |
+
+Un collage depuis une page web ou un traitement de texte garde la mise en forme simple (gras, listes, liens…) et ignore le reste.
+
+Sécurité : le HTML est **nettoyé côté serveur** avant l'enregistrement et avant l'affichage (seules les balises de l'éditeur sont conservées ; scripts, styles, évènements et liens `javascript:` sont retirés). Les liens s'ouvrent dans un nouvel onglet.
+
+Les descriptions saisies avant l'éditeur (texte brut, comme la surface des parcelles) s'affichent et s'éditent normalement : chaque ligne vide sépare un paragraphe.

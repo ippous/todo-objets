@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import type { ActionState } from "@/lib/forms";
+import { RichTextEditor } from "./rich-text-editor";
 import { FormError, Submit } from "./submit";
 
 type Values = { name: string; typeId: string | null; description: string | null; location: string | null; tags: string[] };
@@ -44,10 +45,12 @@ export function ObjectForm({
           Gérer les types
         </Link>
       </label>
-      <label className="field">
-        <span>Description (surface, matériaux, accès, état…)</span>
-        <textarea className="input" name="description" maxLength={4000} defaultValue={values?.description ?? ""} />
-      </label>
+      <RichTextEditor
+        name="description"
+        label="Description"
+        placeholder="Surface, matériaux, accès, état…"
+        defaultValue={values?.description}
+      />
       <label className="field">
         <span>Emplacement</span>
         <input className="input" name="location" maxLength={200} defaultValue={values?.location ?? ""} />

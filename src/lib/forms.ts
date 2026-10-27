@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CATEGORIES, PRIORITIES, RECURRENCES, ROLES, STATUSES } from "@/db/schema";
+import { RICH_TEXT_MAX, sanitizeRichText } from "./rich-text";
 
 export type ActionState = { error?: string; ok?: boolean };
 
@@ -25,7 +26,7 @@ const uuidOrNull = z.string().uuid().nullable();
 export const objectSchema = z.object({
   name: z.string().min(1, "Le nom est obligatoire").max(120),
   typeId: z.string().uuid("Type invalide").nullable(),
-  description: z.string().max(4000).nullable(),
+  description: z.string().max(RICH_TEXT_MAX, "Description trop longue").nullable(),
   location: z.string().max(200).nullable(),
   tags: z.array(z.string().max(40)),
 });
@@ -34,7 +35,7 @@ export function readObject(fd: FormData) {
   return objectSchema.safeParse({
     name: str(fd, "name"),
     typeId: optionalText(fd, "typeId"),
-    description: optionalText(fd, "description"),
+    description: sanitizeRichText(optionalText(fd, "description")),
     location: optionalText(fd, "location"),
     tags: parseTags(str(fd, "tags")),
   });
@@ -43,7 +44,7 @@ export function readObject(fd: FormData) {
 export const todoSchema = z.object({
   objectId: z.string().uuid("Choisis un objet"),
   title: z.string().min(1, "Le titre est obligatoire").max(200),
-  description: z.string().max(8000).nullable(),
+  description: z.string().max(RICH_TEXT_MAX, "Description trop longue").nullable(),
   category: z.enum(CATEGORIES),
   priority: z.enum(PRIORITIES),
   status: z.enum(STATUSES),
@@ -61,7 +62,7 @@ export function readTodo(fd: FormData) {
   return todoSchema.safeParse({
     objectId: str(fd, "objectId"),
     title: str(fd, "title"),
-    description: optionalText(fd, "description"),
+    description: sanitizeRichText(optionalText(fd, "description")),
     category: str(fd, "category") || "entretien",
     priority: str(fd, "priority") || "moyenne",
     status: str(fd, "status") || "a_faire",

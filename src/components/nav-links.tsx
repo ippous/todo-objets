@@ -31,7 +31,7 @@ export function NavLinks({ isAdmin, variant }: { isAdmin: boolean; variant: "top
                 } ${l.href === "/taches/nouvelle" ? "text-moss" : ""}`}
               >
                 {l.href === "/taches/nouvelle" ? (
-                  <span className="rounded-full bg-moss px-4 py-1.5 text-surface">+ Ajouter</span>
+                  <span className="whitespace-nowrap rounded-full bg-moss px-3 py-1.5 text-surface">+ Ajouter</span>
                 ) : (
                   l.label
                 )}
