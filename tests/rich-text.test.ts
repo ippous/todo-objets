@@ -39,3 +39,16 @@ describe("texte enrichi", () => {
     expect(sanitizeRichText("texte simple")).toBe("<p>texte simple</p>");
   });
 });
+
+describe("texte pour le MCP", () => {
+  it("convertit le HTML en texte lisible", async () => {
+    const { richTextToPlain } = await import("@/lib/rich-text");
+    expect(
+      richTextToPlain(
+        '<h2>Accès</h2><p>Portail, <strong>code 1234</strong> &amp; clé</p><ul><li><p>un</p></li><li><p>deux</p></li></ul><p><a href="https://a.fr">notice</a></p>',
+      ),
+    ).toBe("## Accès\nPortail, **code 1234** & clé\n\n- un\n\n- deux\n\nnotice (https://a.fr)");
+    expect(richTextToPlain("Surface : 2 ha")).toBe("Surface : 2 ha");
+    expect(richTextToPlain(null)).toBe("");
+  });
+});

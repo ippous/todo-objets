@@ -4,11 +4,12 @@ import { useActionState } from "react";
 import { signInWithDevLogin } from "@/app/actions";
 import { FormError, Submit } from "@/components/submit";
 
-export function DevLoginForm() {
+export function DevLoginForm({ retour }: { retour?: string }) {
   const [state, action] = useActionState(signInWithDevLogin, {});
   return (
     <form action={action} className="grid gap-3 rounded-xl border border-dashed border-line p-4">
       <p className="text-sm text-muted">Connexion de test (environnement de dev uniquement)</p>
+      {retour && <input type="hidden" name="retour" value={retour} />}
       <label className="field">
         <span>Adresse e-mail autorisée</span>
         <input className="input" type="email" name="email" required autoComplete="email" />

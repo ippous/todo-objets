@@ -16,9 +16,13 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <nav aria-label="Navigation principale" className="hidden flex-1 sm:block">
           <NavLinks isAdmin={user.role === "admin"} variant="top" />
         </nav>
-        <form action={signOutAction} className="ml-auto sm:ml-0">
-          <button className="text-sm text-muted underline-offset-4 hover:underline" type="submit">
-            {user.name} · Se déconnecter
+        <Link href="/connexion-ia" className="ml-auto whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline sm:ml-0" aria-label="Connexion IA">
+          <span className="sm:hidden">IA</span>
+          <span className="hidden sm:inline">Connexion IA</span>
+        </Link>
+        <form action={signOutAction}>
+          <button className="whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline" type="submit">
+            <span className="hidden sm:inline">{user.name} · </span>Se déconnecter
           </button>
         </form>
       </header>

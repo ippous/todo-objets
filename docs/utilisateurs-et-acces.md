@@ -32,3 +32,7 @@ Il doit toujours rester **au moins un administrateur actif** : la dernière modi
 ## Ce qui est réservé aux connectés
 
 Tout le site, sauf `/connexion`, y compris les fichiers : les photos et les documents ne sont servis que par des routes qui vérifient la session. Les pages de **dev** sont en plus protégées par l'authentification Vercel.
+
+## Assistants IA
+
+Chaque utilisateur peut autoriser des assistants IA à **lire** Carnet (page *Connexion IA*) : voir [mcp.md](mcp.md).

@@ -33,6 +33,10 @@ src/
       photos/              lecture, autorisation d'envoi, envoi local
       documents/           lecture, autorisation d'envoi
       test/purge/          purge des données de test (hors prod)
+      mcp/                 serveur MCP (lecture seule, voir docs/mcp.md)
+      oauth/               OAuth 2.1 : register, token, revoke
+    .well-known/           métadonnées OAuth (RFC 9728, RFC 8414)
+    oauth/autoriser/       page de consentement OAuth
   components/              composants d'interface (client ou serveur)
   db/schema.ts             schéma Drizzle
   lib/
@@ -68,6 +72,7 @@ object_types ──< objects ──< objects (parent_id, arbre)
 | `links` | rattaché à un objet **ou** à une tâche (contrainte `links_one_owner`), URL http(s) normalisée, titre facultatif |
 | `object_types`, `document_types` | `name` unique sans tenir compte de la casse (index sur `lower(name)`) |
 | `users` | e-mail unique, rôle, actif, heures/semaine, compétences |
+| `oauth_clients`, `oauth_codes`, `api_tokens` | accès des assistants IA (MCP) : clients OAuth, codes d'autorisation, jetons personnels / d'accès / de rafraîchissement (empreintes SHA-256 seulement) |
 
 ### Règles garanties côté serveur
 

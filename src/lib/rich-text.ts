@@ -34,3 +34,26 @@ export function renderRichText(value: string | null): string {
   if (!value) return "";
   return sanitizeHtml(isHtml(value) ? value : plainToHtml(value), OPTIONS);
 }
+
+const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", apos: "'", nbsp: " " };
+
+/** Texte lisible (façon Markdown léger) à partir d'une description enregistrée — pour le MCP. */
+export function richTextToPlain(value: string | null): string {
+  if (!value) return "";
+  const html = renderRichText(value);
+  return html
+    .replace(/<h2[^>]*>/g, "\n## ")
+    .replace(/<h3[^>]*>/g, "\n### ")
+    .replace(/<li[^>]*>/g, "\n- ")
+    .replace(/<blockquote[^>]*>/g, "\n> ")
+    .replace(/<hr\s*\/?>/g, "\n---\n")
+    .replace(/<br\s*\/?>/g, "\n")
+    .replace(/<(strong|b)>/g, "**")
+    .replace(/<\/(strong|b)>/g, "**")
+    .replace(/<a [^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/g, (_, href, text) => (text === href ? href : `${text} (${href})`))
+    .replace(/<\/(p|h2|h3|ul|ol|blockquote|pre)>/g, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(#39|[a-z]+);/g, (m, e) => ENTITIES[e] ?? m)
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}

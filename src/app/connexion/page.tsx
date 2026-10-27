@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { devLoginEnabled, googleEnabled } from "@/auth";
 import { signInWithGoogle } from "@/app/actions";
+import { returnPath } from "@/lib/return-to";
 import { getCurrentUser } from "@/lib/session";
 import { DevLoginForm } from "./dev-login-form";
 
@@ -13,8 +14,9 @@ const ERRORS: Record<string, string> = {
 };
 
 export default async function ConnexionPage(props: PageProps<"/connexion">) {
-  if (await getCurrentUser()) redirect("/");
-  const { error } = await props.searchParams;
+  const { error, retour: rawRetour } = await props.searchParams;
+  const retour = returnPath(rawRetour, "/");
+  if (await getCurrentUser()) redirect(retour);
   const message = typeof error === "string" ? (ERRORS[error] ?? "La connexion a échoué. Réessaie.") : null;
 
   return (
@@ -36,13 +38,14 @@ export default async function ConnexionPage(props: PageProps<"/connexion">) {
 
       {googleEnabled && (
         <form action={signInWithGoogle}>
+          <input type="hidden" name="retour" value={retour} />
           <button type="submit" className="btn btn-primary w-full">
             Se connecter avec Google
           </button>
         </form>
       )}
 
-      {devLoginEnabled && <DevLoginForm />}
+      {devLoginEnabled && <DevLoginForm retour={retour} />}
 
       {!googleEnabled && !devLoginEnabled && (
         <p className="text-sm text-muted">Aucune méthode de connexion n&apos;est configurée sur cet environnement.</p>
