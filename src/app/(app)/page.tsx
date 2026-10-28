@@ -11,20 +11,36 @@ import type { ObjectRow } from "@/db/schema";
 
 export const metadata: Metadata = { title: "Arbre" };
 
-function toView(n: TreeNode<ObjectRow>, counts: Map<string, number>, covers: Map<string, string>): TreeViewNode {
+function toView(
+  n: TreeNode<ObjectRow>,
+  counts: Map<string, number>,
+  covers: Map<string, string>,
+  baseDepth = 0,
+): TreeViewNode {
   return {
     id: n.id,
     name: n.name,
     type: n.type,
-    depth: n.depth,
+    depth: n.depth - baseDepth,
     total: n.total,
     todoCount: counts.get(n.id) ?? 0,
     coverId: covers.get(n.id) ?? null,
-    children: n.children.map((c) => toView(c, counts, covers)),
+    children: n.children.map((c) => toView(c, counts, covers, baseDepth)),
   };
 }
 
-export default async function ArbrePage() {
+function findInForest(forest: TreeNode<ObjectRow>[], id: string): TreeNode<ObjectRow> | null {
+  for (const n of forest) {
+    if (n.id === id) return n;
+    const f = findInForest(n.children, id);
+    if (f) return f;
+  }
+  return null;
+}
+
+export default async function ArbrePage(props: PageProps<"/">) {
+  const sp = await props.searchParams;
+  const racineId = typeof sp.racine === "string" ? sp.racine : "";
   const db = getDb();
   const [objs, stats, counts, covers, users, objectTypes] = await Promise.all([
     listObjects(db),
@@ -35,7 +51,16 @@ export default async function ArbrePage() {
     listTypes(db, "objet"),
   ]);
   const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
-  const forest = buildForest(objs, stats);
+  const fullForest = buildForest(objs, stats);
+  // Affichage recentré sur un objet (?racine=<id>) : seul son sous-arbre est montré
+  const focus = racineId ? findInForest(fullForest, racineId) : null;
+  const forest = focus ? [focus] : fullForest;
+  const byId = new Map(objs.map((o) => [o.id, o]));
+  const ancestors: ObjectRow[] = [];
+  for (let p = focus?.parentId ? byId.get(focus.parentId) : undefined; p && ancestors.length < 100; ) {
+    ancestors.unshift(p);
+    p = p.parentId ? byId.get(p.parentId) : undefined;
+  }
   const all = forest.reduce(
     (acc, r) => ({
       openCount: acc.openCount + r.total.openCount,
@@ -76,6 +101,36 @@ export default async function ArbrePage() {
         </search>
       )}
 
+      {racineId && !focus && (
+        <p role="status" className="rounded-lg bg-brick-soft px-3 py-2 text-sm text-brick">
+          Cet objet n&apos;existe plus : l&apos;arbre complet est affiché.
+        </p>
+      )}
+
+      {focus && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-moss bg-moss-soft px-3 py-2">
+          <nav aria-label="Racine affichée" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 text-sm">
+            <span className="text-muted">Affiché depuis :</span>
+            {ancestors.map((a) => (
+              <span key={a.id} className="flex items-center gap-1.5">
+                <Link href={`/?racine=${a.id}`} className="underline underline-offset-4">
+                  {a.name}
+                </Link>
+                <span aria-hidden className="text-muted">
+                  ›
+                </span>
+              </span>
+            ))}
+            <span className="font-bold" aria-current="page">
+              {focus.name}
+            </span>
+          </nav>
+          <Link href="/" className="btn btn-ghost min-h-9 px-3 text-sm">
+            Revenir à l&apos;arbre complet
+          </Link>
+        </div>
+      )}
+
       {forest.length === 0 ? (
         <div className="rounded-xl border border-dashed border-line p-6">
           <p className="font-bold">Aucun objet pour l&apos;instant.</p>
@@ -85,7 +140,12 @@ export default async function ArbrePage() {
         </div>
       ) : (
         <section aria-label="Arborescences" className="rounded-xl bg-surface p-3 sm:p-5">
-          <TreeView forest={forest.map((n) => toView(n, counts, covers))} users={activeUsers} objectTypes={objectTypes} />
+          <TreeView
+            forest={forest.map((n) => toView(n, counts, covers, focus?.depth ?? 0))}
+            focusId={focus?.id ?? null}
+            users={activeUsers}
+            objectTypes={objectTypes}
+          />
         </section>
       )}
     </div>

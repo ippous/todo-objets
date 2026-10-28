@@ -329,3 +329,41 @@ test("documents et liens d'un objet", async ({ page }, info) => {
   expect((await page.request.get(planHref)).status()).toBe(404);
   void id;
 });
+
+test("recentrer l'arbre sur un objet, puis revenir à l'arbre complet", async ({ page }, info) => {
+  const s = testMarker(info);
+  const a = `Domaine ${s}`;
+  const b = `Bergerie ${s}`;
+  const c = `Abreuvoir ${s}`;
+  const autre = `Tracteur ${s}`;
+  const aId = await createRoot(page, a);
+  const bId = await createChild(page, aId, b);
+  await createChild(page, bId, c);
+  await createRoot(page, autre);
+  await page.goto("/");
+
+  await row(page, b).getByRole("button", { name: `Actions pour ${b}` }).click();
+  await page.getByRole("menuitem", { name: "Afficher l'arbre depuis cet objet" }).click();
+  await expect(page).toHaveURL(new RegExp(`racine=${bId}`));
+  const bandeau = page.getByRole("navigation", { name: "Racine affichée" });
+  await expect(bandeau).toContainText(`${a}›${b}`);
+  await expect(page.getByRole("link", { name: c, exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: autre, exact: true })).toHaveCount(0);
+
+  // Un ancêtre du bandeau recentre l'arbre sur lui
+  await bandeau.getByRole("link", { name: a }).click();
+  await expect(page).toHaveURL(new RegExp(`racine=${aId}`));
+  await expect(page.getByRole("link", { name: b, exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: autre, exact: true })).toHaveCount(0);
+
+  // Retour à l'affichage normal depuis le menu de la racine affichée
+  await row(page, a).getByRole("button", { name: `Actions pour ${a}` }).click();
+  await page.getByRole("menuitem", { name: "Revenir à l'arbre complet" }).click();
+  await expect(page.getByRole("navigation", { name: "Racine affichée" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: autre, exact: true })).toBeVisible();
+
+  // Et depuis le bouton du bandeau
+  await page.goto(`/?racine=${bId}`);
+  await page.getByRole("link", { name: "Revenir à l'arbre complet" }).click();
+  await expect(page.getByRole("link", { name: autre, exact: true })).toBeVisible();
+});
