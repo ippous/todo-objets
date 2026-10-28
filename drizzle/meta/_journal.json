@@ -43,6 +43,13 @@
       "when": 1793115234131,
       "tag": "0005_acces_mcp",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793221603767,
+      "tag": "0006_sous_taches",
+      "breakpoints": true
     }
   ]
 }
