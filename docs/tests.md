@@ -13,7 +13,7 @@ Ils s'exécutent sur un **Postgres en mémoire** (PGlite), avec les vraies migra
 | Fichier | Couvre |
 |---|---|
 | `tests/tree.test.ts` | forêt, cumuls par branche, chemins, regroupement par racine, prochaine échéance |
-| `tests/repo.test.ts` | objets, déplacement anti-boucle, suppression, tâches, filtres, tris, récurrence, ajout en lot |
+| `tests/repo.test.ts` | objets, déplacement anti-boucle, suppression, tâches, filtres, tris, récurrence, ajout en lot, recherche d'objets |
 | `tests/photos.test.ts` | vignette automatique, changement de vignette, suppression |
 | `tests/documents.test.ts` | documents et liens des objets et des tâches, normalisation des URL |
 | `tests/types.test.ts` | création, renommage, doublons insensibles à la casse, suppression bloquée si utilisé |
@@ -39,6 +39,7 @@ Ils tournent sur deux profils : **mobile** (Pixel 7) et **desktop**.
 | `e2e/camera.spec.ts` | prise de vue : appareil photo natif sur mobile, webcam simulée par Chromium sur PC (plusieurs prises, retrait, annulation) |
 | `e2e/tableau.spec.ts` | vue tableau : trois colonnes, couloirs par objet racine, statut changé par les flèches et par glisser-déposer, persistance, réalisé repris des estimations |
 | `e2e/sous-taches.spec.ts` | sous-tâches d'une tâche : ajout, case à cocher, ordre par flèches et par glisser-déposer, modification, suppression, persistance |
+| `e2e/recherche-objets.spec.ts` | recherche d'objets dans l'arbre : sans accents ni majuscules, chemin affiché, clavier, clic, aucun résultat |
 | `e2e/visionneuses.spec.ts` | aperçu PDF, Word, ODT, Excel, ODS, PowerPoint, CSV, texte, ZIP ; visionneuse refusée sans connexion |
 
 Les fichiers d'exemple sont dans `e2e/fixtures/`.

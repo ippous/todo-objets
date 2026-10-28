@@ -25,7 +25,7 @@ import {
   type Subtask,
   type Todo,
 } from "@/db/schema";
-import { emptyStats, nextDueDate, round2, type Recurrence, type Stats } from "./tree";
+import { emptyStats, nextDueDate, pathTo, round2, type Recurrence, type Stats } from "./tree";
 
 export class DomainError extends Error {}
 
@@ -453,6 +453,50 @@ export async function listAllTags(db: Db): Promise<string[]> {
       UNION SELECT unnest(tags) AS tag FROM objects
     ) t ORDER BY tag`);
   return rowsOf<{ tag: string }>(res).map((r) => r.tag);
+}
+
+// ---------- Recherche d'objets ----------
+
+/** Minuscules sans accents ni espaces multiples, pour comparer « écurie » et « ECURIE ». */
+export const foldText = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+export type ObjectSearchHit = { id: string; name: string; type: string | null; path: string };
+
+/**
+ * Cherche un texte dans les objets (nom, type, lieu, tags, description), sans tenir
+ * compte de la casse ni des accents. Les noms qui commencent par le texte d'abord,
+ * puis ceux qui le contiennent, puis les autres champs.
+ */
+export async function searchObjects(db: Db, rawQuery: string, limit = 10): Promise<{ hits: ObjectSearchHit[]; total: number }> {
+  const q = foldText(rawQuery.trim().slice(0, 100));
+  if (!q) return { hits: [], total: 0 };
+  const objs = await listObjects(db);
+  const matches = objs
+    .map((o) => {
+      const name = foldText(o.name);
+      const other = foldText([o.type ?? "", o.location ?? "", o.tags.join(" "), (o.description ?? "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ")].join(" "));
+      const rank = name.startsWith(q) ? 0 : name.includes(q) ? 1 : other.includes(q) ? 2 : -1;
+      return { o, rank };
+    })
+    .filter((m) => m.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || a.o.name.localeCompare(b.o.name, "fr"));
+  return {
+    hits: matches.slice(0, limit).map(({ o }) => ({
+      id: o.id,
+      name: o.name,
+      type: o.type,
+      path: pathTo(objs, o.id)
+        .slice(0, -1)
+        .map((p) => p.name)
+        .join(" › "),
+    })),
+    total: matches.length,
+  };
 }
 
 // ---------- Utilisateurs ----------

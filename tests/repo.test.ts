@@ -11,6 +11,7 @@ import {
   listTodos,
   moveObject,
   openStatsByObject,
+  searchObjects,
   setTodoStatus,
   subtreeIdsDb,
   updateUser,
@@ -178,5 +179,33 @@ describe("ajout en lot", () => {
     expect(created).toHaveLength(3);
     const list = await listTodos(db, { subtreeOf: ids["La ferme"] });
     expect(list.every((t) => t.category === "travaux" && t.priority === "haute" && t.dueDate === "2026-12-01")).toBe(true);
+  });
+});
+
+describe("recherche d'objets", () => {
+  it("ignore casse et accents, classe les noms qui commencent par le texte en premier", async () => {
+    await createObject(db, { name: "Pré du bas", parentId: ids["Prairies"], typeId: null });
+    const { hits, total } = await searchObjects(db, "PRE");
+    expect(total).toBe(1);
+    expect(hits[0]).toMatchObject({ name: "Pré du bas", path: "Le Moulin FRat › Prairies" });
+
+    await createObject(db, { name: "Abri", location: "près de la ferme", typeId: null });
+    const ferme = await searchObjects(db, "ferme");
+    expect(ferme.hits.map((h) => h.name)).toEqual(["La ferme", "Abri"]);
+  });
+
+  it("cherche dans le type, les tags et le texte de la description", async () => {
+    await createObject(db, { name: "Puits", tags: ["eau"], description: "<p>Pompe <strong>immergée</strong></p>", typeId: null });
+    expect((await searchObjects(db, "pompe immergee")).hits.map((h) => h.name)).toEqual(["Puits"]);
+    expect((await searchObjects(db, "eau")).hits.map((h) => h.name)).toContain("Puits");
+    expect((await searchObjects(db, "strong")).total).toBe(0);
+    expect((await searchObjects(db, "pièce")).hits.map((h) => h.name).sort()).toEqual(["PoolHouse", "Salle de sport"]);
+    expect(await searchObjects(db, "   ")).toEqual({ hits: [], total: 0 });
+  });
+
+  it("limite le nombre de résultats mais donne le total", async () => {
+    const r = await searchObjects(db, "a", 2);
+    expect(r.hits).toHaveLength(2);
+    expect(r.total).toBeGreaterThan(2);
   });
 });
