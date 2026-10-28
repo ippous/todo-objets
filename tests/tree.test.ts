@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildForest, flatten, nextDueDate, pathTo, subtreeIds, valuePerHour, wouldCreateCycle } from "@/lib/tree";
+import { buildForest, flatten, groupByRoot, nextDueDate, pathTo, subtreeIds, valuePerHour, wouldCreateCycle } from "@/lib/tree";
 
 const objs = [
   { id: "moulin", name: "Le Moulin", parentId: null, position: 0 },
@@ -68,6 +68,27 @@ describe("sous-arbres et boucles", () => {
 
   it("donne le chemin depuis la racine", () => {
     expect(pathTo(objs, "pool").map((o) => o.id)).toEqual(["moulin", "annexe", "pool"]);
+  });
+});
+
+describe("groupByRoot", () => {
+  it("regroupe les tâches par objet racine, dans l'ordre de l'arbre", () => {
+    const items = [
+      { id: "t1", objectId: "tracteur" },
+      { id: "t2", objectId: "pool" },
+      { id: "t3", objectId: "moulin" },
+      { id: "t4", objectId: "sport" },
+    ];
+    const lanes = groupByRoot(objs, items);
+    expect(lanes.map((l) => l.root.id)).toEqual(["moulin", "tracteur"]);
+    expect(lanes[0].root.name).toBe("Le Moulin");
+    expect(lanes[0].items.map((t) => t.id)).toEqual(["t2", "t3", "t4"]);
+    expect(lanes[1].items.map((t) => t.id)).toEqual(["t1"]);
+  });
+
+  it("omet les racines sans tâche", () => {
+    expect(groupByRoot(objs, [{ objectId: "ferme" }]).map((l) => l.root.id)).toEqual(["moulin"]);
+    expect(groupByRoot(objs, [])).toEqual([]);
   });
 });
 

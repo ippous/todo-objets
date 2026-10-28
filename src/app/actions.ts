@@ -498,6 +498,30 @@ export async function setStatusAction(id: string, _: ActionState, fd: FormData):
   return { ok: true };
 }
 
+/**
+ * Changement de statut depuis le tableau (glisser-déposer).
+ * Passée à « fait » sans saisie, la tâche reprend ses estimations comme valeurs réalisées.
+ */
+export async function setStatusInlineAction(id: string, status: Todo["status"]): Promise<ActionState> {
+  await requireUser();
+  if (!STATUSES.includes(status)) return { error: "Statut invalide" };
+  try {
+    assertId(id);
+    const db = getDb();
+    const todo = await getTodo(db, id);
+    if (!todo) throw new DomainError("Tâche introuvable");
+    await setTodoStatus(db, id, status, {
+      actualHours: todo.actualHours ?? todo.estHours,
+      actualValueEur: todo.actualValueEur ?? todo.estValueEur,
+    });
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
 export async function deleteTodoAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
   await requireUser();
   try {
