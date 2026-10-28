@@ -12,6 +12,7 @@ import {
   objectTypes,
   objects,
   photos,
+  subtasks,
   todos,
   users,
   type DocumentRow,
@@ -21,9 +22,10 @@ import {
   type NewTodo,
   type ObjectRow,
   type Photo,
+  type Subtask,
   type Todo,
 } from "@/db/schema";
-import { emptyStats, nextDueDate, round2, type Recurrence, type Stats } from "./tree";
+import { emptyStats, nextDueDate, pathTo, round2, type Recurrence, type Stats } from "./tree";
 
 export class DomainError extends Error {}
 
@@ -404,6 +406,11 @@ export async function setTodoStatus(
         previousOccurrenceId: todo.id,
       })
       .returning({ id: todos.id });
+    // La nouvelle occurrence reprend les sous-tâches, toutes décochées
+    const subs = await tx.select().from(subtasks).where(eq(subtasks.todoId, id)).orderBy(asc(subtasks.position));
+    if (subs.length) {
+      await tx.insert(subtasks).values(subs.map((st) => ({ todoId: next.id, title: st.title, position: st.position })));
+    }
     return next.id;
   });
 }
@@ -446,6 +453,50 @@ export async function listAllTags(db: Db): Promise<string[]> {
       UNION SELECT unnest(tags) AS tag FROM objects
     ) t ORDER BY tag`);
   return rowsOf<{ tag: string }>(res).map((r) => r.tag);
+}
+
+// ---------- Recherche d'objets ----------
+
+/** Minuscules sans accents ni espaces multiples, pour comparer « écurie » et « ECURIE ». */
+export const foldText = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+export type ObjectSearchHit = { id: string; name: string; type: string | null; path: string };
+
+/**
+ * Cherche un texte dans les objets (nom, type, lieu, tags, description), sans tenir
+ * compte de la casse ni des accents. Les noms qui commencent par le texte d'abord,
+ * puis ceux qui le contiennent, puis les autres champs.
+ */
+export async function searchObjects(db: Db, rawQuery: string, limit = 10): Promise<{ hits: ObjectSearchHit[]; total: number }> {
+  const q = foldText(rawQuery.trim().slice(0, 100));
+  if (!q) return { hits: [], total: 0 };
+  const objs = await listObjects(db);
+  const matches = objs
+    .map((o) => {
+      const name = foldText(o.name);
+      const other = foldText([o.type ?? "", o.location ?? "", o.tags.join(" "), (o.description ?? "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ")].join(" "));
+      const rank = name.startsWith(q) ? 0 : name.includes(q) ? 1 : other.includes(q) ? 2 : -1;
+      return { o, rank };
+    })
+    .filter((m) => m.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || a.o.name.localeCompare(b.o.name, "fr"));
+  return {
+    hits: matches.slice(0, limit).map(({ o }) => ({
+      id: o.id,
+      name: o.name,
+      type: o.type,
+      path: pathTo(objs, o.id)
+        .slice(0, -1)
+        .map((p) => p.name)
+        .join(" › "),
+    })),
+    total: matches.length,
+  };
 }
 
 // ---------- Utilisateurs ----------
@@ -779,6 +830,67 @@ export async function addLink(
 export async function deleteLink(db: Db, id: string): Promise<void> {
   const [row] = await db.delete(links).where(eq(links.id, id)).returning({ id: links.id });
   if (!row) throw new DomainError("Lien introuvable");
+}
+
+// ---------- Sous-tâches ----------
+
+export const SUBTASK_MAX_LENGTH = 300;
+
+function cleanSubtaskTitle(raw: string) {
+  const title = raw.replace(/\s+/g, " ").trim();
+  if (!title) throw new DomainError("Saisis le texte de la sous-tâche");
+  if (title.length > SUBTASK_MAX_LENGTH) throw new DomainError(`Sous-tâche trop longue (${SUBTASK_MAX_LENGTH} caractères au plus)`);
+  return title;
+}
+
+export async function listSubtasks(db: Db, todoId: string): Promise<Subtask[]> {
+  return db
+    .select()
+    .from(subtasks)
+    .where(eq(subtasks.todoId, todoId))
+    .orderBy(asc(subtasks.position), asc(subtasks.createdAt));
+}
+
+/** Ajoute une sous-tâche en fin de liste. */
+export async function addSubtask(db: Db, todoId: string, rawTitle: string): Promise<Subtask> {
+  const title = cleanSubtaskTitle(rawTitle);
+  if (!(await getTodo(db, todoId))) throw new DomainError("Tâche introuvable");
+  const [{ max }] = await db
+    .select({ max: sql<number | null>`max(${subtasks.position})` })
+    .from(subtasks)
+    .where(eq(subtasks.todoId, todoId));
+  const [row] = await db
+    .insert(subtasks)
+    .values({ todoId, title, position: max == null ? 0 : Number(max) + 1 })
+    .returning();
+  return row;
+}
+
+export async function updateSubtask(db: Db, id: string, data: { title?: string; done?: boolean }): Promise<void> {
+  const set: Partial<Subtask> = {};
+  if (data.title !== undefined) set.title = cleanSubtaskTitle(data.title);
+  if (data.done !== undefined) set.done = data.done;
+  const [row] = await db.update(subtasks).set(set).where(eq(subtasks.id, id)).returning({ id: subtasks.id });
+  if (!row) throw new DomainError("Sous-tâche introuvable");
+}
+
+export async function deleteSubtask(db: Db, id: string): Promise<void> {
+  const [row] = await db.delete(subtasks).where(eq(subtasks.id, id)).returning({ id: subtasks.id });
+  if (!row) throw new DomainError("Sous-tâche introuvable");
+}
+
+/** Range les sous-tâches d'une tâche dans l'ordre donné (la liste complète de leurs identifiants). */
+export async function reorderSubtasks(db: Db, todoId: string, orderedIds: string[]): Promise<void> {
+  await db.transaction(async (tx) => {
+    const rows = await tx.select({ id: subtasks.id }).from(subtasks).where(eq(subtasks.todoId, todoId)).for("update");
+    const current = new Set(rows.map((r) => r.id));
+    if (orderedIds.length !== current.size || new Set(orderedIds).size !== current.size || !orderedIds.every((i) => current.has(i))) {
+      throw new DomainError("La liste a changé entre-temps. Recharge la page.");
+    }
+    for (const [position, id] of orderedIds.entries()) {
+      await tx.update(subtasks).set({ position }).where(eq(subtasks.id, id));
+    }
+  });
 }
 
 // ---------- Purge des données de test ----------

@@ -59,7 +59,7 @@ Tous sont marqués *lecture seule* (`readOnlyHint`). Les résultats sont en JSON
 | `lister_objets` | `racine_id`, `profondeur_max`, `type`, `recherche`, `limite` | objets dans l'ordre de l'arbre : chemin, type, profondeur, nombre de sous-objets, cumuls de la branche (tâches ouvertes, heures, €) |
 | `obtenir_objet` | `id`, `inclure_taches_faites` | fiche complète : chemin, description (texte), emplacement, tags, sous-objets, bilan, tâches de la branche, documents (lien vers la visionneuse), liens, nombre de photos |
 | `rechercher_taches` | `recherche`, `statut` (ouvertes·a_faire·en_cours·fait·toutes), `objet_id` (+ sous-arbre), `responsable` (nom, e-mail, « moi », « personne »), `categorie`, `priorite`, `tag`, `echeance_avant`, `en_retard`, `tri` (echeance·priorite·ratio·recent), `limite` | tâches avec objet et chemin, statut, priorité, échéance, retard, valeurs estimées/réalisées, €/h, responsable |
-| `obtenir_tache` | `id` | fiche complète : description (texte), objet et chemin, valeurs, dates, responsable, créateur, documents, liens, nombre de photos |
+| `obtenir_tache` | `id` | fiche complète : description (texte), sous-tâches (texte, faite), objet et chemin, valeurs, dates, responsable, créateur, documents, liens, nombre de photos |
 
 Les descriptions (texte enrichi) sont converties en texte lisible : titres `##`, listes `-`, gras `**…**`, liens `texte (adresse)`. Le contenu des fichiers (documents, photos) n'est pas transmis : l'assistant reçoit leur nom, leur type et l'adresse de la visionneuse.
 

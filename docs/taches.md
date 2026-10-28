@@ -23,6 +23,17 @@ Une **tâche** est toujours rattachée à **un objet**. Elle apparaît sur la fi
 
 **Ratio €/h** : valeur estimée ÷ durée estimée. Il s'affiche sur chaque tâche et sert de critère de tri pour repérer les tâches les plus rentables.
 
+## Sous-tâches
+
+En haut de la fiche d'une tâche, une **liste ordonnée de sous-tâches** : chacune n'est qu'un texte (300 caractères au plus) et une case à cocher. Le compteur « 2 sur 5 faites » résume l'avancement.
+
+- **Ajouter** : champ en bas de la liste, puis Entrée ou « Ajouter ». La nouvelle sous-tâche se place en dernier.
+- **Cocher / décocher** : enregistré aussitôt.
+- **Réordonner** : glisser une ligne (souris) au-dessus ou au-dessous d'une autre, ou utiliser les flèches ↑ ↓ de la ligne (tactile, clavier).
+- **Modifier** le texte, ou **Supprimer** la sous-tâche.
+
+Les sous-tâches disparaissent avec leur tâche. L'occurrence suivante d'une tâche récurrente les reprend, toutes décochées. Côté base : table `subtasks` (`todo_id`, `title`, `done`, `position`) ; un réordonnancement n'est accepté qu'avec la liste complète des sous-tâches de la tâche.
+
 ## Statut rapide
 
 Sur chaque ligne de tâche, un sélecteur change le statut sans ouvrir la fiche.
@@ -31,7 +42,7 @@ Sur chaque ligne de tâche, un sélecteur change le statut sans ouvrir la fiche.
 
 Quand une tâche récurrente passe à **« fait »**, l'occurrence suivante est créée automatiquement :
 
-- même titre, objet, réglages et tags ;
+- même titre, objet, réglages, tags et sous-tâches (décochées) ;
 - statut « à faire », valeurs réalisées vides ;
 - échéance décalée d'1, 3 ou 12 mois à partir de l'échéance précédente (ou de la date du jour sans échéance).
 

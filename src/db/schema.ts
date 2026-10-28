@@ -111,6 +111,22 @@ export const todos = pgTable(
   ],
 );
 
+/** Sous-tâches : une liste ordonnée de cases à cocher dans une tâche. */
+export const subtasks = pgTable(
+  "subtasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    todoId: uuid("todo_id")
+      .notNull()
+      .references(() => todos.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    done: boolean("done").notNull().default(false),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("subtasks_todo_idx").on(t.todoId, t.position)],
+);
+
 export const photos = pgTable(
   "photos",
   {
@@ -182,6 +198,7 @@ export const links = pgTable(
 export type User = typeof users.$inferSelect;
 export type DocumentRow = typeof documents.$inferSelect;
 export type LinkRow = typeof links.$inferSelect;
+export type Subtask = typeof subtasks.$inferSelect;
 // ---------- Accès des assistants IA (MCP) ----------
 
 /** Applications clientes OAuth (enregistrement dynamique, RFC 7591). */
