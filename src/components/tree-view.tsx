@@ -71,14 +71,18 @@ type Ctx = {
   menuOpen: string | null;
   setMenuOpen: (id: string | null) => void;
   pending: boolean;
+  focusId: string | null;
 };
 
 export function TreeView({
   forest,
+  focusId = null,
   users = [],
   objectTypes = [],
 }: {
   forest: TreeViewNode[];
+  /** Objet pris comme racine de l'affichage, s'il y en a un */
+  focusId?: string | null;
   users?: { id: string; name: string }[];
   objectTypes?: { id: string; name: string }[];
 }) {
@@ -157,6 +161,7 @@ export function TreeView({
     menuOpen,
     setMenuOpen,
     pending,
+    focusId,
   };
 
   return (
@@ -414,6 +419,15 @@ function NodeMenu({ node, ctx }: { node: TreeViewNode; ctx: Ctx }) {
             </div>
           ) : (
             <>
+              {node.id === ctx.focusId ? (
+                <Link role="menuitem" href="/" className={item}>
+                  Revenir à l&apos;arbre complet
+                </Link>
+              ) : (
+                <Link role="menuitem" href={`/?racine=${node.id}`} className={item}>
+                  Afficher l&apos;arbre depuis cet objet
+                </Link>
+              )}
               <Link role="menuitem" href={`/objets/nouveau?parent=${node.id}`} className={item}>
                 Ajouter un sous-objet
               </Link>

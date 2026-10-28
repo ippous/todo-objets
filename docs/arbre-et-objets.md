@@ -27,11 +27,18 @@ La recherche de tâches reste dans la page « Tâches » (filtre « Rechercher �
 
 | Action | Effet |
 |---|---|
+| Afficher l'arbre depuis cet objet | recentre l'affichage sur cet objet (voir ci-dessous) |
 | Ajouter un sous-objet | ouvre le formulaire de création avec cet objet comme parent |
 | Ajouter plusieurs sous-objets… | ouvre la boîte d'[ajout en lot](ajout-en-lot.md) |
 | Ajouter plusieurs tâches… | idem, pour des tâches rattachées à cet objet |
 | Déplacer | passe en mode Déplacer (voir ci-dessous) |
 | Supprimer… | demande confirmation (voir ci-dessous) |
+
+### Recentrer l'arbre sur un objet
+
+*Afficher l'arbre depuis cet objet* ne montre plus que cet objet et ses descendants, comme s'il était la racine (adresse `/?racine=<id>`, que l'on peut garder en favori). Les cumuls de l'en-tête portent alors sur ce seul sous-arbre.
+
+Un bandeau rappelle la racine affichée avec ses ancêtres : un clic sur un ancêtre recentre l'arbre sur lui. Le bouton **« Revenir à l'arbre complet »** (aussi dans le menu « … » de l'objet affiché en racine) rétablit l'affichage normal. Si l'objet n'existe plus, l'arbre complet est affiché.
 
 ### Déplacer un objet
 
