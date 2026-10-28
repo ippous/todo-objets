@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Carnet</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="popup">
+    <header class="bar">
+      <img src="icons/icon32.png" alt="" width="20" height="20" />
+      <strong>Carnet</strong>
+      <button id="open-options" class="icon-btn" type="button" title="Réglages" aria-label="Réglages">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      </button>
+    </header>
+
+    <!-- Message bloquant : pas de jeton, page non web… -->
+    <section id="blocker" class="blocker" hidden></section>
+
+    <main id="main" hidden>
+      <section class="page-card" aria-label="Page à ajouter">
+        <img id="favicon" class="favicon" alt="" width="16" height="16" />
+        <div class="page-fields">
+          <label class="sr" for="link-title">Titre du lien</label>
+          <input id="link-title" class="title-input" type="text" maxlength="200" placeholder="Titre du lien" />
+          <div id="page-url" class="page-url"></div>
+        </div>
+      </section>
+
+      <nav class="tabs" role="tablist">
+        <button role="tab" id="tab-search" aria-selected="true" aria-controls="panel-search" type="button">Rechercher</button>
+        <button role="tab" id="tab-tree" aria-selected="false" aria-controls="panel-tree" type="button">Arborescence</button>
+      </nav>
+
+      <section id="panel-search" role="tabpanel" aria-labelledby="tab-search" class="panel">
+        <div class="search-row">
+          <input id="search" type="search" placeholder="Nom de la tâche…" autocomplete="off" />
+        </div>
+        <label class="check"><input id="include-done" type="checkbox" /> Inclure les tâches faites</label>
+        <div id="search-results" class="list" aria-live="polite"></div>
+      </section>
+
+      <section id="panel-tree" role="tabpanel" aria-labelledby="tab-tree" class="panel" hidden>
+        <div id="tree" class="tree" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <footer id="footer" class="footer" hidden>
+      <div id="status" class="status" role="status"></div>
+      <button id="add" class="primary" type="button" disabled>Choisir une tâche</button>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

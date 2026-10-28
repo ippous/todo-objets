@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Carnet — réglages de l'extension</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="options">
+    <h1><img src="icons/icon48.png" alt="" width="32" height="32" /> Carnet — réglages</h1>
+    <p class="lead">L'extension ajoute l'adresse de l'onglet courant comme lien sur une tâche Carnet.</p>
+
+    <form id="form" class="card" autocomplete="off">
+      <label class="field">
+        <span>Jeton personnel</span>
+        <input id="token" type="password" placeholder="carnet_pat_…" spellcheck="false" required />
+        <small>Conservé uniquement dans ce navigateur. Il doit avoir le droit « Lecture et écriture ».</small>
+      </label>
+      <label class="field">
+        <span>Adresse de Carnet</span>
+        <input id="server" type="url" placeholder="https://todo.jaume-eric.com" spellcheck="false" />
+        <small>À laisser par défaut, sauf pour tester un autre serveur.</small>
+      </label>
+      <div class="row">
+        <button class="primary" type="submit">Enregistrer et tester</button>
+        <button id="show" class="secondary" type="button">Afficher le jeton</button>
+      </div>
+      <div id="result" class="result" role="status" hidden></div>
+    </form>
+
+    <h2>Obtenir un jeton</h2>
+    <ol>
+      <li>Ouvre <a id="connexion-ia" href="https://todo.jaume-eric.com/connexion-ia" target="_blank">Carnet › Connexion IA</a>.</li>
+      <li>Dans <em>Jeton personnel</em>, donne un nom (ex. « Extension Chrome — PC bureau ») et choisis <strong>Lecture et écriture</strong>.</li>
+      <li>Clique sur <em>Créer un jeton</em>, copie le jeton <code>carnet_pat_…</code> (affiché une seule fois) et colle-le ci-dessus.</li>
+    </ol>
+    <p>Pour le révoquer : <em>Connexion IA › Retirer l'accès</em>.</p>
+
+    <h2>Raccourci</h2>
+    <p><kbd>Alt</kbd> + <kbd>Maj</kbd> + <kbd>K</kbd> ouvre l'extension sur la page courante (modifiable dans <code>chrome://extensions/shortcuts</code>).</p>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
