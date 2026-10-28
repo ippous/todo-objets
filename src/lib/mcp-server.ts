@@ -11,6 +11,7 @@ import {
   listLinks,
   listObjects,
   listPhotos,
+  listSubtasks,
   listTodos,
   listTypes,
   listUsers,
@@ -307,19 +308,20 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
     "obtenir_tache",
     {
       title: "Détail d'une tâche",
-      description: "Fiche complète d'une tâche : description (texte), objet et chemin, valeurs, dates, responsable, documents et liens.",
+      description: "Fiche complète d'une tâche : description (texte), sous-tâches, objet et chemin, valeurs, dates, responsable, documents et liens.",
       inputSchema: { id: UUID.describe("Identifiant de la tâche") },
       annotations: READ_ONLY,
     },
     async ({ id }) => {
       const t = await getTodo(db, id);
       if (!t) return error(`Tâche ${id} introuvable`);
-      const [objs, people, docs, links, photos] = await Promise.all([
+      const [objs, people, docs, links, photos, subs] = await Promise.all([
         listObjects(db),
         listUsers(db),
         listDocuments(db, { todoId: id }),
         listLinks(db, { todoId: id }),
         listPhotos(db, { todoId: id }),
+        listSubtasks(db, id),
       ]);
       const name = (uid: string | null) => (uid ? (people.find((u) => u.id === uid)?.name ?? null) : null);
       const obj = objs.find((o) => o.id === t.objectId);
@@ -344,6 +346,7 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
         valeur_realisee_eur: t.actualValueEur,
         euros_par_heure: t.estHours && t.estValueEur ? Math.round((t.estValueEur / t.estHours) * 100) / 100 : null,
         tags: t.tags,
+        sous_taches: subs.map((st) => ({ texte: st.title, faite: st.done })),
         documents: docs.map((d) => ({ id: d.id, nom: d.filename, type: d.typeName, format: d.contentType, taille_octets: d.size, url: docUrl(d.id) })),
         liens: links.map((l) => ({ titre: l.title, url: l.url })),
         photos: photos.length,

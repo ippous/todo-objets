@@ -5,10 +5,11 @@ import { ObjectDocuments } from "@/components/object-documents";
 import { ObjectLinks } from "@/components/object-links";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { PhotoUploader } from "@/components/photo-uploader";
+import { SubtaskList } from "@/components/subtask-list";
 import { TodoForm } from "@/components/todo-form";
 import { getDb } from "@/db";
 import { objectOptions } from "@/lib/options";
-import { getTodo, getUser, listDocuments, listLinks, listObjects, listPhotos, listTypes, listUsers } from "@/lib/repo";
+import { getTodo, getUser, listDocuments, listLinks, listObjects, listPhotos, listSubtasks, listTypes, listUsers } from "@/lib/repo";
 import { storageMode, storagePrefix } from "@/lib/storage";
 import { returnPath } from "@/lib/return-to";
 import { DeleteTodo } from "./delete-todo";
@@ -22,7 +23,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
   const db = getDb();
   const todo = await getTodo(db, id);
   if (!todo) notFound();
-  const [objs, users, creator, photos, docs, links, docTypes] = await Promise.all([
+  const [objs, users, creator, photos, docs, links, docTypes, subs] = await Promise.all([
     listObjects(db),
     listUsers(db),
     todo.createdById ? getUser(db, todo.createdById) : undefined,
@@ -30,6 +31,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
     listDocuments(db, { todoId: id }),
     listLinks(db, { todoId: id }),
     listTypes(db, "document"),
+    listSubtasks(db, id),
   ]);
   const userName = new Map(users.map((u) => [u.id, u.name]));
   const back = returnPath(retour, `/objets/${todo.objectId}`);
@@ -44,6 +46,12 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
           {creator ? ` par ${creator.name}` : ""}
         </p>
       </div>
+      <section aria-labelledby="sous-taches" className="grid max-w-2xl gap-3">
+        <h2 id="sous-taches" className="text-lg font-bold">
+          Sous-tâches
+        </h2>
+        <SubtaskList todoId={todo.id} items={subs.map((s) => ({ id: s.id, title: s.title, done: s.done }))} />
+      </section>
       <section aria-labelledby="photos" className="grid max-w-2xl gap-3">
         <h2 id="photos" className="text-lg font-bold">
           Photos {photos.length > 0 && <span className="font-normal text-muted">({photos.length})</span>}

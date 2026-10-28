@@ -20,6 +20,7 @@ Ils s'exécutent sur un **Postgres en mémoire** (PGlite), avec les vraies migra
 | `tests/rich-text.test.ts` | nettoyage du HTML des descriptions, conversion de l'ancien texte brut |
 | `tests/oauth.test.ts` | jetons personnels, adresses de retour, code + PKCE à usage unique, rotation des jetons de rafraîchissement, révocations, droits lecture / écriture |
 | `tests/mcp-write.test.ts` | outils MCP selon les droits, création / modification / déplacement d'objets, tâches (récurrence, responsable), liens, photos (redimensionnement, vignette, refus du non-image) |
+| `tests/subtasks.test.ts` | sous-tâches : ajout en fin de liste, case à cocher, texte, suppression, réordonnancement (liste complète exigée), reprise par la récurrence, suppression avec la tâche |
 | `tests/purge.test.ts` | purge des données de test (sous-arbres, fichiers, types, jokers) |
 
 ## Tests de bout en bout (Playwright)
@@ -37,6 +38,7 @@ Ils tournent sur deux profils : **mobile** (Pixel 7) et **desktop**.
 | `e2e/mcp.spec.ts` | serveur MCP avec le client MCP officiel : 401 et métadonnées, jeton personnel (outils, révocation), parcours OAuth complet (enregistrement, connexion, consentement, PKCE, rafraîchissement, révocation, refus, droit d'écriture), jeton en écriture (objets, tâches, récurrence, liens, photo, vérifiés dans l'appli) |
 | `e2e/camera.spec.ts` | prise de vue : appareil photo natif sur mobile, webcam simulée par Chromium sur PC (plusieurs prises, retrait, annulation) |
 | `e2e/tableau.spec.ts` | vue tableau : trois colonnes, couloirs par objet racine, statut changé par les flèches et par glisser-déposer, persistance, réalisé repris des estimations |
+| `e2e/sous-taches.spec.ts` | sous-tâches d'une tâche : ajout, case à cocher, ordre par flèches et par glisser-déposer, modification, suppression, persistance |
 | `e2e/visionneuses.spec.ts` | aperçu PDF, Word, ODT, Excel, ODS, PowerPoint, CSV, texte, ZIP ; visionneuse refusée sans connexion |
 
 Les fichiers d'exemple sont dans `e2e/fixtures/`.

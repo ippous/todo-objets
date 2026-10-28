@@ -12,6 +12,7 @@ import {
   addDocument,
   addLink,
   addPhoto,
+  addSubtask,
   createObject,
   createObjects,
   createTodo,
@@ -21,10 +22,12 @@ import {
   deleteLink,
   deleteObject,
   deletePhoto,
+  deleteSubtask,
   deleteTodo,
   DomainError,
   getTodo,
   moveObject,
+  reorderSubtasks,
   createType,
   deleteType,
   renameType,
@@ -33,6 +36,7 @@ import {
   type TypeKind,
   setTodoStatus,
   updateObject,
+  updateSubtask,
   updateTodo,
   updateUser,
 } from "@/lib/repo";
@@ -359,6 +363,65 @@ export async function deleteLinkAction(id: string): Promise<ActionState> {
   try {
     assertId(id);
     await deleteLink(getDb(), id);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+// ---------- Sous-tâches ----------
+
+export async function addSubtaskAction(todoId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(todoId);
+    await addSubtask(getDb(), todoId, str(fd, "title"));
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function updateSubtaskAction(id: string, data: { title?: string; done?: boolean }): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await updateSubtask(getDb(), id, {
+      title: typeof data.title === "string" ? data.title : undefined,
+      done: typeof data.done === "boolean" ? data.done : undefined,
+    });
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+export async function deleteSubtaskAction(id: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await deleteSubtask(getDb(), id);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+/** Nouvel ordre des sous-tâches (glisser-déposer ou flèches). */
+export async function reorderSubtasksAction(todoId: string, orderedIds: string[]): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(todoId);
+    if (!Array.isArray(orderedIds)) throw new DomainError("Ordre invalide");
+    orderedIds.forEach(assertId);
+    await reorderSubtasks(getDb(), todoId, orderedIds);
   } catch (err) {
     return handle(err);
   }
