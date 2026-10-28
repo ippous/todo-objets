@@ -25,6 +25,8 @@ import {
   DomainError,
   getTodo,
   moveObject,
+  searchObjects,
+  type ObjectSearchHit,
   createType,
   deleteType,
   renameType,
@@ -167,6 +169,12 @@ export async function deleteObjectInlineAction(id: string): Promise<ActionState>
   revalidatePath("/", "layout");
   refresh();
   return { ok: true };
+}
+
+/** Recherche d'objets depuis l'arbre (champ avec suggestions). */
+export async function searchObjectsAction(q: string): Promise<{ hits: ObjectSearchHit[]; total: number }> {
+  await requireUser();
+  return searchObjects(getDb(), String(q ?? ""));
 }
 
 // ---------- Types d'objets et de documents ----------

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getDb } from "@/db";
 import { BulkAddButton } from "@/components/bulk-add";
+import { ObjectSearch } from "@/components/object-search";
 import { TreeView, type TreeViewNode } from "@/components/tree-view";
 import { fmtEur, fmtHours } from "@/lib/format";
 import { listObjects, listTypes, listUsers, objectCovers, openStatsByObject, todoCountByObject } from "@/lib/repo";
@@ -68,6 +69,12 @@ export default async function ArbrePage() {
           />
         </div>
       </div>
+
+      {forest.length > 0 && (
+        <search aria-label="Rechercher un objet">
+          <ObjectSearch />
+        </search>
+      )}
 
       {forest.length === 0 ? (
         <div className="rounded-xl border border-dashed border-line p-6">
