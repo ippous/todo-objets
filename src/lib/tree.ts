@@ -125,6 +125,29 @@ export function pathTo<T extends TreeObject>(objects: T[], id: string): T[] {
   return path;
 }
 
+/**
+ * Regroupe des tâches par objet racine (couloirs du tableau), dans l'ordre de l'arbre.
+ * Les racines sans tâche sont omises ; un objet introuvable compte comme sa propre racine.
+ */
+export function groupByRoot<T extends { objectId: string }>(
+  objects: TreeObject[],
+  items: T[],
+): { root: { id: string; name: string }; items: T[] }[] {
+  const byId = new Map(objects.map((o) => [o.id, o]));
+  const lanes = new Map<string, T[]>();
+  for (const item of items) {
+    const rootId = pathTo(objects, item.objectId)[0]?.id ?? item.objectId;
+    const list = lanes.get(rootId) ?? [];
+    list.push(item);
+    lanes.set(rootId, list);
+  }
+  const order = buildForest(objects).map((n) => n.id);
+  const rank = (id: string) => order.indexOf(id) + 1 || order.length + 1;
+  return [...lanes.entries()]
+    .sort(([a], [b]) => rank(a) - rank(b))
+    .map(([id, list]) => ({ root: { id, name: byId.get(id)?.name ?? "?" }, items: list }));
+}
+
 /** Valeur par heure estimée (€/h), null si non calculable. */
 export function valuePerHour(estValueEur: number | null | undefined, estHours: number | null | undefined) {
   if (estValueEur == null || estHours == null || estHours <= 0) return null;

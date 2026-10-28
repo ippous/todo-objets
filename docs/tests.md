@@ -12,7 +12,7 @@ Ils s'exécutent sur un **Postgres en mémoire** (PGlite), avec les vraies migra
 
 | Fichier | Couvre |
 |---|---|
-| `tests/tree.test.ts` | forêt, cumuls par branche, chemins, prochaine échéance |
+| `tests/tree.test.ts` | forêt, cumuls par branche, chemins, regroupement par racine, prochaine échéance |
 | `tests/repo.test.ts` | objets, déplacement anti-boucle, suppression, tâches, filtres, tris, récurrence, ajout en lot |
 | `tests/photos.test.ts` | vignette automatique, changement de vignette, suppression |
 | `tests/documents.test.ts` | documents et liens des objets et des tâches, normalisation des URL |
@@ -36,6 +36,7 @@ Ils tournent sur deux profils : **mobile** (Pixel 7) et **desktop**.
 | `e2e/coller-photo.spec.ts` | photo collée (Ctrl+V) sur un objet et une tâche, collage ignoré dans un champ de saisie, bouton « Coller une image » |
 | `e2e/mcp.spec.ts` | serveur MCP avec le client MCP officiel : 401 et métadonnées, jeton personnel (outils, révocation), parcours OAuth complet (enregistrement, connexion, consentement, PKCE, rafraîchissement, révocation, refus, droit d'écriture), jeton en écriture (objets, tâches, récurrence, liens, photo, vérifiés dans l'appli) |
 | `e2e/camera.spec.ts` | prise de vue : appareil photo natif sur mobile, webcam simulée par Chromium sur PC (plusieurs prises, retrait, annulation) |
+| `e2e/tableau.spec.ts` | vue tableau : trois colonnes, couloirs par objet racine, statut changé par les flèches et par glisser-déposer, persistance, réalisé repris des estimations |
 | `e2e/visionneuses.spec.ts` | aperçu PDF, Word, ODT, Excel, ODS, PowerPoint, CSV, texte, ZIP ; visionneuse refusée sans connexion |
 
 Les fichiers d'exemple sont dans `e2e/fixtures/`.

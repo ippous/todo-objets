@@ -52,6 +52,17 @@ C'est la vue « à plat » de toutes les tâches, avec leur vignette quand elles
 
 Tris possibles : **échéance**, **priorité**, **ratio €/h**, **plus récentes**. Les filtres sont dans l'URL, qu'on peut donc mettre en favori ou partager.
 
+## Tableau (`/taches?vue=tableau`)
+
+Le bouton **Affichage : Liste / Tableau** en haut de la liste bascule vers une vue « kanban » : une colonne par statut (**à faire**, **en cours**, **fait**). Les autres filtres et le tri s'appliquent ; le filtre de statut est masqué puisque les trois statuts sont affichés.
+
+| Regrouper | Effet |
+|---|---|
+| Sans regroupement | toutes les tâches dans les trois colonnes |
+| Par objet racine | un couloir horizontal par racine de l'arbre (dans l'ordre de l'arbre), qui réunit les tâches de tout son sous-arbre |
+
+Pour changer le statut d'une tâche, on **glisse sa carte** dans une autre colonne (souris), ou on utilise les flèches de la carte (tactile, clavier). Le changement est enregistré aussitôt. Une tâche passée à « fait » de cette façon reprend sa durée et sa valeur estimées comme réalisées (si rien n'était saisi), et une tâche récurrente crée son occurrence suivante comme d'habitude.
+
 ## Fiche d'une tâche (`/taches/[id]`)
 
 De haut en bas : les [photos](photos.md), les [documents et liens](documents-et-liens.md) de la tâche, puis le formulaire *Détails de la tâche* pour modifier tous les champs, et la suppression (avec confirmation), qui efface aussi les photos, documents et liens de la tâche.

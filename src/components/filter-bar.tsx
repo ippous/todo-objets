@@ -24,19 +24,24 @@ export function FilterBar({
   objects,
   tags,
   meId,
+  keep = {},
+  hideStatus = false,
 }: {
   values: FilterValues;
   users: { id: string; name: string }[];
   objects: ObjectOption[];
   tags: string[];
   meId: string;
+  /** Paramètres conservés tels quels (vue, regroupement). */
+  keep?: Record<string, string>;
+  hideStatus?: boolean;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
 
   const apply = () => {
     const fd = new FormData(formRef.current!);
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(keep);
     for (const [k, v] of fd.entries()) if (typeof v === "string" && v !== "") params.set(k, v);
     router.replace(`/taches${params.size ? `?${params}` : ""}`, { scroll: false });
   };
@@ -65,13 +70,15 @@ export function FilterBar({
         </button>
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Select name="statut" label="Statut" value={values.statut}>
-          <option value="">Ouvertes (à faire, en cours)</option>
-          <option value="a_faire">À faire</option>
-          <option value="en_cours">En cours</option>
-          <option value="fait">Faites</option>
-          <option value="toutes">Toutes</option>
-        </Select>
+        {!hideStatus && (
+          <Select name="statut" label="Statut" value={values.statut}>
+            <option value="">Ouvertes (à faire, en cours)</option>
+            <option value="a_faire">À faire</option>
+            <option value="en_cours">En cours</option>
+            <option value="fait">Faites</option>
+            <option value="toutes">Toutes</option>
+          </Select>
+        )}
         <Select name="responsable" label="Responsable" value={values.responsable}>
           <option value="">Tout le monde</option>
           <option value={meId}>Moi</option>
@@ -128,7 +135,7 @@ export function FilterBar({
         </Select>
       </div>
       {Object.entries(values).some(([k, v]) => v && k !== "tri") && (
-        <Link href="/taches" className="w-fit text-sm text-moss underline-offset-4 hover:underline">
+        <Link href={`/taches${Object.keys(keep).length ? `?${new URLSearchParams(keep)}` : ""}`} className="w-fit text-sm text-moss underline-offset-4 hover:underline">
           Effacer les filtres
         </Link>
       )}
