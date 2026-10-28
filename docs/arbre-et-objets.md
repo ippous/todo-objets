@@ -17,6 +17,12 @@ L'arbre complet est affiché, dépliable branche par branche. Pour chaque objet,
 
 Le bouton **« Nouvel objet racine »** crée un arbre indépendant.
 
+### Rechercher un objet
+
+Le champ **« Rechercher un objet »**, au-dessus de l'arbre, propose les objets dont le **nom**, le **type**, le **lieu**, un **tag** ou la **description** contient le texte saisi, sans tenir compte des majuscules ni des accents (« ecurie » trouve « Écurie »). Chaque suggestion montre le type et le chemin depuis la racine ; les noms qui commencent par le texte viennent en premier. Un clic, ou les flèches puis Entrée, ouvre la fiche de l'objet. Au-delà de 10 résultats, le nombre total est indiqué pour inviter à affiner.
+
+La recherche de tâches reste dans la page « Tâches » (filtre « Rechercher »).
+
 ### Menu « … » d'un objet
 
 | Action | Effet |
