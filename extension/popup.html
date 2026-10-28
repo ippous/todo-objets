@@ -9,21 +9,40 @@
     <header class="bar">
       <img src="icons/icon32.png" alt="" width="20" height="20" />
       <strong>Carnet</strong>
+      <div id="modes" class="modes" role="radiogroup" aria-label="Que faut-il ajouter ?" hidden>
+        <button type="button" role="radio" data-mode="lien" aria-checked="true">Lien</button>
+        <button type="button" role="radio" data-mode="photo" aria-checked="false">Photo</button>
+      </div>
       <button id="open-options" class="icon-btn" type="button" title="Réglages" aria-label="Réglages">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
       </button>
     </header>
 
-    <!-- Message bloquant : pas de jeton, page non web… -->
+    <!-- Message bloquant : pas de jeton… -->
     <section id="blocker" class="blocker" hidden></section>
 
     <main id="main" hidden>
-      <section class="page-card" aria-label="Page à ajouter">
+      <!-- Mode lien : la page courante -->
+      <section id="link-card" class="page-card" aria-label="Page à ajouter">
         <img id="favicon" class="favicon" alt="" width="16" height="16" />
         <div class="page-fields">
           <label class="sr" for="link-title">Titre du lien</label>
           <input id="link-title" class="title-input" type="text" maxlength="200" placeholder="Titre du lien" />
           <div id="page-url" class="page-url"></div>
+        </div>
+      </section>
+
+      <!-- Mode photo -->
+      <section id="photo-card" class="photo-card" aria-label="Photo à ajouter" hidden>
+        <div id="preview" class="preview" aria-live="polite">
+          <span class="preview-empty">Colle (Ctrl+V) ou glisse une image ici</span>
+        </div>
+        <div class="photo-side">
+          <div id="photo-info" class="photo-info"></div>
+          <div class="photo-actions">
+            <button id="capture" class="secondary small" type="button">Capturer la page</button>
+            <label class="secondary small file-btn">Fichier…<input id="file" type="file" accept="image/*" hidden /></label>
+          </div>
         </div>
       </section>
 
@@ -34,7 +53,7 @@
 
       <section id="panel-search" role="tabpanel" aria-labelledby="tab-search" class="panel">
         <div class="search-row">
-          <input id="search" type="search" placeholder="Nom de la tâche…" autocomplete="off" />
+          <input id="search" type="search" placeholder="Nom d'une tâche ou d'un objet…" autocomplete="off" />
         </div>
         <label class="check"><input id="include-done" type="checkbox" /> Inclure les tâches faites</label>
         <div id="search-results" class="list" aria-live="polite"></div>
@@ -46,9 +65,12 @@
     </main>
 
     <footer id="footer" class="footer" hidden>
+      <div id="target" class="target"></div>
       <div id="status" class="status" role="status"></div>
-      <button id="add" class="primary" type="button" disabled>Choisir une tâche</button>
+      <button id="add" class="primary" type="button" disabled>Choisir une tâche ou un objet</button>
     </footer>
+
+    <div id="drop-hint" class="drop-hint" hidden>Dépose l'image ici</div>
 
     <script type="module" src="popup.js"></script>
   </body>

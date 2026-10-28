@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Carnet — ajouter la page",
   "short_name": "Carnet",
-  "version": "0.1.0",
-  "description": "Ajoute l'adresse de l'onglet courant comme lien sur une tâche Carnet, trouvée par son nom ou dans l'arborescence.",
+  "version": "0.2.0",
+  "description": "Ajoute la page courante (lien) ou une image (capture, image de la page, fichier, presse-papiers) à une tâche ou un objet Carnet.",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -11,12 +11,15 @@
     "128": "icons/icon128.png"
   },
   "action": {
-    "default_title": "Ajouter cette page à une tâche Carnet",
+    "default_title": "Ajouter à Carnet",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"
     }
+  },
+  "background": {
+    "service_worker": "background.js"
   },
   "options_ui": {
     "page": "options.html",
@@ -28,6 +31,7 @@
       "description": "Ouvrir Carnet sur la page courante"
     }
   },
-  "permissions": ["activeTab", "storage"],
-  "host_permissions": ["https://todo.jaume-eric.com/*"]
+  "permissions": ["activeTab", "storage", "contextMenus"],
+  "host_permissions": ["https://todo.jaume-eric.com/*"],
+  "optional_host_permissions": ["<all_urls>"]
 }
