@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { deleteTodoAction, updateTodoAction } from "@/app/actions";
+import { AuditTrail } from "@/components/audit-trail";
 import { ObjectDocuments } from "@/components/object-documents";
 import { ObjectLinks } from "@/components/object-links";
 import { PhotoGallery } from "@/components/photo-gallery";
@@ -8,6 +9,7 @@ import { PhotoUploader } from "@/components/photo-uploader";
 import { SubtaskList } from "@/components/subtask-list";
 import { TodoForm } from "@/components/todo-form";
 import { getDb } from "@/db";
+import { listAudit } from "@/lib/audit";
 import { objectOptions } from "@/lib/options";
 import { getTodo, getUser, listDocuments, listLinks, listObjects, listPhotos, listSubtasks, listTypes, listUsers } from "@/lib/repo";
 import { storageMode, storagePrefix } from "@/lib/storage";
@@ -23,7 +25,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
   const db = getDb();
   const todo = await getTodo(db, id);
   if (!todo) notFound();
-  const [objs, users, creator, photos, docs, links, docTypes, subs] = await Promise.all([
+  const [objs, users, creator, photos, docs, links, docTypes, subs, history] = await Promise.all([
     listObjects(db),
     listUsers(db),
     todo.createdById ? getUser(db, todo.createdById) : undefined,
@@ -32,6 +34,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
     listLinks(db, { todoId: id }),
     listTypes(db, "document"),
     listSubtasks(db, id),
+    listAudit(db, { todoId: id, limit: 100 }),
   ]);
   const userName = new Map(users.map((u) => [u.id, u.name]));
   const back = returnPath(retour, `/objets/${todo.objectId}`);
@@ -100,6 +103,12 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
         returnTo={back}
         submitLabel="Enregistrer"
       />
+      <details className="rounded-xl bg-surface p-4">
+        <summary className="cursor-pointer font-bold">Historique de la tâche</summary>
+        <div className="mt-3">
+          <AuditTrail entries={history} showEntity="none" />
+        </div>
+      </details>
       <DeleteTodo action={deleteTodoAction.bind(null, id)} returnTo={back} />
     </div>
   );
