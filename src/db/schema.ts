@@ -7,6 +7,7 @@ import {
   index,
   uniqueIndex,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -194,6 +195,44 @@ export const links = pgTable(
     check("links_one_owner", sql`(${t.objectId} IS NULL) <> (${t.todoId} IS NULL)`),
   ],
 );
+
+// ---------- Journal des actions ----------
+
+export const auditSourceEnum = pgEnum("audit_source", ["interface", "api", "mcp", "systeme"]);
+export const auditEntityEnum = pgEnum("audit_entity", ["objet", "tache"]);
+
+/**
+ * Journal des actions sur les objets et les tâches (et ce qui y est rattaché).
+ * Pas de clé étrangère vers l'élément : l'entrée reste après sa suppression,
+ * avec le nom de l'élément et de l'auteur au moment de l'action.
+ */
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    source: auditSourceEnum("source").notNull(),
+    // Application ou jeton utilisé (MCP, API)
+    client: text("client"),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    userName: text("user_name").notNull(),
+    entityKind: auditEntityEnum("entity_kind").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    entityLabel: text("entity_label").notNull(),
+    // Objet concerné : l'objet lui-même, ou celui de la tâche
+    objectId: uuid("object_id"),
+    action: text("action").notNull(),
+    details: jsonb("details").$type<Record<string, unknown>>(),
+  },
+  (t) => [
+    index("audit_log_entity_idx").on(t.entityKind, t.entityId, t.at),
+    index("audit_log_object_idx").on(t.objectId, t.at),
+    index("audit_log_at_idx").on(t.at),
+  ],
+);
+
+export type AuditEntry = typeof auditLog.$inferSelect;
+export type AuditSource = (typeof auditSourceEnum.enumValues)[number];
 
 export type User = typeof users.$inferSelect;
 export type DocumentRow = typeof documents.$inferSelect;

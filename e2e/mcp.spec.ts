@@ -93,7 +93,7 @@ test("jeton personnel : outils en lecture, puis révocation", async ({ page, bas
 
   const client = await mcpClient(baseURL!, token, await vercelCookie(page));
   const { tools } = await client.listTools();
-  expect(tools.map((t) => t.name).sort()).toEqual(["lister_objets", "obtenir_objet", "obtenir_tache", "rechercher_taches", "vue_ensemble"]);
+  expect(tools.map((t) => t.name).sort()).toEqual(["consulter_historique", "lister_objets", "obtenir_objet", "obtenir_tache", "rechercher_taches", "vue_ensemble"]);
   expect(tools.every((t) => t.annotations?.readOnlyHint)).toBe(true);
 
   const vue = parse(await client.callTool({ name: "vue_ensemble", arguments: {} }));

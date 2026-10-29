@@ -111,7 +111,7 @@ describe("tâches", () => {
       dueDate: "2026-06-15",
       recurrence: "annuelle",
     });
-    const nextId = await setTodoStatus(db, t.id, "fait", { actualHours: 7, actualValueEur: 0 }, "2026-06-20");
+    const nextId = await setTodoStatus(db, t.id, "fait", { actualHours: 7, actualValueEur: 0, today: "2026-06-20" });
     expect(nextId).toBeTruthy();
     const all = await listTodos(db, { subtreeOf: ids["Prairies"] });
     const next = all.find((x) => x.id === nextId)!;

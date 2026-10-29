@@ -106,7 +106,8 @@ export async function revokeAccess(db: Db, userId: string, id: string): Promise<
 
 // ---------- Vérification d'un jeton présenté au MCP ----------
 
-export type BearerAccess = { user: User; write: boolean };
+/** client : nom du jeton personnel ou de l'application OAuth (pour le journal). */
+export type BearerAccess = { user: User; write: boolean; client: string };
 
 /** Utilisateur actif correspondant à un jeton d'accès ou personnel valide, sinon null. */
 export async function verifyBearer(db: Db, token: string): Promise<User | null> {
@@ -134,7 +135,7 @@ export async function verifyBearerAccess(db: Db, token: string): Promise<BearerA
   if (!row.t.lastUsedAt || now.getTime() - row.t.lastUsedAt.getTime() > 5 * 60_000) {
     await db.update(apiTokens).set({ lastUsedAt: now }).where(eq(apiTokens.id, row.t.id));
   }
-  return { user: row.u, write: canWrite(row.t.scope) };
+  return { user: row.u, write: canWrite(row.t.scope), client: row.t.name };
 }
 
 // ---------- Clients OAuth ----------
