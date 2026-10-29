@@ -50,6 +50,13 @@
       "when": 1793221603767,
       "tag": "0006_sous_taches",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793306095874,
+      "tag": "0007_journal",
+      "breakpoints": true
     }
   ]
 }

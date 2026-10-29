@@ -5,6 +5,7 @@ import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@/db";
 import {
   apiTokens,
+  auditLog,
   documentTypes,
   documents,
   links,
@@ -25,6 +26,17 @@ import {
   type Subtask,
   type Todo,
 } from "@/db/schema";
+import {
+  diff,
+  logAction,
+  objectSnapshot,
+  objectTarget,
+  ownerOf,
+  ownerTarget,
+  todoSnapshot,
+  todoTarget,
+  type Actor,
+} from "./audit";
 import { emptyStats, nextDueDate, pathTo, round2, type Recurrence, type Stats } from "./tree";
 
 export class DomainError extends Error {}
@@ -74,12 +86,11 @@ export async function subtreeIdsDb(db: Db, rootId: string): Promise<string[]> {
   return rowsOf<{ id: string }>(res).map((r) => r.id);
 }
 
-export async function createObject(db: Db, data: NewObject): Promise<ObjectBase> {
-  if (data.parentId) {
-    const parent = await getObject(db, data.parentId);
-    if (!parent) throw new DomainError("Objet parent introuvable");
-  }
+export async function createObject(db: Db, data: NewObject, actor?: Actor): Promise<ObjectBase> {
+  const parent = data.parentId ? await getObject(db, data.parentId) : undefined;
+  if (data.parentId && !parent) throw new DomainError("Objet parent introuvable");
   const [row] = await db.insert(objects).values(data).returning();
+  await logAction(db, actor, { target: objectTarget(row), action: "creation", details: parent ? { parent: parent.name } : null });
   return row;
 }
 
@@ -91,25 +102,34 @@ export async function createObjects(
   parentId: string | null,
   names: string[],
   common: { typeId?: string | null } = {},
+  actor?: Actor,
 ): Promise<ObjectBase[]> {
   const clean = names.map((n) => n.trim()).filter(Boolean);
   if (clean.length === 0) throw new DomainError("Saisis au moins un nom");
   if (clean.length > BULK_MAX) throw new DomainError(`${BULK_MAX} objets au maximum à la fois`);
   if (clean.some((n) => n.length > 120)) throw new DomainError("Un nom dépasse 120 caractères");
   return db.transaction(async (tx) => {
+    let parentName: string | null = null;
     if (parentId) {
-      const [parent] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.id, parentId)).for("update");
+      const [parent] = await tx.select({ name: objects.name }).from(objects).where(eq(objects.id, parentId)).for("update");
       if (!parent) throw new DomainError("Objet parent introuvable");
+      parentName = parent.name;
     }
     const [{ max }] = await tx
       .select({ max: sql<number | null>`max(${objects.position})` })
       .from(objects)
       .where(parentId ? eq(objects.parentId, parentId) : isNull(objects.parentId));
     const start = (max ?? -1) + 1;
-    return tx
+    const rows = await tx
       .insert(objects)
       .values(clean.map((name, i) => ({ name, parentId, typeId: common.typeId || null, position: start + i })))
       .returning();
+    await logAction(
+      tx,
+      actor,
+      ...rows.map((o) => ({ target: objectTarget(o), action: "creation" as const, details: { lot: true, ...(parentName ? { parent: parentName } : {}) } })),
+    );
+    return rows;
   });
 }
 
@@ -119,18 +139,25 @@ export async function createTodos(
   objectId: string,
   titles: string[],
   common: Pick<NewTodo, "category" | "priority" | "assigneeId" | "dueDate" | "createdById"> = {},
+  actor?: Actor,
 ): Promise<Todo[]> {
   const clean = titles.map((t) => t.trim()).filter(Boolean);
   if (clean.length === 0) throw new DomainError("Saisis au moins un titre");
   if (clean.length > BULK_MAX) throw new DomainError(`${BULK_MAX} tâches au maximum à la fois`);
   if (clean.some((t) => t.length > 200)) throw new DomainError("Un titre dépasse 200 caractères");
   return db.transaction(async (tx) => {
-    const [obj] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.id, objectId)).for("update");
+    const [obj] = await tx.select({ name: objects.name }).from(objects).where(eq(objects.id, objectId)).for("update");
     if (!obj) throw new DomainError("Objet introuvable");
-    return tx
+    const rows = await tx
       .insert(todos)
       .values(clean.map((title) => ({ ...common, objectId, title })))
       .returning();
+    await logAction(
+      tx,
+      actor,
+      ...rows.map((t) => ({ target: todoTarget(t), action: "creation" as const, details: { lot: true, objet: obj.name } })),
+    );
+    return rows;
   });
 }
 
@@ -138,23 +165,31 @@ export async function updateObject(
   db: Db,
   id: string,
   data: Pick<NewObject, "name" | "typeId" | "description" | "location" | "tags">,
+  actor?: Actor,
 ): Promise<void> {
+  const before = actor ? await getObject(db, id) : undefined;
   await db.update(objects).set({ ...data, updatedAt: new Date() }).where(eq(objects.id, id));
+  const after = before ? await getObject(db, id) : undefined;
+  if (!before || !after) return;
+  const changements = diff(objectSnapshot(before), objectSnapshot(after));
+  if (Object.keys(changements).length) await logAction(db, actor, { target: objectTarget(after), action: "modification", details: { changements } });
 }
 
 /**
  * Déplace un objet (et tout son sous-arbre) sous un nouveau parent,
  * ou en racine si newParentId est null. Refuse les boucles.
  */
-export async function moveObject(db: Db, id: string, newParentId: string | null): Promise<void> {
+export async function moveObject(db: Db, id: string, newParentId: string | null, actor?: Actor): Promise<void> {
   await db.transaction(async (tx) => {
     // Sérialise les déplacements concurrents pour qu'aucune boucle ne passe entre deux vérifications.
     await tx.execute(sql`LOCK TABLE objects IN SHARE ROW EXCLUSIVE MODE`);
     const [obj] = await tx.select().from(objects).where(eq(objects.id, id));
     if (!obj) throw new DomainError("Objet introuvable");
+    let parentName: string | null = null;
     if (newParentId) {
-      const [parent] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.id, newParentId));
+      const [parent] = await tx.select({ name: objects.name }).from(objects).where(eq(objects.id, newParentId));
       if (!parent) throw new DomainError("Nouveau parent introuvable");
+      parentName = parent.name;
       const res = await tx.execute<{ found: number }>(sql`
         WITH RECURSIVE sub AS (
           SELECT id FROM objects WHERE id = ${id}
@@ -167,6 +202,9 @@ export async function moveObject(db: Db, id: string, newParentId: string | null)
       }
     }
     await tx.update(objects).set({ parentId: newParentId, updatedAt: new Date() }).where(eq(objects.id, id));
+    if (obj.parentId === newParentId) return;
+    const [old] = obj.parentId ? await tx.select({ name: objects.name }).from(objects).where(eq(objects.id, obj.parentId)) : [];
+    await logAction(tx, actor, { target: objectTarget(obj), action: "deplacement", details: { de: old?.name ?? null, vers: parentName } });
   });
 }
 
@@ -174,10 +212,10 @@ export async function moveObject(db: Db, id: string, newParentId: string | null)
  * Supprime un objet sans sous-objet ni tâche. Ses photos sont supprimées avec lui ;
  * retourne les chemins des fichiers à effacer du stockage.
  */
-export async function deleteObject(db: Db, id: string): Promise<string[]> {
+export async function deleteObject(db: Db, id: string, actor?: Actor): Promise<string[]> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`LOCK TABLE objects IN SHARE ROW EXCLUSIVE MODE`);
-    const [obj] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.id, id));
+    const [obj] = await tx.select({ id: objects.id, name: objects.name }).from(objects).where(eq(objects.id, id));
     if (!obj) throw new DomainError("Objet introuvable");
     const [child] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.parentId, id)).limit(1);
     if (child) throw new DomainError("Cet objet contient des sous-objets : déplace-les ou supprime-les d'abord");
@@ -189,6 +227,7 @@ export async function deleteObject(db: Db, id: string): Promise<string[]> {
       .where(eq(photos.objectId, id));
     const docs = await tx.select({ p: documents.pathname }).from(documents).where(eq(documents.objectId, id));
     await tx.delete(objects).where(eq(objects.id, id));
+    await logAction(tx, actor, { target: objectTarget(obj), action: "suppression" });
     return [...files.flatMap((f) => [f.p, f.t]), ...docs.map((d) => d.p)];
   });
 }
@@ -318,29 +357,37 @@ export async function getTodo(db: Db, id: string): Promise<Todo | undefined> {
   return row;
 }
 
-export async function createTodo(db: Db, data: NewTodo): Promise<Todo> {
+export async function createTodo(db: Db, data: NewTodo, actor?: Actor): Promise<Todo> {
   const obj = await getObject(db, data.objectId);
   if (!obj) throw new DomainError("Objet introuvable");
   const [row] = await db.insert(todos).values(data).returning();
+  await logAction(db, actor, { target: todoTarget(row), action: "creation", details: { objet: obj.name } });
   return row;
 }
 
-export async function updateTodo(db: Db, id: string, data: Partial<NewTodo>): Promise<void> {
+export async function updateTodo(db: Db, id: string, data: Partial<NewTodo>, actor?: Actor): Promise<void> {
   if (data.objectId) {
     const obj = await getObject(db, data.objectId);
     if (!obj) throw new DomainError("Objet introuvable");
   }
+  const before = actor ? await getTodo(db, id) : undefined;
   await db.update(todos).set({ ...data, updatedAt: new Date() }).where(eq(todos.id, id));
+  const after = before ? await getTodo(db, id) : undefined;
+  if (!before || !after) return;
+  const changements = diff(await todoSnapshot(db, before), await todoSnapshot(db, after));
+  if (Object.keys(changements).length) await logAction(db, actor, { target: todoTarget(after), action: "modification", details: { changements } });
 }
 
 /** Supprime une tâche et ses photos ; retourne les chemins des fichiers à effacer. */
-export async function deleteTodo(db: Db, id: string): Promise<string[]> {
+export async function deleteTodo(db: Db, id: string, actor?: Actor): Promise<string[]> {
+  const todo = await getTodo(db, id);
   const files = await db
     .select({ p: photos.pathname, t: photos.thumbPathname })
     .from(photos)
     .where(eq(photos.todoId, id));
   const docs = await db.select({ p: documents.pathname }).from(documents).where(eq(documents.todoId, id));
   await db.delete(todos).where(eq(todos.id, id));
+  if (todo) await logAction(db, actor, { target: todoTarget(todo), action: "suppression" });
   return [...files.flatMap((f) => [f.p, f.t]), ...docs.map((d) => d.p)];
 }
 
@@ -353,9 +400,9 @@ export async function setTodoStatus(
   db: Db,
   id: string,
   status: Todo["status"],
-  actuals: { actualHours?: number | null; actualValueEur?: number | null } = {},
-  today: string = new Date().toISOString().slice(0, 10),
+  opts: { actualHours?: number | null; actualValueEur?: number | null; today?: string; actor?: Actor } = {},
 ): Promise<string | null> {
+  const { actor, today = new Date().toISOString().slice(0, 10) } = opts;
   return db.transaction(async (tx) => {
     const [todo] = await tx.select().from(todos).where(eq(todos.id, id)).for("update");
     if (!todo) throw new DomainError("Tâche introuvable");
@@ -365,19 +412,35 @@ export async function setTodoStatus(
         .update(todos)
         .set({ status, doneAt: null, updatedAt: new Date() })
         .where(eq(todos.id, id));
+      if (todo.status !== status) {
+        await logAction(tx, actor, {
+          target: todoTarget(todo),
+          action: "changement_statut",
+          details: { changements: { statut: { avant: todo.status, apres: status } } },
+        });
+      }
       return null;
     }
 
+    const actualHours = opts.actualHours ?? todo.actualHours;
+    const actualValueEur = opts.actualValueEur ?? todo.actualValueEur;
     await tx
       .update(todos)
       .set({
         status,
         doneAt: todo.doneAt ?? new Date(),
-        actualHours: actuals.actualHours ?? todo.actualHours,
-        actualValueEur: actuals.actualValueEur ?? todo.actualValueEur,
+        actualHours,
+        actualValueEur,
         updatedAt: new Date(),
       })
       .where(eq(todos.id, id));
+    const changements = diff(
+      { statut: todo.status, heures_realisees: todo.actualHours, valeur_realisee_eur: todo.actualValueEur },
+      { statut: status, heures_realisees: actualHours, valeur_realisee_eur: actualValueEur },
+    );
+    if (Object.keys(changements).length) {
+      await logAction(tx, actor, { target: todoTarget(todo), action: "changement_statut", details: { changements } });
+    }
 
     if (todo.recurrence === "aucune") return null;
     const [existing] = await tx
@@ -406,6 +469,11 @@ export async function setTodoStatus(
         previousOccurrenceId: todo.id,
       })
       .returning({ id: todos.id });
+    await logAction(tx, actor, {
+      target: todoTarget({ id: next.id, title: todo.title, objectId: todo.objectId }),
+      action: "creation",
+      details: { occurrence_de: todo.title, echeance: due },
+    });
     // La nouvelle occurrence reprend les sous-tâches, toutes décochées
     const subs = await tx.select().from(subtasks).where(eq(subtasks.todoId, id)).orderBy(asc(subtasks.position));
     if (subs.length) {
@@ -578,6 +646,7 @@ export async function addPhoto(
   db: Db,
   owner: PhotoOwner,
   data: { pathname: string; thumbPathname: string; width?: number | null; height?: number | null; createdById?: string | null },
+  actor?: Actor,
 ): Promise<Photo> {
   return db.transaction(async (tx) => {
     if ("objectId" in owner) {
@@ -596,18 +665,22 @@ export async function addPhoto(
       .insert(photos)
       .values({ ...data, ...owner, isCover: !cover })
       .returning();
+    const target = await ownerTarget(tx, owner);
+    if (target) await logAction(tx, actor, { target, action: "ajout_photo" });
     return row;
   });
 }
 
 /** Fait de cette photo la vignette de son objet ou de sa tâche. */
-export async function setCoverPhoto(db: Db, id: string): Promise<void> {
+export async function setCoverPhoto(db: Db, id: string, actor?: Actor): Promise<void> {
   await db.transaction(async (tx) => {
     const [p] = await tx.select().from(photos).where(eq(photos.id, id)).for("update");
     if (!p) throw new DomainError("Photo introuvable");
     const owner: PhotoOwner = p.objectId ? { objectId: p.objectId } : { todoId: p.todoId! };
     await tx.update(photos).set({ isCover: false }).where(and(ownerCond(owner), eq(photos.isCover, true)));
     await tx.update(photos).set({ isCover: true }).where(eq(photos.id, id));
+    const target = await ownerTarget(tx, owner);
+    if (target) await logAction(tx, actor, { target, action: "choix_vignette" });
   });
 }
 
@@ -615,7 +688,7 @@ export async function setCoverPhoto(db: Db, id: string): Promise<void> {
  * Supprime une photo. Si c'était la vignette, la plus ancienne des photos restantes
  * prend le relais. Retourne les chemins des fichiers à effacer.
  */
-export async function deletePhoto(db: Db, id: string): Promise<string[]> {
+export async function deletePhoto(db: Db, id: string, actor?: Actor): Promise<string[]> {
   return db.transaction(async (tx) => {
     const [p] = await tx.select().from(photos).where(eq(photos.id, id)).for("update");
     if (!p) throw new DomainError("Photo introuvable");
@@ -630,6 +703,8 @@ export async function deletePhoto(db: Db, id: string): Promise<string[]> {
         .limit(1);
       if (next) await tx.update(photos).set({ isCover: true }).where(eq(photos.id, next.id));
     }
+    const target = await ownerTarget(tx, ownerOf(p));
+    if (target) await logAction(tx, actor, { target, action: "suppression_photo" });
     return [p.pathname, p.thumbPathname];
   });
 }
@@ -684,9 +759,10 @@ export async function addDocument(
     size: number;
     createdById?: string | null;
   },
+  actor?: Actor,
 ): Promise<DocumentRow> {
   await assertOwner(db, data.owner);
-  const [t] = await db.select({ id: documentTypes.id }).from(documentTypes).where(eq(documentTypes.id, data.typeId));
+  const [t] = await db.select({ name: documentTypes.name }).from(documentTypes).where(eq(documentTypes.id, data.typeId));
   if (!t) throw new DomainError("Type de document introuvable");
   const filename = data.filename.trim().slice(0, 200) || "document";
   const { owner, ...rest } = data;
@@ -694,22 +770,35 @@ export async function addDocument(
     .insert(documents)
     .values({ ...rest, ...owner, filename })
     .returning();
+  const target = await ownerTarget(db, owner);
+  if (target) await logAction(db, actor, { target, action: "ajout_document", details: { fichier: filename, type: t.name } });
   return row;
 }
 
 /** Supprime un document ; retourne le chemin du fichier à effacer. */
-export async function deleteDocument(db: Db, id: string): Promise<string> {
-  const [row] = await db.delete(documents).where(eq(documents.id, id)).returning({ p: documents.pathname });
+export async function deleteDocument(db: Db, id: string, actor?: Actor): Promise<string> {
+  const [row] = await db
+    .delete(documents)
+    .where(eq(documents.id, id))
+    .returning({ p: documents.pathname, objectId: documents.objectId, todoId: documents.todoId, filename: documents.filename });
   if (!row) throw new DomainError("Document introuvable");
+  const target = await ownerTarget(db, ownerOf(row));
+  if (target) await logAction(db, actor, { target, action: "suppression_document", details: { fichier: row.filename } });
   return row.p;
 }
 
 /** Change le type d'un document. */
-export async function setDocumentType(db: Db, id: string, typeId: string): Promise<void> {
-  const [t] = await db.select({ id: documentTypes.id }).from(documentTypes).where(eq(documentTypes.id, typeId));
+export async function setDocumentType(db: Db, id: string, typeId: string, actor?: Actor): Promise<void> {
+  const [t] = await db.select({ name: documentTypes.name }).from(documentTypes).where(eq(documentTypes.id, typeId));
   if (!t) throw new DomainError("Type de document introuvable");
-  const [row] = await db.update(documents).set({ typeId }).where(eq(documents.id, id)).returning({ id: documents.id });
+  const [row] = await db
+    .update(documents)
+    .set({ typeId })
+    .where(eq(documents.id, id))
+    .returning({ objectId: documents.objectId, todoId: documents.todoId, filename: documents.filename });
   if (!row) throw new DomainError("Document introuvable");
+  const target = await ownerTarget(db, ownerOf(row));
+  if (target) await logAction(db, actor, { target, action: "type_document", details: { fichier: row.filename, type: t.name } });
 }
 
 // ---------- Types (objets et documents) ----------
@@ -816,6 +905,7 @@ export async function listLinks(db: Db, owner: AttachmentOwner): Promise<LinkRow
 export async function addLink(
   db: Db,
   data: { owner: AttachmentOwner; url: string; title?: string | null; createdById?: string | null },
+  actor?: Actor,
 ): Promise<LinkRow> {
   await assertOwner(db, data.owner);
   const url = normalizeUrl(data.url);
@@ -824,12 +914,19 @@ export async function addLink(
     .insert(links)
     .values({ ...data.owner, url, title, createdById: data.createdById ?? null })
     .returning();
+  const target = await ownerTarget(db, data.owner);
+  if (target) await logAction(db, actor, { target, action: "ajout_lien", details: { titre: title, url } });
   return row;
 }
 
-export async function deleteLink(db: Db, id: string): Promise<void> {
-  const [row] = await db.delete(links).where(eq(links.id, id)).returning({ id: links.id });
+export async function deleteLink(db: Db, id: string, actor?: Actor): Promise<void> {
+  const [row] = await db
+    .delete(links)
+    .where(eq(links.id, id))
+    .returning({ objectId: links.objectId, todoId: links.todoId, url: links.url, title: links.title });
   if (!row) throw new DomainError("Lien introuvable");
+  const target = await ownerTarget(db, ownerOf(row));
+  if (target) await logAction(db, actor, { target, action: "suppression_lien", details: { titre: row.title, url: row.url } });
 }
 
 // ---------- Sous-tâches ----------
@@ -852,9 +949,10 @@ export async function listSubtasks(db: Db, todoId: string): Promise<Subtask[]> {
 }
 
 /** Ajoute une sous-tâche en fin de liste. */
-export async function addSubtask(db: Db, todoId: string, rawTitle: string): Promise<Subtask> {
+export async function addSubtask(db: Db, todoId: string, rawTitle: string, actor?: Actor): Promise<Subtask> {
   const title = cleanSubtaskTitle(rawTitle);
-  if (!(await getTodo(db, todoId))) throw new DomainError("Tâche introuvable");
+  const todo = await getTodo(db, todoId);
+  if (!todo) throw new DomainError("Tâche introuvable");
   const [{ max }] = await db
     .select({ max: sql<number | null>`max(${subtasks.position})` })
     .from(subtasks)
@@ -863,24 +961,34 @@ export async function addSubtask(db: Db, todoId: string, rawTitle: string): Prom
     .insert(subtasks)
     .values({ todoId, title, position: max == null ? 0 : Number(max) + 1 })
     .returning();
+  await logAction(db, actor, { target: todoTarget(todo), action: "ajout_sous_tache", details: { titre: title } });
   return row;
 }
 
-export async function updateSubtask(db: Db, id: string, data: { title?: string; done?: boolean }): Promise<void> {
+export async function updateSubtask(db: Db, id: string, data: { title?: string; done?: boolean }, actor?: Actor): Promise<void> {
   const set: Partial<Subtask> = {};
   if (data.title !== undefined) set.title = cleanSubtaskTitle(data.title);
   if (data.done !== undefined) set.done = data.done;
-  const [row] = await db.update(subtasks).set(set).where(eq(subtasks.id, id)).returning({ id: subtasks.id });
+  const [before] = await db.select().from(subtasks).where(eq(subtasks.id, id));
+  if (!before) throw new DomainError("Sous-tâche introuvable");
+  const [row] = await db.update(subtasks).set(set).where(eq(subtasks.id, id)).returning();
   if (!row) throw new DomainError("Sous-tâche introuvable");
+  const changements = diff({ titre: before.title, fait: before.done }, { titre: row.title, fait: row.done });
+  const todo = Object.keys(changements).length && actor ? await getTodo(db, row.todoId) : undefined;
+  if (todo) {
+    await logAction(db, actor, { target: todoTarget(todo), action: "modification_sous_tache", details: { titre: row.title, changements } });
+  }
 }
 
-export async function deleteSubtask(db: Db, id: string): Promise<void> {
-  const [row] = await db.delete(subtasks).where(eq(subtasks.id, id)).returning({ id: subtasks.id });
+export async function deleteSubtask(db: Db, id: string, actor?: Actor): Promise<void> {
+  const [row] = await db.delete(subtasks).where(eq(subtasks.id, id)).returning({ todoId: subtasks.todoId, title: subtasks.title });
   if (!row) throw new DomainError("Sous-tâche introuvable");
+  const todo = actor ? await getTodo(db, row.todoId) : undefined;
+  if (todo) await logAction(db, actor, { target: todoTarget(todo), action: "suppression_sous_tache", details: { titre: row.title } });
 }
 
 /** Range les sous-tâches d'une tâche dans l'ordre donné (la liste complète de leurs identifiants). */
-export async function reorderSubtasks(db: Db, todoId: string, orderedIds: string[]): Promise<void> {
+export async function reorderSubtasks(db: Db, todoId: string, orderedIds: string[], actor?: Actor): Promise<void> {
   await db.transaction(async (tx) => {
     const rows = await tx.select({ id: subtasks.id }).from(subtasks).where(eq(subtasks.todoId, todoId)).for("update");
     const current = new Set(rows.map((r) => r.id));
@@ -890,6 +998,8 @@ export async function reorderSubtasks(db: Db, todoId: string, orderedIds: string
     for (const [position, id] of orderedIds.entries()) {
       await tx.update(subtasks).set({ position }).where(eq(subtasks.id, id));
     }
+    const [todo] = actor ? await tx.select().from(todos).where(eq(todos.id, todoId)) : [];
+    if (todo) await logAction(tx, actor, { target: todoTarget(todo), action: "ordre_sous_taches" });
   });
 }
 
@@ -965,6 +1075,16 @@ export async function purgeTestData(db: Db, marker: string, opts: { dryRun?: boo
     }
 
     // Jetons personnels et applications OAuth créés par les tests
+    await tx.delete(auditLog).where(
+      sql.join(
+        [
+          sql`${auditLog.entityLabel} ILIKE ${like}`,
+          ...(objectIds.length ? [inArray(auditLog.entityId, objectIds), inArray(auditLog.objectId, objectIds)] : []),
+          ...(todoIds.length ? [inArray(auditLog.entityId, todoIds)] : []),
+        ],
+        sql` OR `,
+      ),
+    );
     await tx.delete(apiTokens).where(sql`${apiTokens.kind} = 'personnel' AND ${apiTokens.name} ILIKE ${like}`);
     await tx.delete(oauthClients).where(sql`${oauthClients.name} ILIKE ${like}`);
 

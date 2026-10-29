@@ -29,7 +29,7 @@ async function handle(request: Request): Promise<Response> {
   const access = await verifyBearerAccess(db, token);
   if (!access) return unauthorized(origin, "Jeton invalide, expiré ou révoqué");
 
-  const server = buildMcpServer(db, access.user, origin, access.write);
+  const server = buildMcpServer(db, access.user, origin, access.write, access.client);
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   await server.connect(transport);
   try {

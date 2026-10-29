@@ -20,6 +20,7 @@ import {
   type TodoListItem,
   type TodoSort,
 } from "./repo";
+import { describeDetails, listAudit } from "./audit";
 import { registerWriteTools } from "./mcp-write-tools";
 import { richTextToPlain } from "./rich-text";
 import { buildForest, flatten, pathTo, subtreeIds, type TreeNode } from "./tree";
@@ -41,7 +42,7 @@ function error(message: string) {
 
 const UUID = z.string().uuid();
 
-export function buildMcpServer(db: Db, user: User, origin: string, write = false): McpServer {
+export function buildMcpServer(db: Db, user: User, origin: string, write = false, client: string | null = null): McpServer {
   const server = new McpServer(
     { name: "carnet", title: "Carnet — objets et tâches", version: "1.0.0" },
     {
@@ -355,7 +356,48 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
     },
   );
 
-  if (write) registerWriteTools(server, { db, user, objectUrl, todoUrl });
+  // ---------- consulter_historique ----------
+  server.registerTool(
+    "consulter_historique",
+    {
+      title: "Historique des actions",
+      description:
+        "Journal des actions (création, modification, changement de statut, déplacement, suppression, photos, documents, liens, sous-tâches) " +
+        "avec la date, l'auteur et l'origine (interface, api, mcp). objet_id : l'objet et ses tâches ; tache_id : une tâche ; sans filtre : tout Carnet. " +
+        "Les plus récentes d'abord.",
+      inputSchema: {
+        objet_id: UUID.optional(),
+        tache_id: UUID.optional(),
+        origine: z.enum(["interface", "api", "mcp", "systeme"]).optional(),
+        apres: UUID.optional().describe("Pour la suite : valeur `suite` de la réponse précédente"),
+        limite: z.number().int().min(1).max(200).default(50),
+      },
+      annotations: READ_ONLY,
+    },
+    async (a) => {
+      const rows = await listAudit(db, {
+        objectId: a.objet_id,
+        todoId: a.tache_id,
+        source: a.origine,
+        afterId: a.apres,
+        limit: a.limite,
+      });
+      return result({
+        entrees: rows.map((e) => ({
+          date: e.at.toISOString(),
+          origine: e.source,
+          application: e.client,
+          auteur: e.userName,
+          action: e.action,
+          element: { type: e.entityKind, id: e.entityId, nom: e.entityLabel },
+          details: describeDetails(e),
+        })),
+        suite: rows.length === a.limite ? rows[rows.length - 1].id : null,
+      });
+    },
+  );
+
+  if (write) registerWriteTools(server, { db, user, client, objectUrl, todoUrl });
 
   return server;
 }

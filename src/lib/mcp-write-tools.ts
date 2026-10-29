@@ -6,6 +6,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Db } from "@/db";
 import { CATEGORIES, PRIORITIES, RECURRENCES, STATUSES, type NewTodo, type User } from "@/db/schema";
+import { actorOf, type Actor } from "./audit";
 import { decodeBase64Image, ImageError, processImage } from "./photo-processing";
 import {
   addLink,
@@ -37,7 +38,7 @@ const DESCRIPTION = z
   .describe("Texte en Markdown simple : ## titres, - listes, 1. listes, **gras**, *italique*, [lien](https://…), > citation");
 const TAGS = z.array(z.string().min(1).max(40)).max(20);
 
-type Ctx = { db: Db; user: User; objectUrl: (id: string) => string; todoUrl: (id: string) => string };
+type Ctx = { db: Db; user: User; client?: string | null; objectUrl: (id: string) => string; todoUrl: (id: string) => string };
 
 function ok(data: Record<string, unknown>) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }], structuredContent: data };
@@ -60,7 +61,10 @@ const parisToday = () => new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Pa
 
 const cleanTags = (tags: string[]) => [...new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 20);
 
-export function registerWriteTools(server: McpServer, { db, user, objectUrl, todoUrl }: Ctx) {
+export function registerWriteTools(server: McpServer, { db, user, client, objectUrl, todoUrl }: Ctx) {
+  // Chaque écriture est inscrite au journal comme venant du MCP, avec le nom du jeton ou de l'application
+  const actor: Actor = actorOf(user, "mcp", client);
+
   async function resolveAssignee(raw: string | null | undefined): Promise<string | null | undefined> {
     if (raw === undefined) return undefined;
     if (raw === null || raw.trim().toLowerCase() === "personne" || raw.trim() === "") return null;
@@ -123,8 +127,8 @@ export function registerWriteTools(server: McpServer, { db, user, objectUrl, tod
           tags: cleanTags(a.tags ?? []),
           createdById: user.id,
         };
-        const t = await createTodo(db, data);
-        if (a.statut === "fait") await setTodoStatus(db, t.id, "fait", {}, parisToday());
+        const t = await createTodo(db, data, actor);
+        if (a.statut === "fait") await setTodoStatus(db, t.id, "fait", { today: parisToday(), actor });
         const obj = await getObject(db, t.objectId);
         return ok({ cree: true, id: t.id, titre: t.title, objet: obj?.name, url: todoUrl(t.id) });
       }),
@@ -177,9 +181,9 @@ export function registerWriteTools(server: McpServer, { db, user, objectUrl, tod
         if (a.heures_realisees !== undefined) data.actualHours = a.heures_realisees;
         if (a.valeur_realisee_eur !== undefined) data.actualValueEur = a.valeur_realisee_eur;
         if (a.tags !== undefined) data.tags = cleanTags(a.tags);
-        if (Object.keys(data).length) await updateTodo(db, a.id, data);
+        if (Object.keys(data).length) await updateTodo(db, a.id, data, actor);
         let suivante: string | null = null;
-        if (a.statut !== undefined && a.statut !== before.status) suivante = await setTodoStatus(db, a.id, a.statut, {}, parisToday());
+        if (a.statut !== undefined && a.statut !== before.status) suivante = await setTodoStatus(db, a.id, a.statut, { today: parisToday(), actor });
         const after = (await getTodo(db, a.id))!;
         return ok({
           modifie: true,
@@ -218,7 +222,7 @@ export function registerWriteTools(server: McpServer, { db, user, objectUrl, tod
           description: markdownToRichText(a.description),
           location: a.emplacement?.trim() || null,
           tags: cleanTags(a.tags ?? []),
-        });
+        }, actor);
         return ok({ cree: true, id: o.id, nom: o.name, url: objectUrl(o.id) });
       }),
   );
@@ -250,7 +254,7 @@ export function registerWriteTools(server: McpServer, { db, user, objectUrl, tod
           description: a.description === undefined ? o.description : markdownToRichText(a.description),
           location: a.emplacement === undefined ? o.location : a.emplacement?.trim() || null,
           tags: a.tags === undefined ? o.tags : cleanTags(a.tags),
-        });
+        }, actor);
         return ok({ modifie: true, id: a.id, nom: a.nom ?? o.name, champs_modifies: Object.keys(a).filter((k) => k !== "id"), url: objectUrl(a.id) });
       }),
   );
@@ -269,7 +273,7 @@ export function registerWriteTools(server: McpServer, { db, user, objectUrl, tod
     },
     async (a) =>
       guard(async () => {
-        await moveObject(db, a.id, a.nouveau_parent_id);
+        await moveObject(db, a.id, a.nouveau_parent_id, actor);
         const [o, p] = await Promise.all([getObject(db, a.id), a.nouveau_parent_id ? getObject(db, a.nouveau_parent_id) : undefined]);
         return ok({ deplace: true, id: a.id, nom: o?.name, nouveau_parent: p?.name ?? "(racine)", url: objectUrl(a.id) });
       }),
@@ -293,7 +297,7 @@ export function registerWriteTools(server: McpServer, { db, user, objectUrl, tod
       guard(async () => {
         if (!!a.objet_id === !!a.tache_id) return fail("Fournis soit objet_id, soit tache_id (un seul des deux).");
         const owner = a.objet_id ? { objectId: a.objet_id } : { todoId: a.tache_id! };
-        const l = await addLink(db, { owner, url: a.url, title: a.titre, createdById: user.id });
+        const l = await addLink(db, { owner, url: a.url, title: a.titre, createdById: user.id }, actor);
         return ok({
           ajoute: true,
           titre: l.title,
@@ -352,7 +356,7 @@ export function registerWriteTools(server: McpServer, { db, user, objectUrl, tod
               width: img.width,
               height: img.height,
               createdById: user.id,
-            });
+            }, actor);
             ajoutees.push({
               photo_id: p.id,
               ...(t.kind === "taches" ? { tache_id: t.id } : { objet_id: t.id }),

@@ -78,7 +78,7 @@ describe("sous-tâches", () => {
     const a = await addSubtask(db, t.id, "Huile");
     await addSubtask(db, t.id, "Filtre");
     await updateSubtask(db, a.id, { done: true });
-    const next = await setTodoStatus(db, t.id, "fait", {}, "2026-03-02");
+    const next = await setTodoStatus(db, t.id, "fait", { today: "2026-03-02" });
     expect(next).toBeTruthy();
     const subs = await listSubtasks(db, next!);
     expect(subs.map((s) => [s.title, s.done])).toEqual([

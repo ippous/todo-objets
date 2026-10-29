@@ -16,7 +16,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <nav aria-label="Navigation principale" className="hidden flex-1 sm:block">
           <NavLinks isAdmin={user.role === "admin"} variant="top" />
         </nav>
-        <Link href="/connexion-ia" className="ml-auto whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline sm:ml-0" aria-label="Connexion IA">
+        <Link href="/journal" className="ml-auto whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline sm:ml-0">
+          Journal
+        </Link>
+        <Link href="/connexion-ia" className="whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline" aria-label="Connexion IA">
           <span className="sm:hidden">IA</span>
           <span className="hidden sm:inline">Connexion IA</span>
         </Link>

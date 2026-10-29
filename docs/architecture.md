@@ -25,6 +25,7 @@ src/
       taches/              liste, fiche, création
       documents/[id]/      visionneuse
       types/               gestion des types
+      journal/             journal des actions
       utilisateurs/        accès (admin)
     connexion/             page de connexion
     actions.ts             toutes les Server Actions (contrôle de session + validation)
@@ -42,6 +43,7 @@ src/
   lib/
     repo.ts                requêtes (chaque fonction reçoit la base : testable sur PGlite)
     tree.ts                logique d'arbre pure (forêt, cumuls, chemins, récurrence)
+    audit.ts               journal des actions (auteur, origine, différences, libellés)
     storage.ts             Blob / local, chemins, suppression
     document-types.ts      formats acceptés, visionneuses
     session.ts, forms.ts, seed.ts…
@@ -71,6 +73,7 @@ object_types ──< objects ──< objects (parent_id, arbre)
 | `documents` | rattaché à un objet **ou** à une tâche (contrainte `documents_one_owner`), `type_id` → `document_types` (`RESTRICT`), nom d'origine, type MIME, taille, chemin (`<env>/documents/<objet>/…` ou `<env>/documents/taches/<tâche>/…`) |
 | `links` | rattaché à un objet **ou** à une tâche (contrainte `links_one_owner`), URL http(s) normalisée, titre facultatif |
 | `object_types`, `document_types` | `name` unique sans tenir compte de la casse (index sur `lower(name)`) |
+| `audit_log` | journal des actions sur les objets et les tâches : origine (`interface`, `api`, `mcp`, `systeme`), application, auteur, élément (sans clé étrangère : survit à la suppression), objet concerné, action, détails JSON (voir [journal.md](journal.md)) |
 | `users` | e-mail unique, rôle, actif, heures/semaine, compétences |
 | `oauth_clients`, `oauth_codes`, `api_tokens` | accès des assistants IA (MCP) : clients OAuth, codes d'autorisation, jetons personnels / d'accès / de rafraîchissement (empreintes SHA-256 seulement) |
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
+import { AuditTrail } from "@/components/audit-trail";
 import { BulkAddButton } from "@/components/bulk-add";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { PhotoUploader } from "@/components/photo-uploader";
@@ -21,6 +22,7 @@ import {
   listUsers,
   type TodoListItem,
 } from "@/lib/repo";
+import { listAudit } from "@/lib/audit";
 import { renderRichText } from "@/lib/rich-text";
 import { storageMode, storagePrefix } from "@/lib/storage";
 import { buildForest, flatten, pathTo } from "@/lib/tree";
@@ -44,7 +46,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
   if (!obj) notFound();
 
   const showDone = terminees === "1";
-  const [all, photos, users, docs, links, objectTypes, docTypes] = await Promise.all([
+  const [all, photos, users, docs, links, objectTypes, docTypes, history] = await Promise.all([
     listTodos(db, { subtreeOf: id }, "echeance"),
     listPhotos(db, { objectId: id }),
     listUsers(db),
@@ -52,6 +54,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
     listLinks(db, { objectId: id }),
     listTypes(db, "objet"),
     listTypes(db, "document"),
+    listAudit(db, { objectId: id, limit: 30 }),
   ]);
   const userName = new Map(users.map((u) => [u.id, u.name]));
   const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
@@ -261,7 +264,24 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
         </section>
       </div>
 
+      <HistorySection entries={history} href={`/journal?objet=${id}`} />
     </div>
+  );
+}
+
+function HistorySection({ entries, href }: { entries: Awaited<ReturnType<typeof listAudit>>; href: string }) {
+  return (
+    <details className="rounded-xl bg-surface p-4">
+      <summary className="cursor-pointer font-bold">Historique de l&apos;objet et de ses tâches</summary>
+      <div className="mt-3 grid gap-2">
+        <AuditTrail entries={entries} showEntity="taches" />
+        {entries.length >= 30 && (
+          <Link href={href} className="text-sm text-moss underline-offset-4 hover:underline">
+            Tout l&apos;historique
+          </Link>
+        )}
+      </div>
+    </details>
   );
 }
 

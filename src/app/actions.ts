@@ -42,6 +42,7 @@ import {
   updateTodo,
   updateUser,
 } from "@/lib/repo";
+import { actorOf } from "@/lib/audit";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { exists, parseDocumentPath, parsePhotoPath, remove } from "@/lib/storage";
 
@@ -49,6 +50,11 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const assertId = (id: string) => {
   if (!UUID.test(id)) throw new DomainError("Identifiant invalide");
 };
+
+/** Auteur des actions faites depuis l'interface (pour le journal). */
+async function uiActor() {
+  return actorOf(await requireUser(), "interface");
+}
 
 function handle(err: unknown): ActionState {
   if (err instanceof DomainError) return { error: err.message };
@@ -89,14 +95,14 @@ export async function signOutAction() {
 // ---------- Objets ----------
 
 export async function createObjectAction(_: ActionState, fd: FormData): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   const parsed = readObject(fd);
   if (!parsed.success) return { error: firstError(parsed.error) };
   const parentId = str(fd, "parentId") || null;
   let id: string;
   try {
     if (parentId) assertId(parentId);
-    id = (await createObject(getDb(), { ...parsed.data, parentId })).id;
+    id = (await createObject(getDb(), { ...parsed.data, parentId }, actor)).id;
   } catch (err) {
     return handle(err);
   }
@@ -105,12 +111,12 @@ export async function createObjectAction(_: ActionState, fd: FormData): Promise<
 }
 
 export async function updateObjectAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   const parsed = readObject(fd);
   if (!parsed.success) return { error: firstError(parsed.error) };
   try {
     assertId(id);
-    await updateObject(getDb(), id, parsed.data);
+    await updateObject(getDb(), id, parsed.data, actor);
   } catch (err) {
     return handle(err);
   }
@@ -119,13 +125,13 @@ export async function updateObjectAction(id: string, _: ActionState, fd: FormDat
 }
 
 export async function moveObjectAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   const target = str(fd, "parentId");
   try {
     assertId(id);
     const newParent = target === "" || target === "racine" ? null : target;
     if (newParent) assertId(newParent);
-    await moveObject(getDb(), id, newParent);
+    await moveObject(getDb(), id, newParent, actor);
   } catch (err) {
     return handle(err);
   }
@@ -134,11 +140,11 @@ export async function moveObjectAction(id: string, _: ActionState, fd: FormData)
 }
 
 export async function deleteObjectAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   const parentId = str(fd, "parentId");
   try {
     assertId(id);
-    await remove(await deleteObject(getDb(), id));
+    await remove(await deleteObject(getDb(), id, actor));
   } catch (err) {
     return handle(err);
   }
@@ -148,11 +154,11 @@ export async function deleteObjectAction(id: string, _: ActionState, fd: FormDat
 
 /** Déplacement depuis l'arbre (glisser-déposer ou mode « Déplacer »). */
 export async function moveObjectInlineAction(id: string, newParentId: string | null): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(id);
     if (newParentId) assertId(newParentId);
-    await moveObject(getDb(), id, newParentId);
+    await moveObject(getDb(), id, newParentId, actor);
   } catch (err) {
     return handle(err);
   }
@@ -163,10 +169,10 @@ export async function moveObjectInlineAction(id: string, newParentId: string | n
 
 /** Suppression depuis l'arbre, après confirmation dans l'interface. */
 export async function deleteObjectInlineAction(id: string): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(id);
-    await remove(await deleteObject(getDb(), id));
+    await remove(await deleteObject(getDb(), id, actor));
   } catch (err) {
     return handle(err);
   }
@@ -238,12 +244,12 @@ export async function createObjectsBulkAction(
   names: string[],
   typeId: string | null,
 ): Promise<BulkResult> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     if (parentId) assertId(parentId);
     if (typeId) assertId(typeId);
     if (!Array.isArray(names) || names.some((n) => typeof n !== "string")) throw new DomainError("Liste invalide");
-    const created = await createObjects(getDb(), parentId, names, { typeId: typeId || null });
+    const created = await createObjects(getDb(), parentId, names, { typeId: typeId || null }, actor);
     revalidatePath("/", "layout");
     refresh();
     return { ok: true, count: created.length };
@@ -259,6 +265,7 @@ export async function createTodosBulkAction(
   common: { category?: string; priority?: string; assigneeId?: string | null; dueDate?: string | null },
 ): Promise<BulkResult> {
   const user = await requireUser();
+  const actor = actorOf(user, "interface");
   try {
     assertId(objectId);
     if (!Array.isArray(titles) || titles.some((t) => typeof t !== "string")) throw new DomainError("Liste invalide");
@@ -272,7 +279,7 @@ export async function createTodosBulkAction(
       assigneeId,
       dueDate,
       createdById: user.id,
-    });
+    }, actor);
     revalidatePath("/", "layout");
     refresh();
     return { ok: true, count: created.length };
@@ -292,6 +299,7 @@ export async function addDocumentAction(input: {
   size: number;
 }): Promise<ActionState> {
   const user = await requireUser();
+  const actor = actorOf(user, "interface");
   try {
     const parsed = parseDocumentPath(input.pathname);
     if (!parsed) throw new DomainError("Document invalide");
@@ -309,7 +317,7 @@ export async function addDocumentAction(input: {
       contentType: input.contentType,
       size: input.size,
       createdById: user.id,
-    });
+    }, actor);
   } catch (err) {
     return handle(err);
   }
@@ -319,11 +327,11 @@ export async function addDocumentAction(input: {
 }
 
 export async function setDocumentTypeAction(id: string, typeId: string): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(id);
     assertId(typeId);
-    await setDocumentType(getDb(), id, typeId);
+    await setDocumentType(getDb(), id, typeId, actor);
   } catch (err) {
     return handle(err);
   }
@@ -333,10 +341,10 @@ export async function setDocumentTypeAction(id: string, typeId: string): Promise
 }
 
 export async function deleteDocumentAction(id: string): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(id);
-    await remove([await deleteDocument(getDb(), id)]);
+    await remove([await deleteDocument(getDb(), id, actor)]);
   } catch (err) {
     return handle(err);
   }
@@ -351,6 +359,7 @@ export async function addLinkAction(
   fd: FormData,
 ): Promise<ActionState> {
   const user = await requireUser();
+  const actor = actorOf(user, "interface");
   try {
     assertId(owner.id);
     await addLink(getDb(), {
@@ -358,7 +367,7 @@ export async function addLinkAction(
       url: str(fd, "url"),
       title: str(fd, "title"),
       createdById: user.id,
-    });
+    }, actor);
   } catch (err) {
     return handle(err);
   }
@@ -367,10 +376,10 @@ export async function addLinkAction(
 }
 
 export async function deleteLinkAction(id: string): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(id);
-    await deleteLink(getDb(), id);
+    await deleteLink(getDb(), id, actor);
   } catch (err) {
     return handle(err);
   }
@@ -382,10 +391,10 @@ export async function deleteLinkAction(id: string): Promise<ActionState> {
 // ---------- Sous-tâches ----------
 
 export async function addSubtaskAction(todoId: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(todoId);
-    await addSubtask(getDb(), todoId, str(fd, "title"));
+    await addSubtask(getDb(), todoId, str(fd, "title"), actor);
   } catch (err) {
     return handle(err);
   }
@@ -394,13 +403,13 @@ export async function addSubtaskAction(todoId: string, _: ActionState, fd: FormD
 }
 
 export async function updateSubtaskAction(id: string, data: { title?: string; done?: boolean }): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(id);
     await updateSubtask(getDb(), id, {
       title: typeof data.title === "string" ? data.title : undefined,
       done: typeof data.done === "boolean" ? data.done : undefined,
-    });
+    }, actor);
   } catch (err) {
     return handle(err);
   }
@@ -410,10 +419,10 @@ export async function updateSubtaskAction(id: string, data: { title?: string; do
 }
 
 export async function deleteSubtaskAction(id: string): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(id);
-    await deleteSubtask(getDb(), id);
+    await deleteSubtask(getDb(), id, actor);
   } catch (err) {
     return handle(err);
   }
@@ -424,12 +433,12 @@ export async function deleteSubtaskAction(id: string): Promise<ActionState> {
 
 /** Nouvel ordre des sous-tâches (glisser-déposer ou flèches). */
 export async function reorderSubtasksAction(todoId: string, orderedIds: string[]): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(todoId);
     if (!Array.isArray(orderedIds)) throw new DomainError("Ordre invalide");
     orderedIds.forEach(assertId);
-    await reorderSubtasks(getDb(), todoId, orderedIds);
+    await reorderSubtasks(getDb(), todoId, orderedIds, actor);
   } catch (err) {
     return handle(err);
   }
@@ -448,6 +457,7 @@ export async function addPhotoAction(input: {
   height: number;
 }): Promise<ActionState> {
   const user = await requireUser();
+  const actor = actorOf(user, "interface");
   try {
     const main = parsePhotoPath(input.pathname);
     const thumb = parsePhotoPath(input.thumbPathname);
@@ -472,7 +482,7 @@ export async function addPhotoAction(input: {
       width: dims(input.width),
       height: dims(input.height),
       createdById: user.id,
-    });
+    }, actor);
   } catch (err) {
     return handle(err);
   }
@@ -482,10 +492,10 @@ export async function addPhotoAction(input: {
 }
 
 export async function setCoverPhotoAction(id: string): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(id);
-    await setCoverPhoto(getDb(), id);
+    await setCoverPhoto(getDb(), id, actor);
   } catch (err) {
     return handle(err);
   }
@@ -495,10 +505,10 @@ export async function setCoverPhotoAction(id: string): Promise<ActionState> {
 }
 
 export async function deletePhotoAction(id: string): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(id);
-    await remove(await deletePhoto(getDb(), id));
+    await remove(await deletePhoto(getDb(), id, actor));
   } catch (err) {
     return handle(err);
   }
@@ -511,6 +521,7 @@ export async function deletePhotoAction(id: string): Promise<ActionState> {
 
 export async function createTodoAction(_: ActionState, fd: FormData): Promise<ActionState> {
   const user = await requireUser();
+  const actor = actorOf(user, "interface");
   const parsed = readTodo(fd);
   if (!parsed.success) return { error: firstError(parsed.error) };
   try {
@@ -520,7 +531,7 @@ export async function createTodoAction(_: ActionState, fd: FormData): Promise<Ac
       status: data.status,
       doneAt: data.status === "fait" ? new Date() : null,
       createdById: user.id,
-    });
+    }, actor);
   } catch (err) {
     return handle(err);
   }
@@ -529,7 +540,7 @@ export async function createTodoAction(_: ActionState, fd: FormData): Promise<Ac
 }
 
 export async function updateTodoAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   const parsed = readTodo(fd);
   if (!parsed.success) return { error: firstError(parsed.error) };
   try {
@@ -538,9 +549,9 @@ export async function updateTodoAction(id: string, _: ActionState, fd: FormData)
     const before = await getTodo(db, id);
     if (!before) throw new DomainError("Tâche introuvable");
     const { status, ...rest } = parsed.data;
-    await updateTodo(db, id, rest);
+    await updateTodo(db, id, rest, actor);
     if (status !== before.status) {
-      await setTodoStatus(db, id, status, { actualHours: rest.actualHours, actualValueEur: rest.actualValueEur });
+      await setTodoStatus(db, id, status, { actualHours: rest.actualHours, actualValueEur: rest.actualValueEur, actor });
     }
   } catch (err) {
     return handle(err);
@@ -551,7 +562,7 @@ export async function updateTodoAction(id: string, _: ActionState, fd: FormData)
 
 /** Changement rapide de statut depuis une liste. */
 export async function setStatusAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   const status = str(fd, "status") as Todo["status"];
   if (!STATUSES.includes(status)) return { error: "Statut invalide" };
   const actualHours = optionalNumber(fd, "actualHours");
@@ -561,7 +572,7 @@ export async function setStatusAction(id: string, _: ActionState, fd: FormData):
   }
   try {
     assertId(id);
-    await setTodoStatus(getDb(), id, status, { actualHours, actualValueEur });
+    await setTodoStatus(getDb(), id, status, { actualHours, actualValueEur, actor });
   } catch (err) {
     return handle(err);
   }
@@ -574,7 +585,7 @@ export async function setStatusAction(id: string, _: ActionState, fd: FormData):
  * Passée à « fait » sans saisie, la tâche reprend ses estimations comme valeurs réalisées.
  */
 export async function setStatusInlineAction(id: string, status: Todo["status"]): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   if (!STATUSES.includes(status)) return { error: "Statut invalide" };
   try {
     assertId(id);
@@ -584,6 +595,7 @@ export async function setStatusInlineAction(id: string, status: Todo["status"]):
     await setTodoStatus(db, id, status, {
       actualHours: todo.actualHours ?? todo.estHours,
       actualValueEur: todo.actualValueEur ?? todo.estValueEur,
+      actor,
     });
   } catch (err) {
     return handle(err);
@@ -594,10 +606,10 @@ export async function setStatusInlineAction(id: string, status: Todo["status"]):
 }
 
 export async function deleteTodoAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
-  await requireUser();
+  const actor = await uiActor();
   try {
     assertId(id);
-    await remove(await deleteTodo(getDb(), id));
+    await remove(await deleteTodo(getDb(), id, actor));
   } catch (err) {
     return handle(err);
   }
