@@ -4,8 +4,11 @@
 // envoyé dans un champ caché `name` et nettoyé côté serveur avant enregistrement.
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Link from "next/link";
 import { Placeholder } from "@tiptap/extensions";
-import { useEffect, useId, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { getCommands, runCommandCode, type CommandContext, type CommandDef } from "@/lib/command-runtime";
+import { CommandNode } from "./command-node";
 import { toEditorHtml } from "@/lib/rich-text-shared";
 
 type Props = {
@@ -15,13 +18,48 @@ type Props = {
   placeholder?: string;
   /** Accès au contenu depuis l'extérieur (ex. remplacer la description par une proposition de l'IA). */
   apiRef?: RefObject<RichTextApi | null>;
+  /** Contexte passé aux commandes $$ et @@ (titre, objet). */
+  commandContext?: CommandContext;
 };
+
+/** Saisie en cours après $$ (résultat inséré) ou @@ (recalculé à chaque affichage). */
+type Trigger = { kind: "$$" | "@@"; query: string; from: number; to: number; left: number; top: number };
 
 export type RichTextApi = { getHtml: () => string; setHtml: (html: string) => void };
 
-export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef }: Props) {
+export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef, commandContext }: Props) {
   const labelId = useId();
   const [html, setHtml] = useState(() => toEditorHtml(defaultValue));
+  const baseCtxRef = useRef<CommandContext>(commandContext ?? {});
+  useEffect(() => {
+    baseCtxRef.current = commandContext ?? {};
+  }, [commandContext]);
+  /** Contexte des commandes, lu au moment de l'exécution : titre et objet tels qu'ils sont saisis dans le formulaire. */
+  const liveContext = (): CommandContext => {
+    const base = baseCtxRef.current;
+    const form = wrapRef.current?.closest("form");
+    if (!form) return base;
+    const value = (n: string) => (form.elements.namedItem(n) as HTMLInputElement | HTMLSelectElement | null)?.value?.trim() || null;
+    const select = form.elements.namedItem("objectId") as HTMLSelectElement | null;
+    const objet = select?.selectedOptions[0]?.value ? select.selectedOptions[0].text.replace(/^[\s└]+/, "") : null;
+    const titre = value("title") ?? value("name") ?? base.titre ?? null;
+    return { titre, objet: objet ?? (select ? base.objet : (value("name") ?? base.objet)) ?? null };
+  };
+  const ctxRef = useRef(liveContext);
+  useEffect(() => {
+    ctxRef.current = liveContext;
+  });
+
+  // Raccourcis de commandes : liste filtrée, choix au clavier ou à la souris
+  const [trigger, setTrigger] = useState<Trigger | null>(null);
+  const [commands, setCommands] = useState<CommandDef[] | null>(null);
+  const [active, setActive] = useState(0);
+  const [cmdError, setCmdError] = useState<string | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<Trigger | null>(null);
+  const matchesRef = useRef<CommandDef[]>([]);
+  const activeRef = useRef(0);
+  const chooseRef = useRef<(c: CommandDef) => void>(() => {});
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -31,6 +69,8 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef 
         link: { openOnClick: false, autolink: true, defaultProtocol: "https", protocols: ["mailto", "tel"] },
       }),
       Placeholder.configure({ placeholder: placeholder ?? "" }),
+      // eslint-disable-next-line react-hooks/refs -- lu seulement à l'exécution d'une commande, pas au rendu
+      CommandNode.configure({ context: () => ctxRef.current() }),
     ],
     content: html,
     editorProps: {
@@ -40,8 +80,95 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef 
         "aria-labelledby": labelId,
         class: "rich rich-editor",
       },
+      handleKeyDown: (_view, event) => {
+        const t = triggerRef.current;
+        const list = matchesRef.current;
+        if (!t) return false;
+        if (event.key === "Escape") {
+          setTrigger(null);
+          return true;
+        }
+        if (!list.length) return false;
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          const n = (activeRef.current + (event.key === "ArrowDown" ? 1 : list.length - 1)) % list.length;
+          activeRef.current = n;
+          setActive(n);
+          return true;
+        }
+        if (event.key === "Enter" || event.key === "Tab") {
+          chooseRef.current(list[Math.min(activeRef.current, list.length - 1)]);
+          return true;
+        }
+        return false;
+      },
     },
     onUpdate: ({ editor }) => setHtml(editor.isEmpty ? "" : editor.getHTML()),
+    onTransaction: ({ editor }) => {
+      // Cherche « $$nom » ou « @@nom » juste avant le curseur
+      const { selection } = editor.state;
+      let next: Trigger | null = null;
+      if (selection.empty) {
+        const $from = selection.$from;
+        const before = $from.parent.textBetween(Math.max(0, $from.parentOffset - 50), $from.parentOffset, undefined, "\ufffc");
+        const m = /(\$\$|@@)([a-z0-9_-]{0,40})$/i.exec(before);
+        if (m) {
+          const coords = editor.view.coordsAtPos($from.pos);
+          const box = wrapRef.current?.getBoundingClientRect();
+          next = {
+            kind: m[1] as Trigger["kind"],
+            query: m[2].toLowerCase(),
+            from: $from.pos - m[0].length,
+            to: $from.pos,
+            // Liste de 18 rem (288 px) gardée dans la largeur de l'éditeur
+            left: box ? Math.max(0, Math.min(coords.left - box.left, box.width - 296)) : 0,
+            top: box ? coords.bottom - box.top + 4 : 0,
+          };
+        }
+      }
+      const prev = triggerRef.current;
+      if (!next && !prev) return;
+      if (next && prev && next.kind === prev.kind && next.query === prev.query && next.from === prev.from) return;
+      triggerRef.current = next;
+      activeRef.current = 0;
+      setActive(0);
+      setTrigger(next);
+    },
+  });
+
+  // Liste des commandes, chargée à la première utilisation
+  useEffect(() => {
+    if (trigger && !commands) void getCommands().then(setCommands);
+  }, [trigger, commands]);
+
+  const matches = trigger && commands ? commands.filter((c) => c.name.startsWith(trigger.query)) : [];
+  useEffect(() => {
+    matchesRef.current = matches;
+  });
+
+  const choose = (c: CommandDef) => {
+    const t = triggerRef.current;
+    if (!editor || !t) return;
+    triggerRef.current = null;
+    setTrigger(null);
+    setCmdError(null);
+    if (t.kind === "@@") {
+      editor.chain().focus().insertContentAt({ from: t.from, to: t.to }, [{ type: "commande", attrs: { name: c.name } }, { type: "text", text: " " }]).run();
+      return;
+    }
+    // $$ : le résultat remplace le raccourci, une fois pour toutes
+    void runCommandCode(c.code, c.name, ctxRef.current()).then((r) => {
+      const typed = editor.state.doc.textBetween(t.from, Math.min(t.to, editor.state.doc.content.size), undefined, "\ufffc");
+      if (!typed.startsWith("$$")) return; // le texte a bougé entre-temps
+      if (!r.ok) {
+        setCmdError(`$$${c.name} : ${r.error}`);
+        return;
+      }
+      const chain = editor.chain().focus().deleteRange({ from: t.from, to: t.to });
+      (r.value ? chain.insertContentAt(t.from, { type: "text", text: r.value }) : chain).run();
+    });
+  };
+  useEffect(() => {
+    chooseRef.current = choose;
   });
 
   useEffect(() => {
@@ -61,7 +188,7 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef 
   return (
     <div className="field">
       <span id={labelId}>{label}</span>
-      <div className="grid">
+      <div className="relative grid" ref={wrapRef}>
         <Toolbar editor={editor} />
         {editor ? (
           <EditorContent editor={editor} />
@@ -71,7 +198,59 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef 
             …
           </div>
         )}
+        {trigger && (
+          <div
+            role="listbox"
+            aria-label={trigger.kind === "$$" ? "Commandes : résultat inséré" : "Commandes : recalculées à chaque affichage"}
+            className="absolute z-20 grid max-h-64 w-72 max-w-[calc(100%-1rem)] overflow-auto rounded-lg border border-line bg-surface py-1 text-sm shadow-lg"
+            style={{ left: trigger.left, top: trigger.top }}
+          >
+            <p className="px-3 pb-1 text-xs text-muted">
+              {trigger.kind === "$$" ? "$$ insère le résultat" : "@@ recalcule à chaque affichage"} · Entrée pour choisir
+            </p>
+            {!commands && <p className="px-3 py-1 text-muted">Chargement…</p>}
+            {commands && matches.length === 0 && (
+              <p className="px-3 py-1 text-muted">
+                Aucune commande « {trigger.query} ».{" "}
+                <Link href="/commandes" target="_blank" className="text-moss underline-offset-4 hover:underline">
+                  Gérer les commandes
+                </Link>
+              </p>
+            )}
+            {matches.map((c, i) => (
+              <button
+                key={c.name}
+                type="button"
+                role="option"
+                aria-selected={i === active}
+                className={`grid px-3 py-1.5 text-left ${i === active ? "bg-moss-soft" : "hover:bg-paper"}`}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // garde le focus dans l'éditeur
+                  choose(c);
+                }}
+              >
+                <span className="font-bold text-moss">
+                  {trigger.kind}
+                  {c.name}
+                </span>
+                {c.description && <span className="text-muted">{c.description}</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+      <p className="text-xs text-muted">
+        Raccourcis : <span className="font-bold">$$commande</span> insère son résultat,{" "}
+        <span className="font-bold">@@commande</span> le recalcule à chaque affichage ·{" "}
+        <Link href="/commandes" target="_blank" className="text-moss underline-offset-4 hover:underline">
+          Commandes
+        </Link>
+      </p>
+      {cmdError && (
+        <p role="alert" className="text-sm text-brick">
+          {cmdError}
+        </p>
+      )}
       <input type="hidden" name={name} value={html} />
     </div>
   );

@@ -246,6 +246,25 @@ export const auditLog = pgTable(
 );
 
 /**
+ * Commandes de saisie : $$nom insère le résultat à la saisie, @@nom le recalcule
+ * à chaque affichage. `code` est le corps d'une fonction JavaScript (async possible)
+ * qui reçoit `ctx` et renvoie le texte à afficher.
+ */
+export const commands = pgTable(
+  "commands",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    description: text("description"),
+    code: text("code").notNull(),
+    updatedById: uuid("updated_by_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("commands_name_uq").on(sql`lower(${t.name})`)],
+);
+
+/**
  * Réglages de l'appli, par clé (ex. « ia » : fournisseurs, modèles, clés d'API chiffrées).
  * Réservés aux administrateurs.
  */
@@ -263,6 +282,7 @@ export type DocumentRow = typeof documents.$inferSelect;
 export type LinkRow = typeof links.$inferSelect;
 export type Subtask = typeof subtasks.$inferSelect;
 export type TaskType = typeof taskTypes.$inferSelect;
+export type Command = typeof commands.$inferSelect;
 // ---------- Accès des assistants IA (MCP) ----------
 
 /** Applications clientes OAuth (enregistrement dynamique, RFC 7591). */

@@ -5,13 +5,19 @@ import { isHtml, plainToHtml } from "./rich-text-shared";
 // Seules les balises produites par l'éditeur sont conservées ; tout le reste
 // (scripts, styles, attributs d'évènements, liens javascript:…) est retiré.
 const OPTIONS: sanitizeHtml.IOptions = {
-  allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "s", "h2", "h3", "ul", "ol", "li", "blockquote", "code", "pre", "hr", "a"],
-  allowedAttributes: { a: ["href", "target", "rel"], ol: ["start"] },
+  allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "s", "h2", "h3", "ul", "ol", "li", "blockquote", "code", "pre", "hr", "a", "span"],
+  // span[data-commande] : commande @@nom recalculée à chaque affichage
+  allowedAttributes: { a: ["href", "target", "rel"], ol: ["start"], span: ["data-commande"] },
   allowedSchemes: ["http", "https", "mailto", "tel"],
   allowProtocolRelative: false,
   transformTags: {
     b: "strong",
     i: "em",
+    span: (tagName, attribs) => {
+      const name = (attribs["data-commande"] ?? "").toLowerCase();
+      const keep: sanitizeHtml.Attributes = /^[a-z0-9_-]{1,40}$/.test(name) ? { "data-commande": name } : {};
+      return { tagName, attribs: keep };
+    },
     a: (tagName, attribs) => ({
       tagName,
       attribs: { ...attribs, target: "_blank", rel: "noopener noreferrer nofollow" },

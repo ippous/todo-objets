@@ -98,7 +98,16 @@ export function TodoForm({
             ))}
           </select>
         </label>
-        <RichTextEditor name="description" label="Description" defaultValue={values?.description} apiRef={editor} />
+        <RichTextEditor
+          name="description"
+          label="Description"
+          defaultValue={values?.description}
+          apiRef={editor}
+          commandContext={{
+            titre: values?.title ?? null,
+            objet: objects.find((o) => o.id === (values?.objectId ?? objectId))?.label.replace(/^[\s└]+/, "") ?? null,
+          }}
+        />
         {ai && <DescriptionAssist todoId={ai.todoId} ai={ai.choice} isAdmin={ai.isAdmin} editor={editor} />}
         {afterDescription}
 
