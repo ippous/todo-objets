@@ -390,25 +390,40 @@ export async function deleteLinkAction(id: string): Promise<ActionState> {
 
 // ---------- Sous-tâches ----------
 
-export async function addSubtaskAction(todoId: string, _: ActionState, fd: FormData): Promise<ActionState> {
+/** Durée venant du navigateur : un nombre, null pour effacer, undefined pour ne rien changer. */
+const hoursArg = (v: unknown) => (v === null ? null : typeof v === "number" ? v : undefined);
+
+export async function addSubtaskAction(
+  todoId: string,
+  data: { title: string; estHours?: number | null; actualHours?: number | null },
+): Promise<ActionState> {
   const actor = await uiActor();
   try {
     assertId(todoId);
-    await addSubtask(getDb(), todoId, str(fd, "title"), actor);
+    await addSubtask(getDb(), todoId, typeof data?.title === "string" ? data.title : "", actor, {
+      estHours: hoursArg(data?.estHours),
+      actualHours: hoursArg(data?.actualHours),
+    });
   } catch (err) {
     return handle(err);
   }
   revalidatePath("/", "layout");
+  refresh();
   return { ok: true };
 }
 
-export async function updateSubtaskAction(id: string, data: { title?: string; done?: boolean }): Promise<ActionState> {
+export async function updateSubtaskAction(
+  id: string,
+  data: { title?: string; done?: boolean; estHours?: number | null; actualHours?: number | null },
+): Promise<ActionState> {
   const actor = await uiActor();
   try {
     assertId(id);
     await updateSubtask(getDb(), id, {
       title: typeof data.title === "string" ? data.title : undefined,
       done: typeof data.done === "boolean" ? data.done : undefined,
+      estHours: hoursArg(data.estHours),
+      actualHours: hoursArg(data.actualHours),
     }, actor);
   } catch (err) {
     return handle(err);
