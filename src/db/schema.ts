@@ -122,6 +122,8 @@ export const subtasks = pgTable(
       .references(() => todos.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     done: boolean("done").notNull().default(false),
+    estHours: numeric("est_hours", { precision: 8, scale: 2, mode: "number" }),
+    actualHours: numeric("actual_hours", { precision: 8, scale: 2, mode: "number" }),
     position: integer("position").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

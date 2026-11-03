@@ -78,14 +78,28 @@ test("sous-tâches : ajout, case à cocher, ordre par flèches et glisser-dépos
   // Modification du texte
   await page.getByRole("button", { name: "Modifier « Sous-couche »" }).click();
   await page.getByLabel("Texte de la sous-tâche").fill("Sous-couche antirouille");
-  await page.getByRole("button", { name: "Enregistrer", exact: true }).first().click();
+  await page.getByRole("button", { name: "Enregistrer le texte" }).click();
   await expect(items.filter({ hasText: "Sous-couche antirouille" })).toBeVisible();
+
+  // Durées prévue / réalisée sur la ligne, et leur total
+  await page.getByLabel("Durée prévue de « Poncer », en heures").fill("1,5");
+  await page.getByLabel("Durée prévue de « Poncer », en heures").press("Enter");
+  await page.getByLabel("Durée prévue de « Finition », en heures").fill("2");
+  await page.getByLabel("Durée réalisée de « Finition », en heures").fill("2,5");
+  await page.getByLabel("Durée réalisée de « Finition », en heures").press("Tab");
+  await expect(page.getByTestId("sous-taches-total")).toContainText("3,5");
+  await expect(page.getByTestId("sous-taches-total")).toContainText("2,5");
+  // Les durées s'enregistrent en arrière-plan : on attend la fin des envois
+  await page.waitForLoadState("networkidle");
 
   // Tout est conservé après rechargement
   await page.reload();
   await expect.poll(order).toEqual(["Finition", "Sous-couche antirouille", "Poncer"]);
   await expect(page.getByRole("checkbox", { name: "Poncer" })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Finition" })).not.toBeChecked();
+  await expect(page.getByLabel("Durée prévue de « Poncer », en heures")).toHaveValue("1,5");
+  // La tâche sans durée propre affiche la somme des sous-tâches
+  await expect(page.locator('input[name="estHours"]')).toHaveAttribute("placeholder", /3,5/);
 
   // Suppression
   await page.getByRole("button", { name: "Supprimer « Finition »" }).click();

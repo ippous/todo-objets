@@ -8,6 +8,8 @@ import {
   DomainError,
   listObjects,
   listSubtasks,
+  listTodos,
+  openStatsByObject,
   reorderSubtasks,
   setTodoStatus,
   updateSubtask,
@@ -94,5 +96,33 @@ describe("sous-tâches", () => {
     await addSubtask(db, t.id, "A");
     await deleteTodo(db, t.id);
     expect(await listSubtasks(db, t.id)).toEqual([]);
+  });
+
+  it("portent une durée prévue et réalisée, reprises par la tâche quand elle n'en a pas", async () => {
+    const t = await createTodo(db, { objectId, title: "Clôture", estValueEur: 120 });
+    const a = await addSubtask(db, t.id, "Piquets", undefined, { estHours: 2, actualHours: 2.5 });
+    await addSubtask(db, t.id, "Fil", undefined, { estHours: 1.5 });
+    await addSubtask(db, t.id, "Portillon");
+    expect((await listSubtasks(db, t.id)).map((s) => [s.estHours, s.actualHours])).toEqual([
+      [2, 2.5],
+      [1.5, null],
+      [null, null],
+    ]);
+
+    let [row] = await listTodos(db, { q: "Clôture" });
+    expect(row).toMatchObject({ estHours: 3.5, actualHours: 2.5, valuePerHour: 34.29 });
+    expect((await openStatsByObject(db)).get(objectId)?.estHours).toBe(3.5);
+
+    await updateSubtask(db, a.id, { estHours: null, actualHours: 3 });
+    [row] = await listTodos(db, { q: "Clôture" });
+    expect(row).toMatchObject({ estHours: 1.5, actualHours: 3 });
+
+    // Une durée saisie sur la tâche l'emporte
+    const u = await createTodo(db, { objectId, title: "Haie", estHours: 10 });
+    await addSubtask(db, u.id, "Tailler", undefined, { estHours: 4 });
+    [row] = await listTodos(db, { q: "Haie" });
+    expect(row.estHours).toBe(10);
+
+    await expect(updateSubtask(db, a.id, { estHours: -1 })).rejects.toThrow(DomainError);
   });
 });
