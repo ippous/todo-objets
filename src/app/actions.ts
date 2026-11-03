@@ -11,7 +11,9 @@ import { DOCUMENT_MAX_BYTES, DOCUMENT_TYPES } from "@/lib/document-types";
 import {
   addDocument,
   addLink,
+  addDraftPhoto,
   addPhoto,
+  claimDraftPhotos,
   addSubtask,
   createObject,
   createObjects,
@@ -107,7 +109,10 @@ export async function createObjectAction(_: ActionState, fd: FormData): Promise<
   let id: string;
   try {
     if (parentId) assertId(parentId);
-    id = (await createObject(getDb(), { ...parsed.data, parentId }, actor)).id;
+    const db = getDb();
+    id = (await createObject(db, { ...parsed.data, parentId }, actor)).id;
+    const draftId = str(fd, "draftId");
+    if (UUID.test(draftId)) await claimDraftPhotos(db, draftId, { objectId: id });
   } catch (err) {
     return handle(err);
   }
@@ -534,6 +539,17 @@ export async function addPhotoAction(input: {
       throw new DomainError("L'envoi de la photo n'est pas terminé. Réessaie.");
     }
     const dims = (n: number) => (Number.isInteger(n) && n > 0 && n < 20000 ? n : null);
+    if (main.kind === "brouillons") {
+      if (!input.inline) throw new DomainError("Photo invalide");
+      const draft = await addDraftPhoto(getDb(), main.ownerId, {
+        pathname: input.pathname,
+        thumbPathname: input.thumbPathname,
+        width: dims(input.width),
+        height: dims(input.height),
+        createdById: user.id,
+      });
+      return { ok: true, id: draft.id };
+    }
     const photo = await addPhoto(getDb(), main.kind === "objets" ? { objectId: main.ownerId } : { todoId: main.ownerId }, {
       pathname: input.pathname,
       thumbPathname: input.thumbPathname,
@@ -588,12 +604,14 @@ export async function createTodoAction(_: ActionState, fd: FormData): Promise<Ac
   if (!parsed.success) return { error: firstError(parsed.error) };
   try {
     const data = parsed.data;
-    await createTodo(getDb(), {
+    const created = await createTodo(getDb(), {
       ...data,
       status: data.status,
       doneAt: data.status === "fait" ? new Date() : null,
       createdById: user.id,
     }, actor);
+    const draftId = str(fd, "draftId");
+    if (UUID.test(draftId)) await claimDraftPhotos(getDb(), draftId, { todoId: created.id });
   } catch (err) {
     return handle(err);
   }

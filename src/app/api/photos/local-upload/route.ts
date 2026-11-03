@@ -24,7 +24,8 @@ export async function POST(request: Request) {
   const photo = parsePhotoPath(pathname);
   const doc = photo ? null : parseDocumentPath(pathname);
   if (photo) {
-    const owner = photo.kind === "objets" ? await getObject(db, photo.ownerId) : await getTodo(db, photo.ownerId);
+    const owner =
+      photo.kind === "brouillons" ? true : photo.kind === "objets" ? await getObject(db, photo.ownerId) : await getTodo(db, photo.ownerId);
     if (!owner) return NextResponse.json({ error: "Objet ou tâche introuvable" }, { status: 404 });
     if (type !== "image/jpeg") return NextResponse.json({ error: "Format non accepté" }, { status: 415 });
     max = PHOTO_MAX_BYTES;

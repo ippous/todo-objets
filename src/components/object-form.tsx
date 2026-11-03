@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import type { ActionState } from "@/lib/forms";
-import { RichTextEditor } from "./rich-text-editor";
-import type { PhotoTarget } from "@/lib/photo-upload";
+import { DescriptionField, type DescriptionFieldProps } from "./description-field";
+import type { AiChoice } from "./task-ai";
 import { FormError, Submit } from "./submit";
 
 type Values = { name: string; typeId: string | null; description: string | null; location: string | null; tags: string[] };
@@ -16,7 +16,7 @@ export function ObjectForm({
   submitLabel,
   cancelHref,
   types,
-  images,
+  description,
 }: {
   types: { id: string; name: string }[];
   action: (state: ActionState, fd: FormData) => Promise<ActionState>;
@@ -24,8 +24,8 @@ export function ObjectForm({
   parentId?: string | null;
   submitLabel: string;
   cancelHref: string;
-  /** Où ranger les images de la description (objet existant seulement). */
-  images?: PhotoTarget;
+  /** Zone de description : objet décrit (id null à la création), stockage des images, aide IA. */
+  description: { objectId: string | null; storage: DescriptionFieldProps["storage"]; ai: AiChoice; isAdmin: boolean };
 }) {
   const [state, formAction] = useActionState(action, {});
   return (
@@ -49,13 +49,14 @@ export function ObjectForm({
           Gérer les types
         </Link>
       </label>
-      <RichTextEditor
-        name="description"
-        label="Description"
+      <DescriptionField
+        owner={{ kind: "objet", id: description.objectId }}
+        storage={description.storage}
+        ai={description.ai}
+        isAdmin={description.isAdmin}
         placeholder="Surface, matériaux, accès, état…"
         defaultValue={values?.description}
         commandContext={{ titre: values?.name ?? null, objet: values?.name ?? null }}
-        images={images}
       />
       <label className="field">
         <span>Emplacement</span>

@@ -2,7 +2,7 @@
 
 /** Une description enregistrée avant l'éditeur est du texte brut ; les nouvelles sont du HTML. */
 export function isHtml(value: string): boolean {
-  return /^\s*<(p|h[1-6]|ul|ol|blockquote|pre|hr|div)[\s>/]/i.test(value);
+  return /^\s*<(p|h[1-6]|ul|ol|blockquote|pre|hr|div|img)[\s>/]/i.test(value);
 }
 
 const escapeHtml = (s: string) =>

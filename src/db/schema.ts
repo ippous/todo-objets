@@ -155,13 +155,22 @@ export const photos = pgTable(
     isCover: boolean("is_cover").notNull().default(false),
     /** Image insérée dans une description : hors galerie, jamais vignette. */
     inline: boolean("inline").notNull().default(false),
+    /**
+     * Image d'une description d'objet ou de tâche pas encore créé : identifiant du brouillon,
+     * rattachée à son propriétaire à la création (voir claimDraftPhotos).
+     */
+    draftOwner: uuid("draft_owner"),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("photos_object_idx").on(t.objectId),
     index("photos_todo_idx").on(t.todoId),
-    check("photos_one_owner", sql`(${t.objectId} IS NULL) <> (${t.todoId} IS NULL)`),
+    check(
+      "photos_one_owner",
+      sql`((${t.objectId} IS NULL) <> (${t.todoId} IS NULL)) OR (${t.objectId} IS NULL AND ${t.todoId} IS NULL AND ${t.draftOwner} IS NOT NULL AND ${t.inline})`,
+    ),
+    index("photos_draft_idx").on(t.draftOwner),
     uniqueIndex("photos_object_cover_uq").on(t.objectId).where(sql`${t.isCover} AND ${t.objectId} IS NOT NULL`),
     uniqueIndex("photos_todo_cover_uq").on(t.todoId).where(sql`${t.isCover} AND ${t.todoId} IS NOT NULL`),
   ],

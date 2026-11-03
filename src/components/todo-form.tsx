@@ -1,14 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useId, useRef, useState } from "react";
+import { useActionState, useId, useState } from "react";
 import type { Todo } from "@/db/schema";
 import { fmtNum, PRIORITY_LABEL, RECURRENCE_LABEL, STATUS_LABEL } from "@/lib/format";
 import type { ActionState } from "@/lib/forms";
-import { RichTextEditor, type RichTextApi } from "./rich-text-editor";
-import { DescriptionAssist, type AiChoice } from "./task-ai";
-import { aiCompleteDescriptionAction } from "@/app/ai-actions";
-import type { PhotoTarget } from "@/lib/photo-upload";
+import { DescriptionField, type DescriptionFieldProps } from "./description-field";
+import type { AiChoice } from "./task-ai";
 import type { ObjectOption } from "@/lib/options";
 import { TaskIcon } from "@/lib/task-icons";
 import { FormError } from "./submit";
@@ -43,8 +41,7 @@ export function TodoForm({
   afterDescription,
   beforeSubmit,
   subtaskHours,
-  ai,
-  images,
+  description,
 }: {
   action: (state: ActionState, fd: FormData) => Promise<ActionState>;
   values?: Values;
@@ -63,12 +60,9 @@ export function TodoForm({
   beforeSubmit?: React.ReactNode;
   /** Somme des durées des sous-tâches, utilisée quand la tâche n'a pas sa propre durée. */
   subtaskHours?: { estHours: number | null; actualHours: number | null };
-  /** Aides IA (tâche existante seulement). */
-  ai?: { todoId: string; choice: AiChoice; isAdmin: boolean };
-  /** Où ranger les images insérées dans la description (tâche existante seulement). */
-  images?: PhotoTarget;
+  /** Zone de description : tâche décrite (id null à la création), stockage des images, aide IA. */
+  description: { todoId: string | null; storage: DescriptionFieldProps["storage"]; ai: AiChoice; isAdmin: boolean };
 }) {
-  const editor = useRef<RichTextApi | null>(null);
   const [state, formAction, pending] = useActionState(action, {});
   const formId = useId();
   const [status, setStatus] = useState(values?.status ?? "a_faire");
@@ -103,25 +97,17 @@ export function TodoForm({
             ))}
           </select>
         </label>
-        <RichTextEditor
-          name="description"
-          label="Description"
+        <DescriptionField
+          owner={{ kind: "tache", id: description.todoId }}
+          storage={description.storage}
+          ai={description.ai}
+          isAdmin={description.isAdmin}
           defaultValue={values?.description}
-          apiRef={editor}
-          images={images}
           commandContext={{
             titre: values?.title ?? null,
             objet: objects.find((o) => o.id === (values?.objectId ?? objectId))?.label.replace(/^[\s└]+/, "") ?? null,
           }}
         />
-        {ai && (
-          <DescriptionAssist
-            complete={(draft, provider) => aiCompleteDescriptionAction(ai.todoId, draft, provider)}
-            ai={ai.choice}
-            isAdmin={ai.isAdmin}
-            editor={editor}
-          />
-        )}
         {afterDescription}
 
         <fieldset className="grid gap-3 sm:grid-cols-3">

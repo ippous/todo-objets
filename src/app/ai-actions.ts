@@ -29,12 +29,14 @@ const asProvider = (p: unknown): AiProvider | null =>
   typeof p === "string" && (AI_PROVIDERS as readonly string[]).includes(p) ? (p as AiProvider) : null;
 
 /** Titre et description en cours de saisie (pas forcément enregistrés). */
-type Draft = { title: string; description: string | null };
+type Draft = { title: string; description: string | null; objectId?: string | null; parentId?: string | null };
 const asDraft = (d: unknown): Draft => {
   const o = (d ?? {}) as Record<string, unknown>;
   return {
     title: typeof o.title === "string" ? o.title.slice(0, 200) : "",
     description: typeof o.description === "string" ? o.description.slice(0, 50_000) : null,
+    objectId: typeof o.objectId === "string" && UUID.test(o.objectId) ? o.objectId : null,
+    parentId: typeof o.parentId === "string" && UUID.test(o.parentId) ? o.parentId : null,
   };
 };
 
@@ -76,15 +78,22 @@ export async function setDefaultAiProviderAction(provider: string): Promise<Acti
 
 // ---------- Aides sur une tâche ----------
 
+/**
+ * Description rédigée ou complétée par l'IA, pour une tâche ou un objet,
+ * existant (id) ou en cours de création (id null : contexte tiré du brouillon).
+ */
 export async function aiCompleteDescriptionAction(
-  todoId: string,
+  kind: "tache" | "objet",
+  id: string | null,
   draft: Draft,
   provider: string | null,
 ): Promise<{ html?: string; error?: string }> {
   await requireUser();
   try {
-    if (!UUID.test(todoId)) throw new DomainError("Identifiant invalide");
-    const r = await completeDescription(getDb(), todoId, asDraft(draft), asProvider(provider));
+    if (id !== null && !UUID.test(id)) throw new DomainError("Identifiant invalide");
+    const d = asDraft(draft);
+    const p = asProvider(provider);
+    const r = kind === "objet" ? await completeObjectDescription(getDb(), id, d, p) : await completeDescription(getDb(), id, d, p);
     return { html: r.html };
   } catch (err) {
     return fail(err);
@@ -151,21 +160,6 @@ export async function applyAiProposalsAction(
 }
 
 // ---------- Aides sur un objet ----------
-
-export async function aiCompleteObjectDescriptionAction(
-  objectId: string,
-  draft: Draft,
-  provider: string | null,
-): Promise<{ html?: string; error?: string }> {
-  await requireUser();
-  try {
-    if (!UUID.test(objectId)) throw new DomainError("Identifiant invalide");
-    const r = await completeObjectDescription(getDb(), objectId, asDraft(draft), asProvider(provider));
-    return { html: r.html };
-  } catch (err) {
-    return fail(err);
-  }
-}
 
 export async function aiProposeObjectTasksAction(
   objectId: string,

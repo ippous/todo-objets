@@ -1,55 +1,41 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useState } from "react";
 import { saveObjectDescriptionAction } from "@/app/actions";
-import { aiCompleteObjectDescriptionAction } from "@/app/ai-actions";
-import type { PhotoTarget } from "@/lib/photo-upload";
-import { RichTextEditor, type RichTextApi } from "./rich-text-editor";
+import { DescriptionField, type DescriptionFieldProps } from "./description-field";
 import { FormError, Submit } from "./submit";
-import { DescriptionAssist, ObjectTaskAssist, type AiChoice } from "./task-ai";
+import { ObjectTaskAssist, type AiChoice } from "./task-ai";
 
 /** Description d'un objet, modifiable directement sur sa fiche, avec les aides IA. */
 export function ObjectDescription({
   objectId,
   name,
   description,
-  images,
+  storage,
   ai,
   isAdmin,
 }: {
   objectId: string;
   name: string;
   description: string | null;
-  images: PhotoTarget;
+  storage: DescriptionFieldProps["storage"];
   ai: AiChoice;
   isAdmin: boolean;
 }) {
   const [state, action] = useActionState(saveObjectDescriptionAction.bind(null, objectId), {});
-  const editor = useRef<RichTextApi | null>(null);
   const [dirty, setDirty] = useState(false);
 
   return (
-    <form
-      action={action}
-      className="grid max-w-2xl gap-3"
-      onSubmit={() => setDirty(false)}
-    >
-      <RichTextEditor
-        name="description"
-        label="Description"
-        placeholder="Caractéristiques, état, points à vérifier…"
-        defaultValue={description}
-        apiRef={editor}
-        commandContext={{ titre: name, objet: name }}
-        images={images}
-        onChange={() => setDirty(true)}
-      />
-      <DescriptionAssist
-        complete={(draft, provider) => aiCompleteObjectDescriptionAction(objectId, draft, provider)}
+    <form action={action} className="grid max-w-2xl gap-3" onSubmit={() => setDirty(false)}>
+      <DescriptionField
+        owner={{ kind: "objet", id: objectId }}
+        storage={storage}
         ai={ai}
         isAdmin={isAdmin}
-        editor={editor}
-        label="Rédiger ou mettre à niveau la description"
+        defaultValue={description}
+        placeholder="Caractéristiques, état, points à vérifier…"
+        commandContext={{ titre: name, objet: name }}
+        onChange={() => setDirty(true)}
       />
       <div className="flex flex-wrap items-center gap-2">
         <Submit className="btn btn-primary">Enregistrer la description</Submit>

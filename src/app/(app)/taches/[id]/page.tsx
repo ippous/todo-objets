@@ -84,8 +84,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
         returnTo={back}
         submitLabel="Enregistrer"
         subtaskHours={sumSubtaskHours(subs)}
-        ai={ai}
-        images={{ kind: "taches", ownerId: todo.id, prefix: storagePrefix, mode: storageMode }}
+        description={{ todoId: todo.id, storage: { prefix: storagePrefix, mode: storageMode }, ai: aiChoice, isAdmin: ai.isAdmin }}
         beforeSubmit={
           <>
             <section aria-labelledby="documents" className="grid min-w-0 content-start gap-3 border-t border-line pt-5">
