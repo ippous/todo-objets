@@ -3,7 +3,9 @@
 import { useActionState, useState } from "react";
 import { saveObjectDescriptionAction } from "@/app/actions";
 import { DescriptionField, type DescriptionFieldProps } from "./description-field";
+import { Save } from "lucide-react";
 import { FormError, Submit } from "./submit";
+import { IconLabel, Tip } from "./tip";
 import { ObjectTaskAssist, type AiChoice } from "./task-ai";
 
 /** Description d'un objet, modifiable directement sur sa fiche, avec les aides IA. */
@@ -37,20 +39,30 @@ export function ObjectDescription({
         commandContext={{ titre: name, objet: name }}
         onChange={() => setDirty(true)}
       />
-      <div className="flex flex-wrap items-center gap-2">
-        <Submit className="btn btn-primary">Enregistrer la description</Submit>
-        {dirty ? (
-          <span className="text-sm text-muted">Modifications non enregistrées</span>
-        ) : (
-          state.ok && (
-            <span role="status" className="text-sm text-moss">
-              Description enregistrée.
-            </span>
-          )
-        )}
-      </div>
+      {/* Une seule ligne : enregistrer, puis les aides IA pour créer des tâches */}
+      <ObjectTaskAssist
+        objectId={objectId}
+        ai={ai}
+        isAdmin={isAdmin}
+        quiet
+        leading={
+          <Tip label="Enregistrer la description">
+            <Submit className="btn btn-primary min-w-11 px-3 sm:px-4" ariaLabel="Enregistrer la description" pendingLabel="…">
+              <IconLabel icon={<Save size={18} aria-hidden />} label="Enregistrer la description" />
+            </Submit>
+          </Tip>
+        }
+      />
+      {dirty ? (
+        <p className="text-sm text-muted">Modifications non enregistrées</p>
+      ) : (
+        state.ok && (
+          <p role="status" className="text-sm text-moss">
+            Description enregistrée.
+          </p>
+        )
+      )}
       <FormError error={state.error} />
-      <ObjectTaskAssist objectId={objectId} ai={ai} isAdmin={isAdmin} />
     </form>
   );
 }
