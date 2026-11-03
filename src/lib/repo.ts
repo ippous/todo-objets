@@ -241,13 +241,19 @@ export async function todoCountByObject(db: Db): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.objectId, Number(r.n)]));
 }
 
+// Durées « effectives » d'une tâche : la sienne si elle est saisie,
+// sinon la somme de celles de ses sous-tâches (NULL si aucune n'en a).
+const effEstHours = sql<string | null>`coalesce(${todos.estHours}, (SELECT sum(st.est_hours) FROM subtasks st WHERE st.todo_id = ${todos.id}))`;
+const effActualHours = sql<string | null>`coalesce(${todos.actualHours}, (SELECT sum(st.actual_hours) FROM subtasks st WHERE st.todo_id = ${todos.id}))`;
+const numOrNull = (v: string | number | null | undefined) => (v == null ? null : round2(Number(v)));
+
 /** Statistiques propres à chaque objet (tâches non terminées uniquement). */
 export async function openStatsByObject(db: Db): Promise<Map<string, Stats>> {
   const rows = await db
     .select({
       objectId: todos.objectId,
       openCount: sql<number>`count(*)::int`,
-      estHours: sql<string | null>`sum(${todos.estHours})`,
+      estHours: sql<string | null>`sum(${effEstHours})`,
       estValueEur: sql<string | null>`sum(${todos.estValueEur})`,
     })
     .from(todos)
@@ -288,7 +294,7 @@ export type TodoListItem = Todo & {
 };
 
 const priorityRank = sql`CASE ${todos.priority} WHEN 'haute' THEN 0 WHEN 'moyenne' THEN 1 ELSE 2 END`;
-const ratioExpr = sql<string | null>`${todos.estValueEur} / NULLIF(${todos.estHours}, 0)`;
+const ratioExpr = sql<string | null>`${todos.estValueEur} / NULLIF(${effEstHours}, 0)`;
 
 export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSort = "echeance"): Promise<TodoListItem[]> {
   const conds: SQL[] = [];
@@ -333,6 +339,8 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
       assigneeName: assignee.name,
       createdByName: creator.name,
       ratio: ratioExpr,
+      effEst: effEstHours,
+      effActual: effActualHours,
       coverPhotoId: sql<string | null>`(SELECT p.id FROM photos p WHERE p.todo_id = ${todos.id} AND p.is_cover LIMIT 1)`,
     })
     .from(todos)
@@ -344,6 +352,8 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
 
   return rows.map((r) => ({
     ...r.todo,
+    estHours: numOrNull(r.effEst),
+    actualHours: numOrNull(r.effActual),
     objectName: r.objectName,
     assigneeName: r.assigneeName,
     createdByName: r.createdByName,
@@ -477,7 +487,9 @@ export async function setTodoStatus(
     // La nouvelle occurrence reprend les sous-tâches, toutes décochées
     const subs = await tx.select().from(subtasks).where(eq(subtasks.todoId, id)).orderBy(asc(subtasks.position));
     if (subs.length) {
-      await tx.insert(subtasks).values(subs.map((st) => ({ todoId: next.id, title: st.title, position: st.position })));
+      await tx
+        .insert(subtasks)
+        .values(subs.map((st) => ({ todoId: next.id, title: st.title, estHours: st.estHours, position: st.position })));
     }
     return next.id;
   });
@@ -948,9 +960,27 @@ export async function listSubtasks(db: Db, todoId: string): Promise<Subtask[]> {
     .orderBy(asc(subtasks.position), asc(subtasks.createdAt));
 }
 
+export type SubtaskHours = { estHours?: number | null; actualHours?: number | null };
+
+function checkHours(h: number | null | undefined) {
+  if (h == null) return;
+  if (!Number.isFinite(h) || h < 0 || h >= 1_000_000) throw new DomainError("Durée invalide");
+}
+
+/** Somme des durées des sous-tâches (null quand aucune n'est renseignée). */
+export function sumSubtaskHours(subs: Pick<Subtask, "estHours" | "actualHours">[]) {
+  const sum = (k: "estHours" | "actualHours") => {
+    const v = subs.map((s) => s[k]).filter((x): x is number => x != null);
+    return v.length ? round2(v.reduce((a, b) => a + Number(b), 0)) : null;
+  };
+  return { estHours: sum("estHours"), actualHours: sum("actualHours") };
+}
+
 /** Ajoute une sous-tâche en fin de liste. */
-export async function addSubtask(db: Db, todoId: string, rawTitle: string, actor?: Actor): Promise<Subtask> {
+export async function addSubtask(db: Db, todoId: string, rawTitle: string, actor?: Actor, hours: SubtaskHours = {}): Promise<Subtask> {
   const title = cleanSubtaskTitle(rawTitle);
+  checkHours(hours.estHours);
+  checkHours(hours.actualHours);
   const todo = await getTodo(db, todoId);
   if (!todo) throw new DomainError("Tâche introuvable");
   const [{ max }] = await db
@@ -959,21 +989,41 @@ export async function addSubtask(db: Db, todoId: string, rawTitle: string, actor
     .where(eq(subtasks.todoId, todoId));
   const [row] = await db
     .insert(subtasks)
-    .values({ todoId, title, position: max == null ? 0 : Number(max) + 1 })
+    .values({
+      todoId,
+      title,
+      estHours: hours.estHours ?? null,
+      actualHours: hours.actualHours ?? null,
+      position: max == null ? 0 : Number(max) + 1,
+    })
     .returning();
   await logAction(db, actor, { target: todoTarget(todo), action: "ajout_sous_tache", details: { titre: title } });
   return row;
 }
 
-export async function updateSubtask(db: Db, id: string, data: { title?: string; done?: boolean }, actor?: Actor): Promise<void> {
+export async function updateSubtask(
+  db: Db,
+  id: string,
+  data: { title?: string; done?: boolean } & SubtaskHours,
+  actor?: Actor,
+): Promise<void> {
   const set: Partial<Subtask> = {};
   if (data.title !== undefined) set.title = cleanSubtaskTitle(data.title);
   if (data.done !== undefined) set.done = data.done;
+  for (const k of ["estHours", "actualHours"] as const) {
+    if (data[k] === undefined) continue;
+    checkHours(data[k]);
+    set[k] = data[k];
+  }
+  if (!Object.keys(set).length) return;
   const [before] = await db.select().from(subtasks).where(eq(subtasks.id, id));
   if (!before) throw new DomainError("Sous-tâche introuvable");
   const [row] = await db.update(subtasks).set(set).where(eq(subtasks.id, id)).returning();
   if (!row) throw new DomainError("Sous-tâche introuvable");
-  const changements = diff({ titre: before.title, fait: before.done }, { titre: row.title, fait: row.done });
+  const changements = diff(
+    { titre: before.title, fait: before.done, heures_estimees: before.estHours, heures_realisees: before.actualHours },
+    { titre: row.title, fait: row.done, heures_estimees: row.estHours, heures_realisees: row.actualHours },
+  );
   const todo = Object.keys(changements).length && actor ? await getTodo(db, row.todoId) : undefined;
   if (todo) {
     await logAction(db, actor, { target: todoTarget(todo), action: "modification_sous_tache", details: { titre: row.title, changements } });

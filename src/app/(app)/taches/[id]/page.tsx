@@ -11,7 +11,7 @@ import { TodoForm } from "@/components/todo-form";
 import { getDb } from "@/db";
 import { listAudit } from "@/lib/audit";
 import { objectOptions } from "@/lib/options";
-import { getTodo, getUser, listDocuments, listLinks, listObjects, listPhotos, listSubtasks, listTypes, listUsers } from "@/lib/repo";
+import { getTodo, getUser, listDocuments, listLinks, listObjects, listPhotos, listSubtasks, listTypes, listUsers, sumSubtaskHours } from "@/lib/repo";
 import { storageMode, storagePrefix } from "@/lib/storage";
 import { returnPath } from "@/lib/return-to";
 import { DeleteTodo } from "./delete-todo";
@@ -49,12 +49,6 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
           {creator ? ` par ${creator.name}` : ""}
         </p>
       </div>
-      <section aria-labelledby="sous-taches" className="grid max-w-2xl gap-3">
-        <h2 id="sous-taches" className="text-lg font-bold">
-          Sous-tâches
-        </h2>
-        <SubtaskList todoId={todo.id} items={subs.map((s) => ({ id: s.id, title: s.title, done: s.done }))} />
-      </section>
       <section aria-labelledby="photos" className="grid max-w-2xl gap-3">
         <h2 id="photos" className="text-lg font-bold">
           Photos {photos.length > 0 && <span className="font-normal text-muted">({photos.length})</span>}
@@ -65,35 +59,27 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
         />
         <PhotoUploader kind="taches" ownerId={todo.id} prefix={storagePrefix} mode={storageMode} />
       </section>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section aria-labelledby="documents" className="grid content-start gap-3">
-          <h2 id="documents" className="text-lg font-bold">
-            Documents {docs.length > 0 && <span className="font-normal text-muted">({docs.length})</span>}
-          </h2>
-          <ObjectDocuments
-            owner={{ kind: "taches", id: todo.id }}
-            prefix={storagePrefix}
-            mode={storageMode}
-            docTypes={docTypes.map((t) => ({ id: t.id, name: t.name }))}
-            docs={docs.map((d) => ({
-              id: d.id,
-              typeId: d.typeId,
-              typeName: d.typeName,
-              filename: d.filename,
-              contentType: d.contentType,
-              size: d.size,
-              createdAt: d.createdAt.toISOString(),
-              createdBy: d.createdById ? (userName.get(d.createdById) ?? null) : null,
-            }))}
-          />
-        </section>
-        <section aria-labelledby="liens" className="grid content-start gap-3">
-          <h2 id="liens" className="text-lg font-bold">
-            Liens {links.length > 0 && <span className="font-normal text-muted">({links.length})</span>}
-          </h2>
-          <ObjectLinks owner={{ kind: "taches", id: todo.id }} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title }))} />
-        </section>
-      </div>
+      <section aria-labelledby="documents" className="grid max-w-2xl content-start gap-3">
+        <h2 id="documents" className="text-lg font-bold">
+          Documents {docs.length > 0 && <span className="font-normal text-muted">({docs.length})</span>}
+        </h2>
+        <ObjectDocuments
+          owner={{ kind: "taches", id: todo.id }}
+          prefix={storagePrefix}
+          mode={storageMode}
+          docTypes={docTypes.map((t) => ({ id: t.id, name: t.name }))}
+          docs={docs.map((d) => ({
+            id: d.id,
+            typeId: d.typeId,
+            typeName: d.typeName,
+            filename: d.filename,
+            contentType: d.contentType,
+            size: d.size,
+            createdAt: d.createdAt.toISOString(),
+            createdBy: d.createdById ? (userName.get(d.createdById) ?? null) : null,
+          }))}
+        />
+      </section>
       <h2 className="border-t border-line pt-6 text-lg font-bold">Détails de la tâche</h2>
       <TodoForm
         action={updateTodoAction.bind(null, id)}
@@ -102,7 +88,25 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
         users={users.filter((u) => u.active || u.id === todo.assigneeId).map((u) => ({ id: u.id, name: u.name }))}
         returnTo={back}
         submitLabel="Enregistrer"
+        subtaskHours={sumSubtaskHours(subs)}
+        afterDescription={
+          <section aria-labelledby="sous-taches" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
+            <h3 id="sous-taches" className="font-bold">
+              Sous-tâches
+            </h3>
+            <SubtaskList
+              todoId={todo.id}
+              items={subs.map((s) => ({ id: s.id, title: s.title, done: s.done, estHours: s.estHours, actualHours: s.actualHours }))}
+            />
+          </section>
+        }
       />
+      <section aria-labelledby="liens" className="grid max-w-2xl content-start gap-3 border-t border-line pt-6">
+        <h2 id="liens" className="text-lg font-bold">
+          Liens {links.length > 0 && <span className="font-normal text-muted">({links.length})</span>}
+        </h2>
+        <ObjectLinks owner={{ kind: "taches", id: todo.id }} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title }))} />
+      </section>
       <details className="rounded-xl bg-surface p-4">
         <summary className="cursor-pointer font-bold">Historique de la tâche</summary>
         <div className="mt-3">

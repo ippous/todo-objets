@@ -35,6 +35,8 @@ export function TodoForm({
   users,
   returnTo,
   submitLabel,
+  afterDescription,
+  subtaskHours,
 }: {
   action: (state: ActionState, fd: FormData) => Promise<ActionState>;
   values?: Values;
@@ -43,11 +45,15 @@ export function TodoForm({
   users: { id: string; name: string }[];
   returnTo: string;
   submitLabel: string;
+  /** Contenu affiché juste sous la description (les sous-tâches). */
+  afterDescription?: React.ReactNode;
+  /** Somme des durées des sous-tâches, utilisée quand la tâche n'a pas sa propre durée. */
+  subtaskHours?: { estHours: number | null; actualHours: number | null };
 }) {
   const [state, formAction] = useActionState(action, {});
   const [status, setStatus] = useState(values?.status ?? "a_faire");
   const [est, setEst] = useState({ h: fmtNum(values?.estHours), v: fmtNum(values?.estValueEur) });
-  const h = Number(est.h.replace(",", "."));
+  const h = est.h.trim() === "" && subtaskHours?.estHours != null ? subtaskHours.estHours : Number(est.h.replace(",", "."));
   const v = Number(est.v.replace(",", "."));
   const ratio = h > 0 && v >= 0 && est.v !== "" ? Math.round((v / h) * 100) / 100 : null;
 
@@ -72,6 +78,7 @@ export function TodoForm({
         </select>
       </label>
       <RichTextEditor name="description" label="Description" defaultValue={values?.description} />
+      {afterDescription}
 
       <fieldset className="grid gap-3 sm:grid-cols-3">
         <legend className="sr-only">Classement</legend>
@@ -121,6 +128,7 @@ export function TodoForm({
               className="input num"
               name="estHours"
               inputMode="decimal"
+              placeholder={subtaskHours?.estHours != null ? `${fmtNum(subtaskHours.estHours)} (sous-tâches)` : undefined}
               value={est.h}
               onChange={(e) => setEst((s) => ({ ...s, h: e.target.value }))}
             />
@@ -139,6 +147,9 @@ export function TodoForm({
         <p className="num text-sm text-muted" aria-live="polite">
           {ratio != null ? `Soit ${String(ratio).replace(".", ",")} €/h` : "Le ratio €/h s'affiche dès que durée et valeur sont remplies."}
         </p>
+        {subtaskHours?.estHours != null && (
+          <p className="text-sm text-muted">Laissée vide, la durée prévue est la somme de celles des sous-tâches.</p>
+        )}
       </fieldset>
 
       <fieldset className={`grid gap-3 rounded-xl p-4 ${status === "fait" ? "bg-moss-soft" : "bg-surface"}`}>
@@ -146,7 +157,13 @@ export function TodoForm({
         <div className="grid grid-cols-2 gap-3">
           <label className="field">
             <span>Durée (heures)</span>
-            <input className="input num" name="actualHours" inputMode="decimal" defaultValue={fmtNum(values?.actualHours)} />
+            <input
+              className="input num"
+              name="actualHours"
+              inputMode="decimal"
+              defaultValue={fmtNum(values?.actualHours)}
+              placeholder={subtaskHours?.actualHours != null ? `${fmtNum(subtaskHours.actualHours)} (sous-tâches)` : undefined}
+            />
           </label>
           <label className="field">
             <span>Valeur (€)</span>

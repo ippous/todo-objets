@@ -12,6 +12,7 @@ import {
   listObjects,
   listPhotos,
   listSubtasks,
+  sumSubtaskHours,
   listTodos,
   listTypes,
   listUsers,
@@ -326,6 +327,10 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
       ]);
       const name = (uid: string | null) => (uid ? (people.find((u) => u.id === uid)?.name ?? null) : null);
       const obj = objs.find((o) => o.id === t.objectId);
+      // Sans durée propre, la tâche prend la somme de celles de ses sous-tâches
+      const fromSubs = sumSubtaskHours(subs);
+      const estHours = t.estHours ?? fromSubs.estHours;
+      const actualHours = t.actualHours ?? fromSubs.actualHours;
       return result({
         id: t.id,
         titre: t.title,
@@ -341,13 +346,13 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
         cree_par: name(t.createdById),
         cree_le: t.createdAt.toISOString().slice(0, 10),
         termine_le: t.doneAt ? t.doneAt.toISOString().slice(0, 10) : null,
-        heures_estimees: t.estHours,
+        heures_estimees: estHours,
         valeur_estimee_eur: t.estValueEur,
-        heures_realisees: t.actualHours,
+        heures_realisees: actualHours,
         valeur_realisee_eur: t.actualValueEur,
-        euros_par_heure: t.estHours && t.estValueEur ? Math.round((t.estValueEur / t.estHours) * 100) / 100 : null,
+        euros_par_heure: estHours && t.estValueEur ? Math.round((t.estValueEur / estHours) * 100) / 100 : null,
         tags: t.tags,
-        sous_taches: subs.map((st) => ({ texte: st.title, faite: st.done })),
+        sous_taches: subs.map((st) => ({ texte: st.title, faite: st.done, heures_estimees: st.estHours, heures_realisees: st.actualHours })),
         documents: docs.map((d) => ({ id: d.id, nom: d.filename, type: d.typeName, format: d.contentType, taille_octets: d.size, url: docUrl(d.id) })),
         liens: links.map((l) => ({ titre: l.title, url: l.url })),
         photos: photos.length,
