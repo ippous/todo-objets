@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createObjectsBulkAction, createTodosBulkAction } from "@/app/actions";
 import { PRIORITY_LABEL } from "@/lib/format";
+import { IconLabel, Tip } from "./tip";
 
 export type BulkTarget =
   | { kind: "objets"; parentId: string | null; parentName: string | null }
@@ -321,18 +322,17 @@ export function BulkAddButton({
   const [message, setMessage] = useState<string | null>(null);
   return (
     <>
-      <button type="button" className={className} onClick={() => setOpen(true)} aria-label={icon ? label : undefined} title={icon ? label : undefined}>
-        {icon ? (
-          <>
-            {icon}
-            <span className="hidden sm:inline" aria-hidden>
-              {label}
-            </span>
-          </>
-        ) : (
-          label
-        )}
-      </button>
+      {icon ? (
+        <Tip label={label}>
+          <button type="button" className={className} onClick={() => setOpen(true)} aria-label={label}>
+            <IconLabel icon={icon} label={label} />
+          </button>
+        </Tip>
+      ) : (
+        <button type="button" className={className} onClick={() => setOpen(true)}>
+          {label}
+        </button>
+      )}
       <BulkAddDialog
         target={open ? target : null}
         users={users}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClipboardPlus, FolderPlus, FolderTree, Images, ListPlus, Pencil } from "lucide-react";
 import Link from "next/link";
+import { IconLabel, Tip } from "@/components/tip";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
 import { AuditTrail } from "@/components/audit-trail";
@@ -133,53 +134,40 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
             {obj.tags.length > 0 && <p>{obj.tags.map((t) => `#${t}`).join(" ")}</p>}
           </div>
         )}
-        {/* Sur mobile : icônes seules (le nom reste lu par les lecteurs d'écran et en info-bulle), sur une ligne */}
+        {/* Sur mobile : icônes seules sur une ligne (nom lu par les lecteurs d'écran, info-bulle à l'appui long) */}
         <div className="flex flex-wrap gap-2">
-          <Link
-            href={`/taches/nouvelle?objet=${id}&retour=${encodeURIComponent(here)}`}
-            className={`btn btn-primary ${iconBtn}`}
-            aria-label="Ajouter une tâche"
-            title="Ajouter une tâche"
-          >
-            <ClipboardPlus size={18} aria-hidden />
-            <span className="hidden sm:inline" aria-hidden>
-              Ajouter une tâche
-            </span>
-          </Link>
-          <Link
-            href={`/objets/nouveau?parent=${id}`}
-            className={`btn btn-ghost ${iconBtn}`}
-            aria-label="Ajouter un sous-objet"
-            title="Ajouter un sous-objet"
-          >
-            <FolderPlus size={18} aria-hidden />
-            <span className="hidden sm:inline" aria-hidden>
-              Ajouter un sous-objet
-            </span>
-          </Link>
-          <Link
-            href={`/objets/${id}/modifier`}
-            className={`btn btn-ghost ${iconBtn}`}
-            aria-label="Modifier ou déplacer"
-            title="Modifier ou déplacer"
-          >
-            <Pencil size={18} aria-hidden />
-            <span className="hidden sm:inline" aria-hidden>
-              Modifier ou déplacer
-            </span>
-          </Link>
-          <a
-            href="#photos"
-            className={`btn btn-ghost ${iconBtn}`}
-            aria-label={`Photos${photos.length > 0 ? ` (${photos.length})` : ""}`}
-            title="Photos"
-          >
-            <Images size={18} aria-hidden />
-            <span aria-hidden>
-              <span className="hidden sm:inline">Photos</span>
-              {photos.length > 0 && <span className="num sm:ml-1">{`${photos.length}`}</span>}
-            </span>
-          </a>
+          <Tip label="Ajouter une tâche">
+            <Link
+              href={`/taches/nouvelle?objet=${id}&retour=${encodeURIComponent(here)}`}
+              className={`btn btn-primary ${iconBtn}`}
+              aria-label="Ajouter une tâche"
+            >
+              <IconLabel icon={<ClipboardPlus size={18} aria-hidden />} label="Ajouter une tâche" />
+            </Link>
+          </Tip>
+          <Tip label="Ajouter un sous-objet">
+            <Link href={`/objets/nouveau?parent=${id}`} className={`btn btn-ghost ${iconBtn}`} aria-label="Ajouter un sous-objet">
+              <IconLabel icon={<FolderPlus size={18} aria-hidden />} label="Ajouter un sous-objet" />
+            </Link>
+          </Tip>
+          <Tip label="Modifier ou déplacer">
+            <Link href={`/objets/${id}/modifier`} className={`btn btn-ghost ${iconBtn}`} aria-label="Modifier ou déplacer">
+              <IconLabel icon={<Pencil size={18} aria-hidden />} label="Modifier ou déplacer" />
+            </Link>
+          </Tip>
+          <Tip label="Photos">
+            <a
+              href="#photos"
+              className={`btn btn-ghost ${iconBtn}`}
+              aria-label={`Photos${photos.length > 0 ? ` (${photos.length})` : ""}`}
+            >
+              <Images size={18} aria-hidden />
+              <span aria-hidden>
+                <span className="hidden sm:inline">Photos</span>
+                {photos.length > 0 && <span className="num sm:ml-1">{`${photos.length}`}</span>}
+              </span>
+            </a>
+          </Tip>
           <BulkAddButton
             target={{ kind: "taches", objectId: id, objectName: obj.name }}
             users={activeUsers}

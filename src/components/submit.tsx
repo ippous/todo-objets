@@ -8,8 +8,11 @@ export function Submit({
   className = "btn btn-primary",
   name,
   value,
+  ariaLabel,
 }: {
   children: React.ReactNode;
+  /** Nom accessible quand le contenu visible est une icône seule. */
+  ariaLabel?: string;
   pendingLabel?: string;
   className?: string;
   name?: string;
@@ -17,7 +20,7 @@ export function Submit({
 }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" className={className} disabled={pending} name={name} value={value}>
+    <button type="submit" className={className} disabled={pending} name={name} value={value} aria-label={ariaLabel}>
       {pending ? (pendingLabel ?? "Enregistrement…") : children}
     </button>
   );
