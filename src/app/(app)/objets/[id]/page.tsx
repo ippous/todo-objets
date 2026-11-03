@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClipboardPlus, FolderPlus, FolderTree, Images, ListPlus, Pencil } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db";
@@ -38,6 +39,9 @@ export async function generateMetadata(props: PageProps<"/objets/[id]">): Promis
   const obj = await getObject(getDb(), id);
   return { title: obj?.name ?? "Objet" };
 }
+
+/** Bouton d'action de la fiche : carré (icône seule) sur mobile, icône et texte à partir de « sm ». */
+const iconBtn = "min-w-11 px-3 sm:px-4";
 
 export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
   const { id } = await props.params;
@@ -129,29 +133,67 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
             {obj.tags.length > 0 && <p>{obj.tags.map((t) => `#${t}`).join(" ")}</p>}
           </div>
         )}
+        {/* Sur mobile : icônes seules (le nom reste lu par les lecteurs d'écran et en info-bulle), sur une ligne */}
         <div className="flex flex-wrap gap-2">
-          <Link href={`/taches/nouvelle?objet=${id}&retour=${encodeURIComponent(here)}`} className="btn btn-primary">
-            Ajouter une tâche
+          <Link
+            href={`/taches/nouvelle?objet=${id}&retour=${encodeURIComponent(here)}`}
+            className={`btn btn-primary ${iconBtn}`}
+            aria-label="Ajouter une tâche"
+            title="Ajouter une tâche"
+          >
+            <ClipboardPlus size={18} aria-hidden />
+            <span className="hidden sm:inline" aria-hidden>
+              Ajouter une tâche
+            </span>
           </Link>
-          <Link href={`/objets/nouveau?parent=${id}`} className="btn btn-ghost">
-            Ajouter un sous-objet
+          <Link
+            href={`/objets/nouveau?parent=${id}`}
+            className={`btn btn-ghost ${iconBtn}`}
+            aria-label="Ajouter un sous-objet"
+            title="Ajouter un sous-objet"
+          >
+            <FolderPlus size={18} aria-hidden />
+            <span className="hidden sm:inline" aria-hidden>
+              Ajouter un sous-objet
+            </span>
           </Link>
-          <Link href={`/objets/${id}/modifier`} className="btn btn-ghost">
-            Modifier ou déplacer
+          <Link
+            href={`/objets/${id}/modifier`}
+            className={`btn btn-ghost ${iconBtn}`}
+            aria-label="Modifier ou déplacer"
+            title="Modifier ou déplacer"
+          >
+            <Pencil size={18} aria-hidden />
+            <span className="hidden sm:inline" aria-hidden>
+              Modifier ou déplacer
+            </span>
           </Link>
-          <a href="#photos" className="btn btn-ghost">
-            Photos{photos.length > 0 ? ` (${photos.length})` : ""}
+          <a
+            href="#photos"
+            className={`btn btn-ghost ${iconBtn}`}
+            aria-label={`Photos${photos.length > 0 ? ` (${photos.length})` : ""}`}
+            title="Photos"
+          >
+            <Images size={18} aria-hidden />
+            <span aria-hidden>
+              <span className="hidden sm:inline">Photos</span>
+              {photos.length > 0 && <span className="num sm:ml-1">{`${photos.length}`}</span>}
+            </span>
           </a>
           <BulkAddButton
             target={{ kind: "taches", objectId: id, objectName: obj.name }}
             users={activeUsers}
             taskTypes={taskTypes.map((t) => ({ id: t.id, name: t.name }))}
             label="Plusieurs tâches"
+            icon={<ListPlus size={18} aria-hidden />}
+            className={`btn btn-ghost ${iconBtn}`}
           />
           <BulkAddButton
             target={{ kind: "objets", parentId: id, parentName: obj.name }}
             objectTypes={objectTypes}
             label="Plusieurs sous-objets"
+            icon={<FolderTree size={18} aria-hidden />}
+            className={`btn btn-ghost ${iconBtn}`}
           />
         </div>
       </header>
