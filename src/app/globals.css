@@ -215,3 +215,13 @@ textarea.input {
   color: var(--muted);
   pointer-events: none;
 }
+
+/* Commande @@nom : valeur recalculée à chaque affichage */
+.commande-live {
+  border-radius: 0.3rem;
+  background: var(--moss-soft);
+  color: var(--moss);
+  padding: 0 0.25rem;
+  white-space: pre-wrap;
+}
+.rich-editor .commande-live.ProseMirror-selectednode { outline: 2px solid var(--moss); }

@@ -6,6 +6,7 @@ import type { Db } from "@/db";
 import {
   apiTokens,
   auditLog,
+  commands,
   documentTypes,
   documents,
   links,
@@ -1155,7 +1156,7 @@ export async function purgeTestData(db: Db, marker: string, opts: { dryRun?: boo
       await tx.delete(objects).where(inArray(objects.id, ids));
     }
 
-    // Jetons personnels et applications OAuth créés par les tests
+    // Jetons personnels, applications OAuth et commandes de saisie créés par les tests
     await tx.delete(auditLog).where(
       sql.join(
         [
@@ -1168,6 +1169,7 @@ export async function purgeTestData(db: Db, marker: string, opts: { dryRun?: boo
     );
     await tx.delete(apiTokens).where(sql`${apiTokens.kind} = 'personnel' AND ${apiTokens.name} ILIKE ${like}`);
     await tx.delete(oauthClients).where(sql`${oauthClients.name} ILIKE ${like}`);
+    await tx.delete(commands).where(sql`${commands.name} ILIKE ${like}`);
 
     let types = 0;
     for (const [table, col] of [
