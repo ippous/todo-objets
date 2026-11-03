@@ -213,3 +213,12 @@ export function parseJsonReply<T>(text: string): T {
     throw new AiError("Réponse de l'assistant IA inattendue, réessaie");
   }
 }
+
+/** Fournisseurs configurés, pour les boutons IA de l'interface (sans secret). */
+export async function getAiChoice(db: Db): Promise<{ providers: { id: string; label: string }[]; defaultProvider: string | null }> {
+  const s = await getAiSettings(db);
+  return {
+    providers: AI_PROVIDERS.filter((p) => s.providers[p].configured).map((p) => ({ id: p, label: AI_PROVIDER_LABEL[p] })),
+    defaultProvider: s.defaultProvider,
+  };
+}

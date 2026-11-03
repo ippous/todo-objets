@@ -50,6 +50,7 @@ export function ObjectForm({
         label="Description"
         placeholder="Surface, matériaux, accès, état…"
         defaultValue={values?.description}
+        commandContext={{ titre: values?.name ?? null, objet: values?.name ?? null }}
       />
       <label className="field">
         <span>Emplacement</span>

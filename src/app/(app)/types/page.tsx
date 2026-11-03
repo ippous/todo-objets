@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getDb } from "@/db";
 import { listTypes } from "@/lib/repo";
 import { TypeManager } from "./type-manager";
@@ -20,6 +21,11 @@ export default async function TypesPage() {
           Les types classent les objets (bâtiment, véhicule…), les tâches (entretien, travaux…) et les documents (facture,
           garantie…). Une tâche sans photo affiche l&apos;icône de son type. Un type ne peut être
           supprimé que s&apos;il n&apos;est plus utilisé ; renommer un type met à jour tout ce qui l&apos;utilise.
+        </p>
+        <p className="mt-2">
+          <Link href="/commandes" className="text-moss underline-offset-4 hover:underline">
+            Commandes de saisie ($$ et @@) →
+          </Link>
         </p>
       </div>
       <div className="grid gap-8 lg:grid-cols-2">
