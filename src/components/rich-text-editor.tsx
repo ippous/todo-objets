@@ -6,6 +6,9 @@ import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/r
 import StarterKit from "@tiptap/starter-kit";
 import Link from "next/link";
 import { Placeholder } from "@tiptap/extensions";
+import Image from "@tiptap/extension-image";
+import { TaskItem, TaskList } from "@tiptap/extension-list";
+import { uploadPhoto, type PhotoTarget } from "@/lib/photo-upload";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { getCommands, runCommandCode, type CommandContext, type CommandDef } from "@/lib/command-runtime";
 import { CommandNode } from "./command-node";
@@ -20,6 +23,10 @@ type Props = {
   apiRef?: RefObject<RichTextApi | null>;
   /** Contexte passé aux commandes $$ et @@ (titre, objet). */
   commandContext?: CommandContext;
+  /** Où ranger les images insérées dans le texte (absent : pas d'images, ex. avant création). */
+  images?: PhotoTarget;
+  /** Appelé à chaque modification du contenu. */
+  onChange?: () => void;
 };
 
 /** Saisie en cours après $$ (résultat inséré) ou @@ (recalculé à chaque affichage). */
@@ -27,7 +34,7 @@ type Trigger = { kind: "$$" | "@@"; query: string; from: number; to: number; lef
 
 export type RichTextApi = { getHtml: () => string; setHtml: (html: string) => void };
 
-export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef, commandContext }: Props) {
+export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef, commandContext, images, onChange }: Props) {
   const labelId = useId();
   const [html, setHtml] = useState(() => toEditorHtml(defaultValue));
   const baseCtxRef = useRef<CommandContext>(commandContext ?? {});
@@ -46,6 +53,10 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
     return { titre, objet: objet ?? (select ? base.objet : (value("name") ?? base.objet)) ?? null };
   };
   const ctxRef = useRef(liveContext);
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
   useEffect(() => {
     ctxRef.current = liveContext;
   });
@@ -60,6 +71,9 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
   const matchesRef = useRef<CommandDef[]>([]);
   const activeRef = useRef(0);
   const chooseRef = useRef<(c: CommandDef) => void>(() => {});
+  // Images : envoi puis insertion à l'endroit du curseur (bouton, collage ou glisser-déposer)
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
+  const insertImagesRef = useRef<(files: File[], at?: number) => void>(() => {});
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -71,6 +85,9 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
       Placeholder.configure({ placeholder: placeholder ?? "" }),
       // eslint-disable-next-line react-hooks/refs -- lu seulement à l'exécution d'une commande, pas au rendu
       CommandNode.configure({ context: () => ctxRef.current() }),
+      Image.configure({ inline: false, allowBase64: false }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
     ],
     content: html,
     editorProps: {
@@ -79,6 +96,21 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
         "aria-multiline": "true",
         "aria-labelledby": labelId,
         class: "rich rich-editor",
+      },
+      handlePaste: (_view, event) => {
+        const files = Array.from(event.clipboardData?.files ?? []).filter((f) => f.type.startsWith("image/"));
+        if (!files.length) return false;
+        event.preventDefault();
+        insertImagesRef.current(files);
+        return true;
+      },
+      handleDrop: (view, event) => {
+        const files = Array.from(event.dataTransfer?.files ?? []).filter((f) => f.type.startsWith("image/"));
+        if (!files.length) return false;
+        event.preventDefault();
+        const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+        insertImagesRef.current(files, pos);
+        return true;
       },
       handleKeyDown: (_view, event) => {
         const t = triggerRef.current;
@@ -102,7 +134,10 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
         return false;
       },
     },
-    onUpdate: ({ editor }) => setHtml(editor.isEmpty ? "" : editor.getHTML()),
+    onUpdate: ({ editor }) => {
+      setHtml(editor.isEmpty ? "" : editor.getHTML());
+      onChangeRef.current?.();
+    },
     onTransaction: ({ editor }) => {
       // Cherche « $$nom » ou « @@nom » juste avant le curseur
       const { selection } = editor.state;
@@ -171,6 +206,34 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
     chooseRef.current = choose;
   });
 
+  const insertImages = async (files: File[], at?: number) => {
+    if (!editor) return;
+    if (!images) {
+      setImageStatus("Enregistre d'abord pour pouvoir ajouter des images.");
+      return;
+    }
+    let pos = at;
+    for (const [i, file] of files.entries()) {
+      setImageStatus(`Envoi de l'image ${i + 1} sur ${files.length}…`);
+      try {
+        const id = await uploadPhoto(file, { ...images, inline: true });
+        const node = { type: "image", attrs: { src: `/api/photos/${id}`, alt: file.name.replace(/\.[a-z0-9]+$/i, "") } };
+        if (pos === undefined) editor.chain().focus().insertContent(node).run();
+        else {
+          editor.chain().focus().insertContentAt(pos, node).run();
+          pos = undefined;
+        }
+      } catch (err) {
+        setImageStatus((err as Error).message || "L'envoi a échoué");
+        return;
+      }
+    }
+    setImageStatus(null);
+  };
+  useEffect(() => {
+    insertImagesRef.current = (files, at) => void insertImages(files, at);
+  });
+
   useEffect(() => {
     if (!apiRef) return;
     apiRef.current = {
@@ -189,7 +252,7 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
     <div className="field">
       <span id={labelId}>{label}</span>
       <div className="relative grid" ref={wrapRef}>
-        <Toolbar editor={editor} />
+        <Toolbar editor={editor} onImages={images ? (files) => void insertImages(files) : undefined} />
         {editor ? (
           <EditorContent editor={editor} />
         ) : (
@@ -246,6 +309,11 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
           Commandes
         </Link>
       </p>
+      {imageStatus && (
+        <p role="status" className="text-sm text-muted">
+          {imageStatus}
+        </p>
+      )}
       {cmdError && (
         <p role="alert" className="text-sm text-brick">
           {cmdError}
@@ -272,13 +340,15 @@ const GROUPS: Btn[][] = [
   [
     { label: "•", title: "Liste à puces", active: (e) => e.isActive("bulletList"), run: (e) => e.chain().focus().toggleBulletList().run() },
     { label: "1.", title: "Liste numérotée", active: (e) => e.isActive("orderedList"), run: (e) => e.chain().focus().toggleOrderedList().run() },
+    { label: "☑", title: "Cases à cocher", active: (e) => e.isActive("taskList"), run: (e) => e.chain().focus().toggleTaskList().run() },
     { label: "❝", title: "Citation", active: (e) => e.isActive("blockquote"), run: (e) => e.chain().focus().toggleBlockquote().run() },
     { label: "—", title: "Ligne de séparation", run: (e) => e.chain().focus().setHorizontalRule().run() },
   ],
 ];
 
-function Toolbar({ editor }: { editor: Editor | null }) {
+function Toolbar({ editor, onImages }: { editor: Editor | null; onImages?: (files: File[]) => void }) {
   const urlId = useId();
+  const fileInput = useRef<HTMLInputElement>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [url, setUrl] = useState("");
 
@@ -353,6 +423,34 @@ function Toolbar({ editor }: { editor: Editor | null }) {
           >
             🔗
           </button>
+          {onImages && (
+            <>
+              <button
+                type="button"
+                title="Image"
+                aria-label="Insérer une image"
+                disabled={!editor}
+                className={btn}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => fileInput.current?.click()}
+              >
+                🖼
+              </button>
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                aria-label="Images à insérer"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  e.target.value = "";
+                  if (files.length) onImages(files);
+                }}
+              />
+            </>
+          )}
         </div>
         <div className="flex gap-0.5">
           <button type="button" title="Annuler (Ctrl+Z)" aria-label="Annuler la modification" disabled={!state?.canUndo} className={btn} onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().undo().run()}>

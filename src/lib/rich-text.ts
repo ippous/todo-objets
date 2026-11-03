@@ -2,13 +2,27 @@ import "server-only";
 import sanitizeHtml from "sanitize-html";
 import { isHtml, plainToHtml } from "./rich-text-shared";
 
+// Une balise refusée devient « x-retire », absente de la liste : elle disparaît.
+const tag = (tagName: string, attribs: sanitizeHtml.Attributes = {}): sanitizeHtml.Tag => ({ tagName, attribs });
+
 // Seules les balises produites par l'éditeur sont conservées ; tout le reste
 // (scripts, styles, attributs d'évènements, liens javascript:…) est retiré.
 const OPTIONS: sanitizeHtml.IOptions = {
-  allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "s", "h2", "h3", "ul", "ol", "li", "blockquote", "code", "pre", "hr", "a", "span"],
-  // span[data-commande] : commande @@nom recalculée à chaque affichage
-  allowedAttributes: { a: ["href", "target", "rel"], ol: ["start"], span: ["data-commande"] },
+  allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "s", "h2", "h3", "ul", "ol", "li", "blockquote", "code", "pre", "hr", "a", "span", "img", "label", "input", "div"],
+  // span[data-commande] : commande @@nom recalculée à chaque affichage ;
+  // ul/li[data-type] : cases à cocher ; img : photo de Carnet insérée dans le texte
+  allowedAttributes: {
+    a: ["href", "target", "rel"],
+    ol: ["start"],
+    span: ["data-commande"],
+    ul: ["data-type"],
+    li: ["data-type", "data-checked"],
+    input: ["type", "checked", "disabled"],
+    img: ["src", "alt", "data-photo"],
+  },
   allowedSchemes: ["http", "https", "mailto", "tel"],
+  allowedSchemesByTag: { img: [] },
+  allowedSchemesAppliedToAttributes: ["href", "src"],
   allowProtocolRelative: false,
   transformTags: {
     b: "strong",
@@ -17,6 +31,26 @@ const OPTIONS: sanitizeHtml.IOptions = {
       const name = (attribs["data-commande"] ?? "").toLowerCase();
       const keep: sanitizeHtml.Attributes = /^[a-z0-9_-]{1,40}$/.test(name) ? { "data-commande": name } : {};
       return { tagName, attribs: keep };
+    },
+    ul: (tagName, attribs) => tag(tagName, attribs["data-type"] === "taskList" ? { "data-type": "taskList" } : {}),
+    li: (tagName, attribs) =>
+      tag(
+        tagName,
+        attribs["data-type"] === "taskItem"
+          ? { "data-type": "taskItem", "data-checked": attribs["data-checked"] === "true" ? "true" : "false" }
+          : {},
+      ),
+    // Seules les cases à cocher sont acceptées comme champs
+    input: (tagName, attribs) =>
+      attribs.type === "checkbox"
+        ? tag(tagName, { type: "checkbox", ...(attribs.checked !== undefined ? { checked: "checked" } : {}) })
+        : tag("x-retire"),
+    // Seules les photos de Carnet (servies après contrôle de la session) sont acceptées
+    img: (tagName, attribs) => {
+      const m = /^\/api\/photos\/([0-9a-f-]{36})(?:\?v=1)?$/i.exec(attribs.src ?? "");
+      if (!m) return tag("x-retire");
+      const id = m[1].toLowerCase();
+      return tag(tagName, { src: `/api/photos/${id}`, "data-photo": id, alt: (attribs.alt ?? "").slice(0, 200) });
     },
     a: (tagName, attribs) => ({
       tagName,
@@ -50,7 +84,9 @@ export function richTextToPlain(value: string | null): string {
   return html
     .replace(/<h2[^>]*>/g, "\n## ")
     .replace(/<h3[^>]*>/g, "\n### ")
+    .replace(/<li data-type="taskItem" data-checked="(true|false)">/g, (_, c) => (c === "true" ? "\n- [x] " : "\n- [ ] "))
     .replace(/<li[^>]*>/g, "\n- ")
+    .replace(/<img [^>]*data-photo="([0-9a-f-]+)"[^>]*>/g, "[image]")
     .replace(/<blockquote[^>]*>/g, "\n> ")
     .replace(/<hr\s*\/?>/g, "\n---\n")
     .replace(/<br\s*\/?>/g, "\n")

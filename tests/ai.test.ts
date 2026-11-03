@@ -24,7 +24,8 @@ import {
   setTaskTypeIcon,
 } from "@/lib/repo";
 import { seedInitialTree } from "@/lib/seed";
-import { completeDescription, proposeSubtasks } from "@/lib/task-assistant";
+import { completeDescription, completeObjectDescription, proposeObjectTasks, proposeSubtasks } from "@/lib/task-assistant";
+import { addPhoto, getObject, listPhotos, setObjectDescription } from "@/lib/repo";
 import { createTestDb } from "./helpers";
 
 let db: Db;
@@ -149,5 +150,42 @@ describe("aides IA sur une tâche", () => {
       { title: "Nettoyer", estHours: null },
     ]);
     expect(r.tasks).toEqual([{ title: "Huiler les gonds", description: "Avant l'hiver", estHours: 0.5 }]);
+  });
+});
+
+describe("description d'objet", () => {
+  beforeEach(async () => {
+    await saveAiProvider(db, "anthropic", { model: "claude-sonnet-5-5", apiKey: "sk-ant-abcdefghijklmnopqrstuvwxyz" });
+  });
+
+  it("garde les images du texte hors galerie et jamais en vignette", async () => {
+    const owner = { objectId };
+    const inline = await addPhoto(db, owner, { pathname: "local/objets/x/a.jpg", thumbPathname: "local/objets/x/a-v.jpg", inline: true });
+    expect(inline.isCover).toBe(false);
+    const gallery = await addPhoto(db, owner, { pathname: "local/objets/x/b.jpg", thumbPathname: "local/objets/x/b-v.jpg" });
+    expect(gallery.isCover).toBe(true);
+    expect((await listPhotos(db, owner)).map((p) => p.id)).toEqual([gallery.id]);
+    await setObjectDescription(db, objectId, "<p>Neuf</p>");
+    expect((await getObject(db, objectId))?.description).toBe("<p>Neuf</p>");
+  });
+
+  it("met à niveau le texte en conservant images et @@, et propose des tâches nouvelles", async () => {
+    const img = '<img src="/api/photos/0e3b9a3c-1111-4222-8333-944455556666" data-photo="0e3b9a3c-1111-4222-8333-944455556666" alt="" />';
+    vi.stubGlobal("fetch", anthropicText('<h3>État</h3><ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Pneus</p></li></ul>'));
+    const r = await completeObjectDescription(db, objectId, {
+      title: "",
+      description: `<p>Vieux ${img} <span data-commande="date">@@date</span></p>`,
+    });
+    expect(r.html).toContain('data-type="taskItem"');
+    expect(r.html).toContain('data-photo="0e3b9a3c-1111-4222-8333-944455556666"');
+    expect(r.html).toContain('<span data-commande="date">@@date</span>');
+
+    await createTodo(db, { objectId, title: "Vidanger le moteur" });
+    vi.stubGlobal(
+      "fetch",
+      anthropicText(JSON.stringify({ taches: [{ titre: "vidanger le moteur" }, { titre: "Graisser", description: "Rotules", heures: 0.5 }] })),
+    );
+    const p = await proposeObjectTasks(db, objectId, { title: "", description: null });
+    expect(p.tasks).toEqual([{ title: "Graisser", description: "Rotules", estHours: 0.5 }]);
   });
 });

@@ -1,0 +1,1 @@
+ALTER TABLE "photos" ADD COLUMN "inline" boolean DEFAULT false NOT NULL;
