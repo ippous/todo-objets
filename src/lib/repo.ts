@@ -177,6 +177,17 @@ export async function updateObject(
   if (Object.keys(changements).length) await logAction(db, actor, { target: objectTarget(after), action: "modification", details: { changements } });
 }
 
+/** Change seulement la description d'un objet (HTML déjà nettoyé). */
+export async function setObjectDescription(db: Db, id: string, description: string | null, actor?: Actor): Promise<void> {
+  const before = await getObject(db, id);
+  if (!before) throw new DomainError("Objet introuvable");
+  await db.update(objects).set({ description, updatedAt: new Date() }).where(eq(objects.id, id));
+  const after = await getObject(db, id);
+  if (!after) return;
+  const changements = diff(objectSnapshot(before), objectSnapshot(after));
+  if (Object.keys(changements).length) await logAction(db, actor, { target: objectTarget(after), action: "modification", details: { changements } });
+}
+
 /**
  * Déplace un objet (et tout son sous-arbre) sous un nouveau parent,
  * ou en racine si newParentId est null. Refuse les boucles.
@@ -653,7 +664,7 @@ export async function listPhotos(db: Db, owner: PhotoOwner): Promise<Photo[]> {
   return db
     .select()
     .from(photos)
-    .where(ownerCond(owner))
+    .where(and(ownerCond(owner), eq(photos.inline, false)))
     .orderBy(desc(photos.isCover), asc(photos.createdAt));
 }
 
@@ -666,7 +677,14 @@ export async function getPhoto(db: Db, id: string): Promise<Photo | undefined> {
 export async function addPhoto(
   db: Db,
   owner: PhotoOwner,
-  data: { pathname: string; thumbPathname: string; width?: number | null; height?: number | null; createdById?: string | null },
+  data: {
+    pathname: string;
+    thumbPathname: string;
+    width?: number | null;
+    height?: number | null;
+    createdById?: string | null;
+    inline?: boolean;
+  },
   actor?: Actor,
 ): Promise<Photo> {
   return db.transaction(async (tx) => {
@@ -684,10 +702,10 @@ export async function addPhoto(
       .limit(1);
     const [row] = await tx
       .insert(photos)
-      .values({ ...data, ...owner, isCover: !cover })
+      .values({ ...data, ...owner, inline: Boolean(data.inline), isCover: !cover && !data.inline })
       .returning();
     const target = await ownerTarget(tx, owner);
-    if (target) await logAction(tx, actor, { target, action: "ajout_photo" });
+    if (target && !data.inline) await logAction(tx, actor, { target, action: "ajout_photo" });
     return row;
   });
 }
@@ -697,6 +715,7 @@ export async function setCoverPhoto(db: Db, id: string, actor?: Actor): Promise<
   await db.transaction(async (tx) => {
     const [p] = await tx.select().from(photos).where(eq(photos.id, id)).for("update");
     if (!p) throw new DomainError("Photo introuvable");
+    if (p.inline) throw new DomainError("Cette image fait partie d'une description");
     const owner: PhotoOwner = p.objectId ? { objectId: p.objectId } : { todoId: p.todoId! };
     await tx.update(photos).set({ isCover: false }).where(and(ownerCond(owner), eq(photos.isCover, true)));
     await tx.update(photos).set({ isCover: true }).where(eq(photos.id, id));
@@ -719,7 +738,7 @@ export async function deletePhoto(db: Db, id: string, actor?: Actor): Promise<st
       const [next] = await tx
         .select({ id: photos.id })
         .from(photos)
-        .where(ownerCond(owner))
+        .where(and(ownerCond(owner), eq(photos.inline, false)))
         .orderBy(asc(photos.createdAt))
         .limit(1);
       if (next) await tx.update(photos).set({ isCover: true }).where(eq(photos.id, next.id));

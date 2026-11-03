@@ -5,6 +5,7 @@ import { ObjectForm } from "@/components/object-form";
 import { getDb } from "@/db";
 import { objectOptions } from "@/lib/options";
 import { listObjects, listTypes } from "@/lib/repo";
+import { storageMode, storagePrefix } from "@/lib/storage";
 import { DeleteObject, MoveObject } from "./forms";
 
 export const metadata: Metadata = { title: "Modifier l'objet" };
@@ -27,6 +28,7 @@ export default async function ModifierObjetPage(props: PageProps<"/objets/[id]/m
           submitLabel="Enregistrer les modifications"
           cancelHref={`/objets/${id}`}
           types={types}
+          images={{ kind: "objets", ownerId: id, prefix: storagePrefix, mode: storageMode }}
         />
       </section>
 

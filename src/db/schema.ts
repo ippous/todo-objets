@@ -153,6 +153,8 @@ export const photos = pgTable(
     width: integer("width"),
     height: integer("height"),
     isCover: boolean("is_cover").notNull().default(false),
+    /** Image insérée dans une description : hors galerie, jamais vignette. */
+    inline: boolean("inline").notNull().default(false),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

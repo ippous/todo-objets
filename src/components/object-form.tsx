@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import type { ActionState } from "@/lib/forms";
 import { RichTextEditor } from "./rich-text-editor";
+import type { PhotoTarget } from "@/lib/photo-upload";
 import { FormError, Submit } from "./submit";
 
 type Values = { name: string; typeId: string | null; description: string | null; location: string | null; tags: string[] };
@@ -15,6 +16,7 @@ export function ObjectForm({
   submitLabel,
   cancelHref,
   types,
+  images,
 }: {
   types: { id: string; name: string }[];
   action: (state: ActionState, fd: FormData) => Promise<ActionState>;
@@ -22,6 +24,8 @@ export function ObjectForm({
   parentId?: string | null;
   submitLabel: string;
   cancelHref: string;
+  /** Où ranger les images de la description (objet existant seulement). */
+  images?: PhotoTarget;
 }) {
   const [state, formAction] = useActionState(action, {});
   return (
@@ -51,6 +55,7 @@ export function ObjectForm({
         placeholder="Surface, matériaux, accès, état…"
         defaultValue={values?.description}
         commandContext={{ titre: values?.name ?? null, objet: values?.name ?? null }}
+        images={images}
       />
       <label className="field">
         <span>Emplacement</span>

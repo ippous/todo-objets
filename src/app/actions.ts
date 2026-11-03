@@ -35,6 +35,7 @@ import {
   renameType,
   setCoverPhoto,
   setDocumentType,
+  setObjectDescription,
   setTaskTypeIcon,
   TYPE_KINDS,
   type TypeKind,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/repo";
 import { actorOf } from "@/lib/audit";
 import { isTaskIcon } from "@/lib/task-icons";
+import { RICH_TEXT_MAX, sanitizeRichText } from "@/lib/rich-text";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { exists, parseDocumentPath, parsePhotoPath, remove } from "@/lib/storage";
 
@@ -125,6 +127,21 @@ export async function updateObjectAction(id: string, _: ActionState, fd: FormDat
   }
   revalidatePath("/", "layout");
   redirect(`/objets/${id}`);
+}
+
+/** Description d'un objet modifiée directement sur sa fiche. */
+export async function saveObjectDescriptionAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
+  const actor = await uiActor();
+  try {
+    assertId(id);
+    const raw = str(fd, "description");
+    if (raw.length > RICH_TEXT_MAX) throw new DomainError("Description trop longue");
+    await setObjectDescription(getDb(), id, sanitizeRichText(raw || null), actor);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  return { ok: true };
 }
 
 export async function moveObjectAction(id: string, _: ActionState, fd: FormData): Promise<ActionState> {
@@ -493,9 +510,12 @@ export async function addPhotoAction(input: {
   thumbPathname: string;
   width: number;
   height: number;
-}): Promise<ActionState> {
+  /** Image insérée dans une description (hors galerie). */
+  inline?: boolean;
+}): Promise<ActionState & { id?: string }> {
   const user = await requireUser();
   const actor = actorOf(user, "interface");
+  let id: string;
   try {
     const main = parsePhotoPath(input.pathname);
     const thumb = parsePhotoPath(input.thumbPathname);
@@ -514,19 +534,23 @@ export async function addPhotoAction(input: {
       throw new DomainError("L'envoi de la photo n'est pas terminé. Réessaie.");
     }
     const dims = (n: number) => (Number.isInteger(n) && n > 0 && n < 20000 ? n : null);
-    await addPhoto(getDb(), main.kind === "objets" ? { objectId: main.ownerId } : { todoId: main.ownerId }, {
+    const photo = await addPhoto(getDb(), main.kind === "objets" ? { objectId: main.ownerId } : { todoId: main.ownerId }, {
       pathname: input.pathname,
       thumbPathname: input.thumbPathname,
       width: dims(input.width),
       height: dims(input.height),
       createdById: user.id,
+      inline: input.inline === true,
     }, actor);
+    id = photo.id;
   } catch (err) {
     return handle(err);
   }
+  // Une image de description ne change rien ailleurs : pas de rafraîchissement (l'éditeur garde sa saisie)
+  if (input.inline) return { ok: true, id };
   revalidatePath("/", "layout");
   refresh();
-  return { ok: true };
+  return { ok: true, id };
 }
 
 export async function setCoverPhotoAction(id: string): Promise<ActionState> {
