@@ -5,7 +5,7 @@
 import { EditorContent, useEditor, useEditorState, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extensions";
-import { useId, useState } from "react";
+import { useEffect, useId, useState, type RefObject } from "react";
 import { toEditorHtml } from "@/lib/rich-text-shared";
 
 type Props = {
@@ -13,9 +13,13 @@ type Props = {
   label: string;
   defaultValue?: string | null;
   placeholder?: string;
+  /** Accès au contenu depuis l'extérieur (ex. remplacer la description par une proposition de l'IA). */
+  apiRef?: RefObject<RichTextApi | null>;
 };
 
-export function RichTextEditor({ name, label, defaultValue, placeholder }: Props) {
+export type RichTextApi = { getHtml: () => string; setHtml: (html: string) => void };
+
+export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef }: Props) {
   const labelId = useId();
   const [html, setHtml] = useState(() => toEditorHtml(defaultValue));
 
@@ -39,6 +43,20 @@ export function RichTextEditor({ name, label, defaultValue, placeholder }: Props
     },
     onUpdate: ({ editor }) => setHtml(editor.isEmpty ? "" : editor.getHTML()),
   });
+
+  useEffect(() => {
+    if (!apiRef) return;
+    apiRef.current = {
+      getHtml: () => (editor ? (editor.isEmpty ? "" : editor.getHTML()) : html),
+      setHtml: (next) => {
+        if (editor) editor.commands.setContent(next, { emitUpdate: true });
+        else setHtml(next);
+      },
+    };
+    return () => {
+      apiRef.current = null;
+    };
+  }, [apiRef, editor, html]);
 
   return (
     <div className="field">

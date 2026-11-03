@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getDb } from "@/db";
 import { listUsers } from "@/lib/repo";
 import { requireAdmin } from "@/lib/session";
@@ -15,6 +16,11 @@ export default async function UtilisateursPage() {
         <h1 className="text-2xl font-bold">Qui a accès</h1>
         <p className="max-w-prose text-muted">
           Seules les adresses listées ici peuvent se connecter. Le temps disponible par semaine servira au planning.
+        </p>
+        <p className="mt-2">
+          <Link href="/utilisateurs/ia" className="text-moss underline-offset-4 hover:underline">
+            Assistants IA (Claude, ChatGPT) →
+          </Link>
         </p>
       </div>
       <ul className="grid gap-3">

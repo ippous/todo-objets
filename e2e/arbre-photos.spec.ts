@@ -245,7 +245,7 @@ test("ajout en lot d'objets et de tâches", async ({ page }, info) => {
   await d2.getByLabel("Titre 2").press("Enter");
   await d2.getByLabel("Titre 3").fill("à retirer");
   await d2.getByRole("button", { name: "Retirer la ligne 3" }).click();
-  await d2.getByLabel("Catégorie").selectOption("travaux");
+  await d2.getByLabel("Type").selectOption({ label: "Travaux" });
   await d2.getByLabel("Priorité").selectOption("haute");
   await d2.getByRole("button", { name: "Créer 2 tâches" }).click();
   await expect(page.getByText(`2 tâches créées sur « Pommier ${s} ».`)).toBeVisible();

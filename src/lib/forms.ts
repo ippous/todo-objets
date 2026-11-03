@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CATEGORIES, PRIORITIES, RECURRENCES, ROLES, STATUSES } from "@/db/schema";
+import { PRIORITIES, RECURRENCES, ROLES, STATUSES } from "@/db/schema";
 import { RICH_TEXT_MAX, sanitizeRichText } from "./rich-text";
 
 export type ActionState = { error?: string; ok?: boolean };
@@ -45,7 +45,7 @@ export const todoSchema = z.object({
   objectId: z.string().uuid("Choisis un objet"),
   title: z.string().min(1, "Le titre est obligatoire").max(200),
   description: z.string().max(RICH_TEXT_MAX, "Description trop longue").nullable(),
-  category: z.enum(CATEGORIES),
+  typeId: uuidOrNull,
   priority: z.enum(PRIORITIES),
   status: z.enum(STATUSES),
   estHours: amount,
@@ -63,7 +63,7 @@ export function readTodo(fd: FormData) {
     objectId: str(fd, "objectId"),
     title: str(fd, "title"),
     description: sanitizeRichText(optionalText(fd, "description")),
-    category: str(fd, "category") || "entretien",
+    typeId: optionalText(fd, "typeId"),
     priority: str(fd, "priority") || "moyenne",
     status: str(fd, "status") || "a_faire",
     estHours: optionalNumber(fd, "estHours"),

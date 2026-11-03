@@ -3,7 +3,7 @@ import "server-only";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Db } from "@/db";
-import { CATEGORIES, PRIORITIES, STATUSES, type ObjectRow, type User } from "@/db/schema";
+import { PRIORITIES, STATUSES, type ObjectRow, type User } from "@/db/schema";
 import {
   getObject,
   getTodo,
@@ -12,6 +12,7 @@ import {
   listObjects,
   listPhotos,
   listSubtasks,
+  findTaskTypeByName,
   sumSubtaskHours,
   listTodos,
   listTypes,
@@ -77,7 +78,7 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
     titre: t.title,
     statut: STATUS_LABEL[t.status],
     priorite: t.priority,
-    categorie: t.category,
+    categorie: t.typeName,
     echeance: t.dueDate,
     en_retard: t.status !== "fait" && !!t.dueDate && t.dueDate < today(),
     recurrence: t.recurrence,
@@ -104,12 +105,13 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
       annotations: READ_ONLY,
     },
     async () => {
-      const [{ nodes }, todos, objTypes, docTypes, people] = await Promise.all([
+      const [{ nodes }, todos, objTypes, docTypes, people, taskTypes] = await Promise.all([
         forest(),
         listTodos(db, {}),
         listTypes(db, "objet"),
         listTypes(db, "document"),
         listUsers(db),
+        listTypes(db, "tache"),
       ]);
       const open = todos.filter((t) => t.status !== "fait");
       return result({
@@ -134,8 +136,9 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
           })),
         types_objets: objTypes.map((t) => ({ nom: t.name, nombre: t.usage })),
         types_documents: docTypes.map((t) => ({ nom: t.name, nombre: t.usage })),
+        types_taches: taskTypes.map((t) => ({ nom: t.name, nombre: t.usage })),
         utilisateurs: people.filter((u) => u.active).map((u) => ({ nom: u.name, role: u.role })),
-        valeurs: { statuts: STATUSES, priorites: PRIORITIES, categories: CATEGORIES, recurrences: ["aucune", "mensuelle", "saisonniere", "annuelle"] },
+        valeurs: { statuts: STATUSES, priorites: PRIORITIES, recurrences: ["aucune", "mensuelle", "saisonniere", "annuelle"] },
         aujourd_hui: today(),
       });
     },
@@ -257,7 +260,7 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
         statut: z.enum(["ouvertes", "a_faire", "en_cours", "fait", "toutes"]).default("ouvertes"),
         objet_id: UUID.optional().describe("Tâches de cet objet et de tous ses descendants"),
         responsable: z.string().max(100).optional().describe("Nom ou e-mail du responsable, « moi », ou « personne » (non attribuées)"),
-        categorie: z.enum(CATEGORIES).optional(),
+        categorie: z.string().max(60).optional().describe("Type de tâche (voir vue_ensemble, types_taches)"),
         priorite: z.enum(PRIORITIES).optional(),
         tag: z.string().max(40).optional(),
         echeance_avant: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Échéance au plus tard ce jour (AAAA-MM-JJ)"),
@@ -283,7 +286,11 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
         if (!(await getObject(db, a.objet_id))) return error(`Objet ${a.objet_id} introuvable`);
         filters.subtreeOf = a.objet_id;
       }
-      if (a.categorie) filters.category = a.categorie;
+      if (a.categorie) {
+        const tt = await findTaskTypeByName(db, a.categorie);
+        if (!tt) return error(`Type de tâche « ${a.categorie} » inconnu (voir vue_ensemble, types_taches)`);
+        filters.typeId = tt.id;
+      }
       if (a.priorite) filters.priority = a.priorite;
       if (a.tag) filters.tag = a.tag.toLowerCase();
       if (a.responsable) {
@@ -337,7 +344,7 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
         description: richTextToPlain(t.description),
         statut: STATUS_LABEL[t.status],
         priorite: t.priority,
-        categorie: t.category,
+        categorie: t.typeId ? ((await listTypes(db, "tache")).find((x) => x.id === t.typeId)?.name ?? null) : null,
         echeance: t.dueDate,
         en_retard: t.status !== "fait" && !!t.dueDate && t.dueDate < today(),
         recurrence: t.recurrence,

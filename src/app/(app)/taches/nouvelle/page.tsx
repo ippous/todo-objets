@@ -4,7 +4,7 @@ import { createTodoAction } from "@/app/actions";
 import { TodoForm } from "@/components/todo-form";
 import { getDb } from "@/db";
 import { objectOptions } from "@/lib/options";
-import { listObjects, listUsers } from "@/lib/repo";
+import { listObjects, listTypes, listUsers } from "@/lib/repo";
 import { returnPath } from "@/lib/return-to";
 
 export const metadata: Metadata = { title: "Nouvelle tâche" };
@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Nouvelle tâche" };
 export default async function NouvelleTachePage(props: PageProps<"/taches/nouvelle">) {
   const { objet, retour } = await props.searchParams;
   const db = getDb();
-  const [objs, users] = await Promise.all([listObjects(db), listUsers(db)]);
+  const [objs, users, types] = await Promise.all([listObjects(db), listUsers(db), listTypes(db, "tache")]);
   const objectId = typeof objet === "string" && objs.some((o) => o.id === objet) ? objet : undefined;
 
   if (objs.length === 0) {
@@ -35,6 +35,7 @@ export default async function NouvelleTachePage(props: PageProps<"/taches/nouvel
         objectId={objectId}
         objects={objectOptions(objs)}
         users={users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }))}
+        types={types.map((t) => ({ id: t.id, name: t.name, icon: t.icon }))}
         returnTo={returnPath(retour, objectId ? `/objets/${objectId}` : "/taches")}
         submitLabel="Créer la tâche"
       />

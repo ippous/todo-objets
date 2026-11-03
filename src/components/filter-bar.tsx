@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
-import { CATEGORY_LABEL, PRIORITY_LABEL } from "@/lib/format";
+import { PRIORITY_LABEL } from "@/lib/format";
 import type { ObjectOption } from "@/lib/options";
 
 export type FilterValues = {
   statut: string;
   responsable: string;
-  categorie: string;
+  type: string;
   priorite: string;
   tag: string;
   objet: string;
@@ -23,11 +23,13 @@ export function FilterBar({
   users,
   objects,
   tags,
+  types,
   meId,
   keep = {},
   hideStatus = false,
 }: {
   values: FilterValues;
+  types: { id: string; name: string }[];
   users: { id: string; name: string }[];
   objects: ObjectOption[];
   tags: string[];
@@ -91,11 +93,11 @@ export function FilterBar({
               </option>
             ))}
         </Select>
-        <Select name="categorie" label="Catégorie" value={values.categorie}>
-          <option value="">Toutes</option>
-          {Object.entries(CATEGORY_LABEL).map(([k, l]) => (
-            <option key={k} value={k}>
-              {l}
+        <Select name="type" label="Type" value={values.type}>
+          <option value="">Tous</option>
+          {types.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
             </option>
           ))}
         </Select>

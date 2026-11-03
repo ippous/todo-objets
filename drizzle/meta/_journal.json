@@ -64,6 +64,13 @@
       "when": 1793689988909,
       "tag": "0008_sous_taches_durees",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793696086358,
+      "tag": "0009_types_taches_ia",
+      "breakpoints": true
     }
   ]
 }

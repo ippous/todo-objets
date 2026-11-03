@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createObjectsBulkAction, createTodosBulkAction } from "@/app/actions";
-import { CATEGORY_LABEL, PRIORITY_LABEL } from "@/lib/format";
+import { PRIORITY_LABEL } from "@/lib/format";
 
 export type BulkTarget =
   | { kind: "objets"; parentId: string | null; parentName: string | null }
@@ -12,6 +12,7 @@ type Props = {
   target: BulkTarget | null;
   users?: { id: string; name: string }[];
   objectTypes?: { id: string; name: string }[];
+  taskTypes?: { id: string; name: string }[];
   onClose: () => void;
   onDone?: (message: string) => void;
 };
@@ -19,7 +20,8 @@ type Props = {
 const MAX = 50;
 
 /** Boîte de dialogue pour saisir plusieurs noms d'objets ou titres de tâches d'un coup. */
-export function BulkAddDialog({ target, users = [], objectTypes = [], onClose, onDone }: Props) {
+export function BulkAddDialog({ target, users = [], objectTypes = [], taskTypes = [], onClose, onDone }: Props) {
+  const defaultType = taskTypes.find((t) => t.name.toLowerCase() === "entretien")?.id ?? "";
   const dialog = useRef<HTMLDialogElement>(null);
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const [rows, setRows] = useState<string[]>([""]);
@@ -27,7 +29,7 @@ export function BulkAddDialog({ target, users = [], objectTypes = [], onClose, o
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [type, setType] = useState("");
-  const [common, setCommon] = useState({ category: "entretien", priority: "moyenne", assigneeId: "", dueDate: "" });
+  const [common, setCommon] = useState({ typeId: defaultType, priority: "moyenne", assigneeId: "", dueDate: "" });
 
   useEffect(() => {
     const d = dialog.current;
@@ -36,12 +38,12 @@ export function BulkAddDialog({ target, users = [], objectTypes = [], onClose, o
       setRows([""]);
       setError(null);
       setType("");
-      setCommon({ category: "entretien", priority: "moyenne", assigneeId: "", dueDate: "" });
+      setCommon({ typeId: defaultType, priority: "moyenne", assigneeId: "", dueDate: "" });
       d.showModal();
       setFocusIndex(0);
     }
     if (!target && d.open) d.close();
-  }, [target]);
+  }, [target, defaultType]);
 
   useEffect(() => {
     if (focusIndex === null) return;
@@ -76,7 +78,7 @@ export function BulkAddDialog({ target, users = [], objectTypes = [], onClose, o
         target.kind === "objets"
           ? await createObjectsBulkAction(target.parentId, names, type || null)
           : await createTodosBulkAction(target.objectId, names, {
-              category: common.category,
+              typeId: common.typeId || null,
               priority: common.priority,
               assigneeId: common.assigneeId || null,
               dueDate: common.dueDate || null,
@@ -218,15 +220,16 @@ export function BulkAddDialog({ target, users = [], objectTypes = [], onClose, o
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   <label className="field">
-                    <span>Catégorie</span>
+                    <span>Type</span>
                     <select
                       className="input"
-                      value={common.category}
-                      onChange={(e) => setCommon((c) => ({ ...c, category: e.target.value }))}
+                      value={common.typeId}
+                      onChange={(e) => setCommon((c) => ({ ...c, typeId: e.target.value }))}
                     >
-                      {Object.entries(CATEGORY_LABEL).map(([k, l]) => (
-                        <option key={k} value={k}>
-                          {l}
+                      <option value="">Aucun</option>
+                      {taskTypes.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
                         </option>
                       ))}
                     </select>
@@ -300,12 +303,14 @@ export function BulkAddButton({
   target,
   users,
   objectTypes,
+  taskTypes,
   label,
   className = "btn btn-ghost",
 }: {
   target: BulkTarget;
   users?: { id: string; name: string }[];
   objectTypes?: { id: string; name: string }[];
+  taskTypes?: { id: string; name: string }[];
   label: string;
   className?: string;
 }) {
@@ -320,6 +325,7 @@ export function BulkAddButton({
         target={open ? target : null}
         users={users}
         objectTypes={objectTypes}
+        taskTypes={taskTypes}
         onClose={() => setOpen(false)} onDone={setMessage} />
       {message && (
         <p role="status" className="basis-full text-sm text-moss">

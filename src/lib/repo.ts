@@ -14,6 +14,7 @@ import {
   objects,
   photos,
   subtasks,
+  taskTypes,
   todos,
   users,
   type DocumentRow,
@@ -138,7 +139,7 @@ export async function createTodos(
   db: Db,
   objectId: string,
   titles: string[],
-  common: Pick<NewTodo, "category" | "priority" | "assigneeId" | "dueDate" | "createdById"> = {},
+  common: Pick<NewTodo, "typeId" | "priority" | "assigneeId" | "dueDate" | "createdById"> = {},
   actor?: Actor,
 ): Promise<Todo[]> {
   const clean = titles.map((t) => t.trim()).filter(Boolean);
@@ -275,7 +276,7 @@ export async function openStatsByObject(db: Db): Promise<Map<string, Stats>> {
 export type TodoFilters = {
   statuses?: Todo["status"][];
   assigneeId?: string | "none";
-  category?: Todo["category"];
+  typeId?: string;
   priority?: Todo["priority"];
   tag?: string;
   subtreeOf?: string;
@@ -287,6 +288,8 @@ export type TodoSort = "echeance" | "priorite" | "ratio" | "recent";
 
 export type TodoListItem = Todo & {
   objectName: string;
+  typeName: string | null;
+  typeIcon: string | null;
   assigneeName: string | null;
   createdByName: string | null;
   valuePerHour: number | null;
@@ -301,7 +304,7 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
   if (filters.statuses?.length) conds.push(inArray(todos.status, filters.statuses));
   if (filters.assigneeId === "none") conds.push(isNull(todos.assigneeId));
   else if (filters.assigneeId) conds.push(eq(todos.assigneeId, filters.assigneeId));
-  if (filters.category) conds.push(eq(todos.category, filters.category));
+  if (filters.typeId) conds.push(eq(todos.typeId, filters.typeId));
   if (filters.priority) conds.push(eq(todos.priority, filters.priority));
   if (filters.tag) conds.push(sql`${filters.tag} = ANY(${todos.tags})`);
   if (filters.dueBefore) conds.push(lte(todos.dueDate, filters.dueBefore));
@@ -336,6 +339,8 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
     .select({
       todo: todos,
       objectName: objects.name,
+      typeName: taskTypes.name,
+      typeIcon: taskTypes.icon,
       assigneeName: assignee.name,
       createdByName: creator.name,
       ratio: ratioExpr,
@@ -345,6 +350,7 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
     })
     .from(todos)
     .innerJoin(objects, eq(objects.id, todos.objectId))
+    .leftJoin(taskTypes, eq(taskTypes.id, todos.typeId))
     .leftJoin(assignee, eq(assignee.id, todos.assigneeId))
     .leftJoin(creator, eq(creator.id, todos.createdById))
     .where(conds.length ? and(...conds) : undefined)
@@ -355,6 +361,8 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
     estHours: numOrNull(r.effEst),
     actualHours: numOrNull(r.effActual),
     objectName: r.objectName,
+    typeName: r.typeName,
+    typeIcon: r.typeIcon,
     assigneeName: r.assigneeName,
     createdByName: r.createdByName,
     valuePerHour: r.ratio == null ? null : round2(Number(r.ratio)),
@@ -467,7 +475,7 @@ export async function setTodoStatus(
         objectId: todo.objectId,
         title: todo.title,
         description: todo.description,
-        category: todo.category,
+        typeId: todo.typeId,
         priority: todo.priority,
         estHours: todo.estHours,
         estValueEur: todo.estValueEur,
@@ -813,24 +821,43 @@ export async function setDocumentType(db: Db, id: string, typeId: string, actor?
   if (target) await logAction(db, actor, { target, action: "type_document", details: { fichier: row.filename, type: t.name } });
 }
 
-// ---------- Types (objets et documents) ----------
+// ---------- Types (objets, documents et tâches) ----------
 
-export type TypeKind = "objet" | "document";
-const typeTable = (k: TypeKind) => (k === "objet" ? objectTypes : documentTypes);
-const usageTable = (k: TypeKind) => (k === "objet" ? objects : documents);
+export type TypeKind = "objet" | "document" | "tache";
+export const TYPE_KINDS: readonly TypeKind[] = ["objet", "document", "tache"];
+const typeTable = (k: TypeKind) => (k === "objet" ? objectTypes : k === "document" ? documentTypes : taskTypes);
+const usageTable = (k: TypeKind) => (k === "objet" ? objects : k === "document" ? documents : todos);
+const usageWord: Record<TypeKind, string> = { objet: "objet", document: "document", tache: "tâche" };
 
-export type TypeWithUsage = { id: string; name: string; usage: number };
+/** `icon` n'existe que pour les types de tâche (null sinon). */
+export type TypeWithUsage = { id: string; name: string; usage: number; icon: string | null };
 
 export async function listTypes(db: Db, kind: TypeKind): Promise<TypeWithUsage[]> {
   const t = typeTable(kind);
   const u = usageTable(kind);
+  const icon = kind === "tache" ? taskTypes.icon : sql<string | null>`NULL::text`;
   const rows = await db
-    .select({ id: t.id, name: t.name, usage: sql<number>`count(${u.id})::int` })
+    .select({ id: t.id, name: t.name, icon, usage: sql<number>`count(${u.id})::int` })
     .from(t)
     .leftJoin(u, eq(u.typeId, t.id))
-    .groupBy(t.id, t.name)
+    .groupBy(t.id, t.name, ...(kind === "tache" ? [taskTypes.icon] : []))
     .orderBy(sql`lower(${t.name})`);
-  return rows.map((r) => ({ ...r, usage: Number(r.usage) }));
+  return rows.map((r) => ({ ...r, icon: r.icon ?? null, usage: Number(r.usage) }));
+}
+
+/** Change l'icône par défaut d'un type de tâche (null pour aucune). */
+export async function setTaskTypeIcon(db: Db, id: string, icon: string | null): Promise<void> {
+  const [row] = await db.update(taskTypes).set({ icon }).where(eq(taskTypes.id, id)).returning({ id: taskTypes.id });
+  if (!row) throw new DomainError("Type introuvable");
+}
+
+/** Type de tâche par son nom exact (sans tenir compte de la casse), sans le créer. */
+export async function findTaskTypeByName(db: Db, name: string): Promise<{ id: string; name: string } | undefined> {
+  const [row] = await db
+    .select({ id: taskTypes.id, name: taskTypes.name })
+    .from(taskTypes)
+    .where(sql`lower(${taskTypes.name}) = lower(${name.trim()})`);
+  return row;
 }
 
 function cleanTypeName(name: string) {
@@ -850,9 +877,13 @@ async function assertUniqueName(db: Db, kind: TypeKind, name: string, exceptId?:
   if (dup) throw new DomainError(`Le type « ${name} » existe déjà`);
 }
 
-export async function createType(db: Db, kind: TypeKind, rawName: string): Promise<{ id: string; name: string }> {
+export async function createType(db: Db, kind: TypeKind, rawName: string, icon?: string | null): Promise<{ id: string; name: string }> {
   const name = cleanTypeName(rawName);
   await assertUniqueName(db, kind, name);
+  if (kind === "tache") {
+    const [row] = await db.insert(taskTypes).values({ name, icon: icon ?? null }).returning({ id: taskTypes.id, name: taskTypes.name });
+    return row;
+  }
   const t = typeTable(kind);
   const [row] = await db.insert(t).values({ name }).returning({ id: t.id, name: t.name });
   return row;
@@ -875,7 +906,7 @@ export async function deleteType(db: Db, kind: TypeKind, id: string): Promise<vo
     if (!type) throw new DomainError("Type introuvable");
     const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(u).where(eq(u.typeId, id));
     if (Number(n) > 0) {
-      const what = kind === "objet" ? "objet" : "document";
+      const what = usageWord[kind];
       throw new DomainError(
         `Impossible de supprimer « ${type.name} » : ${n} ${what}${Number(n) > 1 ? "s l'utilisent" : " l'utilise"}`,
       );
@@ -1142,6 +1173,7 @@ export async function purgeTestData(db: Db, marker: string, opts: { dryRun?: boo
     for (const [table, col] of [
       [objectTypes, sql`(SELECT count(*) FROM objects WHERE type_id = ${objectTypes.id})`],
       [documentTypes, sql`(SELECT count(*) FROM documents WHERE type_id = ${documentTypes.id})`],
+      [taskTypes, sql`(SELECT count(*) FROM todos WHERE type_id = ${taskTypes.id})`],
     ] as const) {
       const del = await tx
         .delete(table)

@@ -1,0 +1,275 @@
+"use client";
+
+// Boutons d'aide IA d'une tâche. Ils vivent dans le formulaire de la tâche :
+// ils lisent le titre et la description en cours de saisie (même non enregistrés).
+import { Sparkles } from "lucide-react";
+import { useState, useTransition, type RefObject } from "react";
+import { aiCompleteDescriptionAction, aiProposeAction, applyAiProposalsAction } from "@/app/ai-actions";
+import type { SubtaskProposal, TaskProposal } from "@/lib/task-assistant";
+import type { RichTextApi } from "./rich-text-editor";
+import { FormError } from "./submit";
+
+export type AiChoice = { providers: { id: string; label: string }[]; defaultProvider: string | null };
+
+function readDraft(el: HTMLElement | null) {
+  const form = el?.closest("form");
+  const fd = form ? new FormData(form) : null;
+  return {
+    title: String(fd?.get("title") ?? ""),
+    description: String(fd?.get("description") ?? "") || null,
+  };
+}
+
+/** Choix du fournisseur, seulement s'il y en a plusieurs de configurés. */
+function ProviderSelect({ ai, value, onChange }: { ai: AiChoice; value: string; onChange: (v: string) => void }) {
+  if (ai.providers.length < 2) return null;
+  return (
+    <select
+      className="min-h-9 rounded-md border border-line bg-surface px-2 text-sm"
+      aria-label="Assistant IA à utiliser"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {ai.providers.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+const aiBtn = "btn btn-ghost min-h-9 gap-1.5 px-3 text-sm";
+
+function NotConfigured({ isAdmin }: { isAdmin: boolean }) {
+  return (
+    <p className="text-sm text-muted">
+      Aucun assistant IA n&apos;est configuré.{" "}
+      {isAdmin ? (
+        <a href="/utilisateurs/ia" className="text-moss underline-offset-4 hover:underline">
+          Ajouter une clé d&apos;API
+        </a>
+      ) : (
+        "Demande à un administrateur d'ajouter une clé d'API."
+      )}
+    </p>
+  );
+}
+
+/** « Compléter la description » : propose une description, qu'on accepte ou non. */
+export function DescriptionAssist({
+  todoId,
+  ai,
+  isAdmin,
+  editor,
+}: {
+  todoId: string;
+  ai: AiChoice;
+  isAdmin: boolean;
+  editor: RefObject<RichTextApi | null>;
+}) {
+  const [provider, setProvider] = useState(ai.defaultProvider ?? ai.providers[0]?.id ?? "");
+  const [proposal, setProposal] = useState<string | null>(null);
+  const [applied, setApplied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+
+  if (!ai.providers.length) {
+    return (
+      <div className="grid gap-1" ref={setAnchor}>
+        <button type="button" className={`${aiBtn} w-fit`} disabled>
+          <Sparkles size={16} aria-hidden /> Compléter la description
+        </button>
+        <NotConfigured isAdmin={isAdmin} />
+      </div>
+    );
+  }
+
+  const run = () =>
+    start(async () => {
+      setError(null);
+      setApplied(false);
+      const draft = readDraft(anchor);
+      const r = await aiCompleteDescriptionAction(
+        todoId,
+        { ...draft, description: editor.current?.getHtml() ?? draft.description },
+        provider,
+      );
+      if (r.error) setError(r.error);
+      else setProposal(r.html ?? null);
+    });
+
+  return (
+    <div className="grid gap-2" ref={setAnchor}>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className={aiBtn} onClick={run} disabled={pending}>
+          <Sparkles size={16} aria-hidden /> {pending ? "Rédaction en cours…" : "Compléter la description"}
+        </button>
+        <ProviderSelect ai={ai} value={provider} onChange={setProvider} />
+        {applied && (
+          <span role="status" className="text-sm text-moss">
+            Description remplacée : pense à enregistrer.
+          </span>
+        )}
+      </div>
+      {proposal && (
+        <div className="grid gap-3 rounded-xl border border-moss bg-surface p-3" data-testid="proposition-description">
+          <p className="text-sm font-bold text-moss">Proposition de description</p>
+          {/* HTML nettoyé côté serveur (mêmes balises que l'éditeur) */}
+          <div className="rich" dangerouslySetInnerHTML={{ __html: proposal }} />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-primary min-h-9 px-3 text-sm"
+              onClick={() => {
+                editor.current?.setHtml(proposal);
+                setProposal(null);
+                setApplied(true);
+              }}
+            >
+              Remplacer la description
+            </button>
+            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={run} disabled={pending}>
+              Autre proposition
+            </button>
+            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={() => setProposal(null)}>
+              Ignorer
+            </button>
+          </div>
+        </div>
+      )}
+      <FormError error={error ?? undefined} />
+    </div>
+  );
+}
+
+type Checked = { checked: boolean };
+
+/** « Proposer des sous-tâches » : liste à cocher de sous-tâches et de tâches voisines. */
+export function SubtaskAssist({ todoId, ai, isAdmin }: { todoId: string; ai: AiChoice; isAdmin: boolean }) {
+  const [provider, setProvider] = useState(ai.defaultProvider ?? ai.providers[0]?.id ?? "");
+  const [subs, setSubs] = useState<(SubtaskProposal & Checked)[] | null>(null);
+  const [tasks, setTasks] = useState<(TaskProposal & Checked)[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+
+  if (!ai.providers.length) {
+    return (
+      <div className="grid gap-1" ref={setAnchor}>
+        <button type="button" className={`${aiBtn} w-fit`} disabled>
+          <Sparkles size={16} aria-hidden /> Proposer des sous-tâches
+        </button>
+        <NotConfigured isAdmin={isAdmin} />
+      </div>
+    );
+  }
+
+  const run = () =>
+    start(async () => {
+      setError(null);
+      setDone(null);
+      const r = await aiProposeAction(todoId, readDraft(anchor), provider);
+      if (r.error) return setError(r.error);
+      setSubs((r.subtasks ?? []).map((s) => ({ ...s, checked: true })));
+      // Les autres tâches ne sont pas cochées d'office : on les choisit une par une
+      setTasks((r.tasks ?? []).map((t) => ({ ...t, checked: false })));
+    });
+
+  const apply = () =>
+    start(async () => {
+      setError(null);
+      const r = await applyAiProposalsAction(todoId, {
+        subtasks: (subs ?? []).filter((s) => s.checked).map(({ title, estHours }) => ({ title, estHours })),
+        tasks: tasks.filter((t) => t.checked).map(({ title, description, estHours }) => ({ title, description, estHours })),
+      });
+      if (r.error) return setError(r.error);
+      const parts = [
+        r.subtasks ? `${r.subtasks} sous-tâche${r.subtasks > 1 ? "s" : ""}` : null,
+        r.tasks ? `${r.tasks} tâche${r.tasks > 1 ? "s" : ""}` : null,
+      ].filter(Boolean);
+      setDone(parts.length ? `Ajouté : ${parts.join(" et ")}.` : "Rien n'était coché.");
+      setSubs(null);
+      setTasks([]);
+    });
+
+  const count = (subs ?? []).filter((s) => s.checked).length + tasks.filter((t) => t.checked).length;
+
+  return (
+    <div className="grid gap-2" ref={setAnchor}>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className={aiBtn} onClick={run} disabled={pending}>
+          <Sparkles size={16} aria-hidden /> {pending && !subs ? "Réflexion en cours…" : "Proposer des sous-tâches"}
+        </button>
+        <ProviderSelect ai={ai} value={provider} onChange={setProvider} />
+        {done && (
+          <span role="status" className="text-sm text-moss">
+            {done}
+          </span>
+        )}
+      </div>
+      {subs && (
+        <div className="grid gap-3 rounded-xl border border-moss bg-surface p-3" data-testid="propositions-ia">
+          {subs.length > 0 && (
+            <fieldset className="grid gap-1">
+              <legend className="mb-1 text-sm font-bold text-moss">Sous-tâches proposées</legend>
+              {subs.map((s, i) => (
+                <label key={i} className="flex min-h-9 items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="size-5 shrink-0 accent-moss"
+                    checked={s.checked}
+                    onChange={(e) => setSubs((l) => l!.map((x, j) => (j === i ? { ...x, checked: e.target.checked } : x)))}
+                  />
+                  <span className="min-w-0 flex-1">{s.title}</span>
+                  {s.estHours != null && <span className="num shrink-0 text-sm text-muted">{String(s.estHours).replace(".", ",")} h</span>}
+                </label>
+              ))}
+            </fieldset>
+          )}
+          {tasks.length > 0 && (
+            <fieldset className="grid gap-1">
+              <legend className="mb-1 text-sm font-bold text-moss">Autres tâches suggérées, sur le même objet</legend>
+              {tasks.map((t, i) => (
+                <label key={i} className="flex items-start gap-2 py-1">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-5 shrink-0 accent-moss"
+                    checked={t.checked}
+                    onChange={(e) => setTasks((l) => l.map((x, j) => (j === i ? { ...x, checked: e.target.checked } : x)))}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="font-bold">{t.title}</span>
+                    {t.description && <span className="block text-sm text-muted">{t.description}</span>}
+                  </span>
+                  {t.estHours != null && <span className="num shrink-0 text-sm text-muted">{String(t.estHours).replace(".", ",")} h</span>}
+                </label>
+              ))}
+            </fieldset>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-primary min-h-9 px-3 text-sm" onClick={apply} disabled={pending || count === 0}>
+              {pending ? "Ajout…" : `Ajouter la sélection (${count})`}
+            </button>
+            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={run} disabled={pending}>
+              Autres propositions
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost min-h-9 px-3 text-sm"
+              onClick={() => {
+                setSubs(null);
+                setTasks([]);
+              }}
+            >
+              Ignorer
+            </button>
+          </div>
+        </div>
+      )}
+      <FormError error={error ?? undefined} />
+    </div>
+  );
+}
