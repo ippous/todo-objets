@@ -66,7 +66,8 @@ export function sanitizeRichText(raw: string | null): string | null {
   if (!raw) return null;
   const html = sanitizeHtml(isHtml(raw) ? raw : plainToHtml(raw), OPTIONS).trim();
   const text = html.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").trim();
-  return text || /<hr/.test(html) ? html : null;
+  // Une image, une ligne ou une case à cocher seule suffit à faire une description
+  return text || /<(hr|img|input)\b/.test(html) ? html : null;
 }
 
 /** HTML sûr à afficher pour une description enregistrée (y compris l'ancien texte brut). */

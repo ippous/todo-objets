@@ -710,6 +710,24 @@ export async function addPhoto(
   });
 }
 
+/** Image d'une description en cours de création (objet ou tâche pas encore enregistré). */
+export async function addDraftPhoto(
+  db: Db,
+  draftId: string,
+  data: { pathname: string; thumbPathname: string; width?: number | null; height?: number | null; createdById?: string | null },
+): Promise<Photo> {
+  const [row] = await db.insert(photos).values({ ...data, draftOwner: draftId, inline: true, isCover: false }).returning();
+  return row;
+}
+
+/** Rattache à l'objet ou à la tâche créé les images insérées pendant sa saisie. */
+export async function claimDraftPhotos(db: Db, draftId: string, owner: PhotoOwner): Promise<void> {
+  await db
+    .update(photos)
+    .set({ ...owner, draftOwner: null })
+    .where(and(eq(photos.draftOwner, draftId), isNull(photos.objectId), isNull(photos.todoId)));
+}
+
 /** Fait de cette photo la vignette de son objet ou de sa tâche. */
 export async function setCoverPhoto(db: Db, id: string, actor?: Actor): Promise<void> {
   await db.transaction(async (tx) => {

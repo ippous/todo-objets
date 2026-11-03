@@ -25,7 +25,7 @@ import {
 } from "@/lib/repo";
 import { seedInitialTree } from "@/lib/seed";
 import { completeDescription, completeObjectDescription, proposeObjectTasks, proposeSubtasks } from "@/lib/task-assistant";
-import { addPhoto, getObject, listPhotos, setObjectDescription } from "@/lib/repo";
+import { addDraftPhoto, addPhoto, claimDraftPhotos, getObject, getPhoto, listPhotos, setObjectDescription } from "@/lib/repo";
 import { createTestDb } from "./helpers";
 
 let db: Db;
@@ -187,5 +187,37 @@ describe("description d'objet", () => {
     );
     const p = await proposeObjectTasks(db, objectId, { title: "", description: null });
     expect(p.tasks).toEqual([{ title: "Graisser", description: "Rotules", estHours: 0.5 }]);
+  });
+});
+
+describe("description en cours de création", () => {
+  beforeEach(async () => {
+    await saveAiProvider(db, "anthropic", { model: "claude-sonnet-5-5", apiKey: "sk-ant-abcdefghijklmnopqrstuvwxyz" });
+  });
+
+  it("garde les images d'un brouillon et les rattache à la création", async () => {
+    const draftId = "6f1c2b7e-0d3a-4c55-9b1e-2a3b4c5d6e7f";
+    const p = await addDraftPhoto(db, draftId, { pathname: "local/brouillons/x/a.jpg", thumbPathname: "local/brouillons/x/a-v.jpg" });
+    expect(p).toMatchObject({ inline: true, objectId: null, todoId: null, draftOwner: draftId });
+    const t = await createTodo(db, { objectId, title: "Nouvelle" });
+    await claimDraftPhotos(db, draftId, { todoId: t.id });
+    expect(await getPhoto(db, p.id)).toMatchObject({ todoId: t.id, draftOwner: null, inline: true });
+    expect(await listPhotos(db, { todoId: t.id })).toEqual([]);
+  });
+
+  it("rédige la description d'une tâche ou d'un objet pas encore créé, d'après le brouillon", async () => {
+    const fetchMock = anthropicText("<p>Texte</p>");
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await completeDescription(db, null, { title: "Tondre", description: null, objectId });
+    expect(r.html).toBe("<p>Texte</p>");
+    const prompt = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body)).messages[0].content;
+    expect(prompt).toContain("Tâche : Tondre");
+    await expect(completeDescription(db, null, { title: "Tondre", description: null })).rejects.toThrow(/objet concerné/);
+
+    const o = await completeObjectDescription(db, null, { title: "Serre", description: null, parentId: objectId });
+    expect(o.html).toBe("<p>Texte</p>");
+    const prompt2 = JSON.parse(String((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body)).messages[0].content;
+    expect(prompt2).toMatch(/Chemin : .+ › Serre/);
+    await expect(completeObjectDescription(db, null, { title: " ", description: null })).rejects.toThrow(/nom de l'objet/);
   });
 });

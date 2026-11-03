@@ -6,6 +6,8 @@ import { getDb } from "@/db";
 import { objectOptions } from "@/lib/options";
 import { listObjects, listTypes } from "@/lib/repo";
 import { storageMode, storagePrefix } from "@/lib/storage";
+import { getAiChoice } from "@/lib/ai";
+import { getCurrentUser } from "@/lib/session";
 import { DeleteObject, MoveObject } from "./forms";
 
 export const metadata: Metadata = { title: "Modifier l'objet" };
@@ -14,7 +16,7 @@ export default async function ModifierObjetPage(props: PageProps<"/objets/[id]/m
   const { id } = await props.params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const db = getDb();
-  const [objs, types] = await Promise.all([listObjects(db), listTypes(db, "objet")]);
+  const [objs, types, ai, me] = await Promise.all([listObjects(db), listTypes(db, "objet"), getAiChoice(db), getCurrentUser()]);
   const obj = objs.find((o) => o.id === id);
   if (!obj) notFound();
 
@@ -28,7 +30,7 @@ export default async function ModifierObjetPage(props: PageProps<"/objets/[id]/m
           submitLabel="Enregistrer les modifications"
           cancelHref={`/objets/${id}`}
           types={types}
-          images={{ kind: "objets", ownerId: id, prefix: storagePrefix, mode: storageMode }}
+          description={{ objectId: id, storage: { prefix: storagePrefix, mode: storageMode }, ai, isAdmin: me?.role === "admin" }}
         />
       </section>
 

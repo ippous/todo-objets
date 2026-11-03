@@ -17,9 +17,10 @@ export const storageMode: "blob" | "local" = process.env.BLOB_READ_WRITE_TOKEN ?
 export const storagePrefix = process.env.VERCEL_ENV ?? "local";
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const PATH_RE = new RegExp(`^${storagePrefix}/(objets|taches)/(${UUID})/(${UUID})(-v)?\\.jpg$`);
+const PATH_RE = new RegExp(`^${storagePrefix}/(objets|taches|brouillons)/(${UUID})/(${UUID})(-v)?\\.jpg$`);
 
-export type ParsedPath = { kind: "objets" | "taches"; ownerId: string; fileId: string; thumb: boolean };
+/** « brouillons » : images d'une description d'objet ou de tâche pas encore créé (ownerId = identifiant du brouillon). */
+export type ParsedPath = { kind: "objets" | "taches" | "brouillons"; ownerId: string; fileId: string; thumb: boolean };
 
 /** Vérifie qu'un chemin a la forme attendue et appartient à cet environnement. */
 export function parsePhotoPath(pathname: string): ParsedPath | null {
