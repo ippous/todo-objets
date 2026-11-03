@@ -17,7 +17,6 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["admin", "membre"]);
-export const categoryEnum = pgEnum("category", ["entretien", "travaux", "administratif"]);
 export const priorityEnum = pgEnum("priority", ["haute", "moyenne", "basse"]);
 export const statusEnum = pgEnum("status", ["a_faire", "en_cours", "fait"]);
 export const recurrenceEnum = pgEnum("recurrence", ["aucune", "mensuelle", "saisonniere", "annuelle"]);
@@ -53,6 +52,18 @@ export const documentTypes = pgTable(
   (t) => [uniqueIndex("document_types_name_uq").on(sql`lower(${t.name})`)],
 );
 
+/** Types de tâche (ex-catégories), avec une icône par défaut choisie dans un jeu fourni. */
+export const taskTypes = pgTable(
+  "task_types",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    icon: text("icon"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("task_types_name_uq").on(sql`lower(${t.name})`)],
+);
+
 export const objects = pgTable(
   "objects",
   {
@@ -84,7 +95,7 @@ export const todos = pgTable(
       .references(() => objects.id, { onDelete: "restrict" }),
     title: text("title").notNull(),
     description: text("description"),
-    category: categoryEnum("category").notNull().default("entretien"),
+    typeId: uuid("type_id").references(() => taskTypes.id, { onDelete: "restrict" }),
     priority: priorityEnum("priority").notNull().default("moyenne"),
     status: statusEnum("status").notNull().default("a_faire"),
     estHours: numeric("est_hours", { precision: 8, scale: 2, mode: "number" }),
@@ -105,6 +116,7 @@ export const todos = pgTable(
     index("todos_object_idx").on(t.objectId),
     index("todos_status_idx").on(t.status),
     index("todos_assignee_idx").on(t.assigneeId),
+    index("todos_type_idx").on(t.typeId),
     uniqueIndex("todos_previous_occurrence_uq").on(t.previousOccurrenceId),
     foreignKey({ columns: [t.previousOccurrenceId], foreignColumns: [t.id], name: "todos_previous_occurrence_fk" }).onDelete(
       "set null",
@@ -233,6 +245,16 @@ export const auditLog = pgTable(
   ],
 );
 
+/**
+ * Réglages de l'appli, par clé (ex. « ia » : fournisseurs, modèles, clés d'API chiffrées).
+ * Réservés aux administrateurs.
+ */
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").$type<Record<string, unknown>>().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type AuditEntry = typeof auditLog.$inferSelect;
 export type AuditSource = (typeof auditSourceEnum.enumValues)[number];
 
@@ -240,6 +262,7 @@ export type User = typeof users.$inferSelect;
 export type DocumentRow = typeof documents.$inferSelect;
 export type LinkRow = typeof links.$inferSelect;
 export type Subtask = typeof subtasks.$inferSelect;
+export type TaskType = typeof taskTypes.$inferSelect;
 // ---------- Accès des assistants IA (MCP) ----------
 
 /** Applications clientes OAuth (enregistrement dynamique, RFC 7591). */
@@ -317,7 +340,6 @@ export type Todo = typeof todos.$inferSelect;
 export type NewTodo = typeof todos.$inferInsert;
 export type NewObject = typeof objects.$inferInsert;
 
-export const CATEGORIES = categoryEnum.enumValues;
 export const PRIORITIES = priorityEnum.enumValues;
 export const STATUSES = statusEnum.enumValues;
 export const RECURRENCES = recurrenceEnum.enumValues;

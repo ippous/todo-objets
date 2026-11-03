@@ -42,13 +42,14 @@ export default async function ArbrePage(props: PageProps<"/">) {
   const sp = await props.searchParams;
   const racineId = typeof sp.racine === "string" ? sp.racine : "";
   const db = getDb();
-  const [objs, stats, counts, covers, users, objectTypes] = await Promise.all([
+  const [objs, stats, counts, covers, users, objectTypes, taskTypes] = await Promise.all([
     listObjects(db),
     openStatsByObject(db),
     todoCountByObject(db),
     objectCovers(db),
     listUsers(db),
     listTypes(db, "objet"),
+    listTypes(db, "tache"),
   ]);
   const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
   const fullForest = buildForest(objs, stats);
@@ -145,6 +146,7 @@ export default async function ArbrePage(props: PageProps<"/">) {
             focusId={focus?.id ?? null}
             users={activeUsers}
             objectTypes={objectTypes}
+            taskTypes={taskTypes.map((t) => ({ id: t.id, name: t.name }))}
           />
         </section>
       )}

@@ -4,10 +4,10 @@ import { FilterBar, type FilterValues } from "@/components/filter-bar";
 import { KanbanBoard, type KanbanLane } from "@/components/kanban-board";
 import { TodoRow } from "@/components/todo-row";
 import { getDb } from "@/db";
-import { CATEGORIES, PRIORITIES, type Todo } from "@/db/schema";
+import { PRIORITIES, type Todo } from "@/db/schema";
 import { fmtEur, fmtHours } from "@/lib/format";
 import { objectOptions } from "@/lib/options";
-import { computeTotals, listAllTags, listObjects, listTodos, listUsers, type TodoFilters, type TodoSort } from "@/lib/repo";
+import { computeTotals, listAllTags, listObjects, listTodos, listTypes, listUsers, type TodoFilters, type TodoSort } from "@/lib/repo";
 import { requireUser } from "@/lib/session";
 import { groupByRoot } from "@/lib/tree";
 
@@ -27,7 +27,7 @@ export default async function TachesPage(props: PageProps<"/taches">) {
     // Le tableau montre toujours les trois statuts
     statut: board ? "" : one(sp.statut),
     responsable: one(sp.responsable),
-    categorie: one(sp.categorie),
+    type: one(sp.type),
     priorite: one(sp.priorite),
     tag: one(sp.tag),
     objet: one(sp.objet),
@@ -44,7 +44,7 @@ export default async function TachesPage(props: PageProps<"/taches">) {
           ? [values.statut as Todo["status"]]
           : ["a_faire", "en_cours"],
     assigneeId: values.responsable === "none" ? "none" : UUID.test(values.responsable) ? values.responsable : undefined,
-    category: (CATEGORIES as readonly string[]).includes(values.categorie) ? (values.categorie as Todo["category"]) : undefined,
+    typeId: UUID.test(values.type) ? values.type : undefined,
     priority: (PRIORITIES as readonly string[]).includes(values.priorite) ? (values.priorite as Todo["priority"]) : undefined,
     tag: values.tag || undefined,
     subtreeOf: UUID.test(values.objet) ? values.objet : undefined,
@@ -54,11 +54,12 @@ export default async function TachesPage(props: PageProps<"/taches">) {
   const sort: TodoSort = (["priorite", "ratio", "recent"] as const).find((s) => s === values.tri) ?? "echeance";
 
   const db = getDb();
-  const [todos, users, objs, tags] = await Promise.all([
+  const [todos, users, objs, tags, types] = await Promise.all([
     listTodos(db, filters, sort),
     listUsers(db),
     listObjects(db),
     listAllTags(db),
+    listTypes(db, "tache"),
   ]);
   const totals = computeTotals(todos);
   const filterParams = Object.entries(values).filter(([, v]) => v) as [string, string][];
@@ -82,6 +83,7 @@ export default async function TachesPage(props: PageProps<"/taches">) {
       estHours: t.estHours,
       recurring: t.recurrence !== "aucune",
       coverPhotoId: t.coverPhotoId,
+      typeIcon: t.typeIcon,
     }));
     lanes = byRoot
       ? groupByRoot(objs, cards).map((l) => ({ id: l.root.id, name: l.root.name, cards: l.items }))
@@ -123,6 +125,7 @@ export default async function TachesPage(props: PageProps<"/taches">) {
         users={users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }))}
         objects={objectOptions(objs)}
         tags={tags}
+        types={types.map((t) => ({ id: t.id, name: t.name }))}
         meId={me.id}
       />
       {todos.length === 0 ? (

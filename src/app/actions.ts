@@ -35,6 +35,8 @@ import {
   renameType,
   setCoverPhoto,
   setDocumentType,
+  setTaskTypeIcon,
+  TYPE_KINDS,
   type TypeKind,
   setTodoStatus,
   updateObject,
@@ -43,6 +45,7 @@ import {
   updateUser,
 } from "@/lib/repo";
 import { actorOf } from "@/lib/audit";
+import { isTaskIcon } from "@/lib/task-icons";
 import { requireAdmin, requireUser } from "@/lib/session";
 import { exists, parseDocumentPath, parsePhotoPath, remove } from "@/lib/storage";
 
@@ -187,18 +190,25 @@ export async function searchObjectsAction(q: string): Promise<{ hits: ObjectSear
   return searchObjects(getDb(), String(q ?? ""));
 }
 
-// ---------- Types d'objets et de documents ----------
+// ---------- Types d'objets, de documents et de tâches ----------
 
-const KINDS: TypeKind[] = ["objet", "document"];
 const assertKind = (k: string): TypeKind => {
-  if (!KINDS.includes(k as TypeKind)) throw new DomainError("Catégorie de type invalide");
+  if (!TYPE_KINDS.includes(k as TypeKind)) throw new DomainError("Catégorie de type invalide");
   return k as TypeKind;
+};
+
+const iconArg = (raw: string) => {
+  const v = raw.trim();
+  if (!v) return null;
+  if (!isTaskIcon(v)) throw new DomainError("Icône inconnue");
+  return v;
 };
 
 export async function createTypeAction(kind: TypeKind, _: ActionState, fd: FormData): Promise<ActionState> {
   await requireUser();
   try {
-    await createType(getDb(), assertKind(kind), str(fd, "name"));
+    const k = assertKind(kind);
+    await createType(getDb(), k, str(fd, "name"), k === "tache" ? iconArg(str(fd, "icon")) : null);
   } catch (err) {
     return handle(err);
   }
@@ -215,6 +225,20 @@ export async function renameTypeAction(kind: TypeKind, id: string, _: ActionStat
     return handle(err);
   }
   revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Icône par défaut d'un type de tâche (chaîne vide pour aucune). */
+export async function setTaskTypeIconAction(id: string, icon: string): Promise<ActionState> {
+  await requireUser();
+  try {
+    assertId(id);
+    await setTaskTypeIcon(getDb(), id, iconArg(typeof icon === "string" ? icon : ""));
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
   return { ok: true };
 }
 
@@ -235,7 +259,6 @@ export async function deleteTypeAction(kind: TypeKind, id: string): Promise<Acti
 
 export type BulkResult = ActionState & { count?: number };
 
-const CATEGORY_SET = new Set(["entretien", "travaux", "administratif"]);
 const PRIORITY_SET = new Set(["haute", "moyenne", "basse"]);
 
 /** Plusieurs objets sous un même parent (ou en racines). */
@@ -258,23 +281,23 @@ export async function createObjectsBulkAction(
   }
 }
 
-/** Plusieurs tâches sur un même objet, avec catégorie, priorité, responsable et échéance communes. */
+/** Plusieurs tâches sur un même objet, avec type, priorité, responsable et échéance communes. */
 export async function createTodosBulkAction(
   objectId: string,
   titles: string[],
-  common: { category?: string; priority?: string; assigneeId?: string | null; dueDate?: string | null },
+  common: { typeId?: string | null; priority?: string; assigneeId?: string | null; dueDate?: string | null },
 ): Promise<BulkResult> {
   const user = await requireUser();
   const actor = actorOf(user, "interface");
   try {
     assertId(objectId);
     if (!Array.isArray(titles) || titles.some((t) => typeof t !== "string")) throw new DomainError("Liste invalide");
-    const category = CATEGORY_SET.has(common.category ?? "") ? (common.category as Todo["category"]) : "entretien";
+    const typeId = common.typeId && UUID.test(common.typeId) ? common.typeId : null;
     const priority = PRIORITY_SET.has(common.priority ?? "") ? (common.priority as Todo["priority"]) : "moyenne";
     const assigneeId = common.assigneeId && UUID.test(common.assigneeId) ? common.assigneeId : null;
     const dueDate = common.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(common.dueDate) ? common.dueDate : null;
     const created = await createTodos(getDb(), objectId, titles, {
-      category,
+      typeId,
       priority,
       assigneeId,
       dueDate,

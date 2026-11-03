@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useId, useState } from "react";
+import { useActionState, useId, useRef, useState } from "react";
 import type { Todo } from "@/db/schema";
-import { CATEGORY_LABEL, fmtNum, PRIORITY_LABEL, RECURRENCE_LABEL, STATUS_LABEL } from "@/lib/format";
+import { fmtNum, PRIORITY_LABEL, RECURRENCE_LABEL, STATUS_LABEL } from "@/lib/format";
 import type { ActionState } from "@/lib/forms";
-import { RichTextEditor } from "./rich-text-editor";
+import { RichTextEditor, type RichTextApi } from "./rich-text-editor";
+import { DescriptionAssist, type AiChoice } from "./task-ai";
 import type { ObjectOption } from "@/lib/options";
+import { TaskIcon } from "@/lib/task-icons";
 import { FormError } from "./submit";
 
 type Values = Pick<
@@ -14,7 +16,7 @@ type Values = Pick<
   | "objectId"
   | "title"
   | "description"
-  | "category"
+  | "typeId"
   | "priority"
   | "status"
   | "estHours"
@@ -33,17 +35,20 @@ export function TodoForm({
   objectId,
   objects,
   users,
+  types,
   returnTo,
   submitLabel,
   afterDescription,
   beforeSubmit,
   subtaskHours,
+  ai,
 }: {
   action: (state: ActionState, fd: FormData) => Promise<ActionState>;
   values?: Values;
   objectId?: string;
   objects: ObjectOption[];
   users: { id: string; name: string }[];
+  types: { id: string; name: string; icon: string | null }[];
   returnTo: string;
   submitLabel: string;
   /** Contenu affiché juste sous la description (les sous-tâches). */
@@ -55,10 +60,18 @@ export function TodoForm({
   beforeSubmit?: React.ReactNode;
   /** Somme des durées des sous-tâches, utilisée quand la tâche n'a pas sa propre durée. */
   subtaskHours?: { estHours: number | null; actualHours: number | null };
+  /** Aides IA (tâche existante seulement). */
+  ai?: { todoId: string; choice: AiChoice; isAdmin: boolean };
 }) {
+  const editor = useRef<RichTextApi | null>(null);
   const [state, formAction, pending] = useActionState(action, {});
   const formId = useId();
   const [status, setStatus] = useState(values?.status ?? "a_faire");
+  // Nouvelle tâche : « Entretien » par défaut, comme l'ancienne catégorie
+  const [typeId, setTypeId] = useState(
+    values ? (values.typeId ?? "") : (types.find((t) => t.name.toLowerCase() === "entretien")?.id ?? ""),
+  );
+  const typeIcon = types.find((t) => t.id === typeId)?.icon;
   const [est, setEst] = useState({ h: fmtNum(values?.estHours), v: fmtNum(values?.estValueEur) });
   const h = est.h.trim() === "" && subtaskHours?.estHours != null ? subtaskHours.estHours : Number(est.h.replace(",", "."));
   const v = Number(est.v.replace(",", "."));
@@ -85,17 +98,21 @@ export function TodoForm({
             ))}
           </select>
         </label>
-        <RichTextEditor name="description" label="Description" defaultValue={values?.description} />
+        <RichTextEditor name="description" label="Description" defaultValue={values?.description} apiRef={editor} />
+        {ai && <DescriptionAssist todoId={ai.todoId} ai={ai.choice} isAdmin={ai.isAdmin} editor={editor} />}
         {afterDescription}
 
         <fieldset className="grid gap-3 sm:grid-cols-3">
           <legend className="sr-only">Classement</legend>
           <label className="field">
-            <span>Catégorie</span>
-            <select className="input" name="category" defaultValue={values?.category ?? "entretien"}>
-              {Object.entries(CATEGORY_LABEL).map(([k, l]) => (
-                <option key={k} value={k}>
-                  {l}
+            <span className="flex items-center gap-1.5">
+              Type <TaskIcon icon={typeIcon} size={16} className="text-moss" />
+            </span>
+            <select className="input" name="typeId" aria-label="Type" value={typeId} onChange={(e) => setTypeId(e.target.value)}>
+              <option value="">Aucun</option>
+              {types.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
                 </option>
               ))}
             </select>
