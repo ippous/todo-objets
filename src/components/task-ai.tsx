@@ -2,7 +2,8 @@
 
 // Boutons d'aide IA d'une tâche. Ils vivent dans le formulaire de la tâche :
 // ils lisent le titre et la description en cours de saisie (même non enregistrés).
-import { Sparkles } from "lucide-react";
+import { LoaderCircle, MessageSquareText, Sparkles, WandSparkles } from "lucide-react";
+import { IconLabel, Tip } from "./tip";
 import { useState, useTransition, type RefObject } from "react";
 import { aiProposeAction, aiProposeObjectTasksAction, applyAiProposalsAction, applyObjectTasksAction } from "@/app/ai-actions";
 import type { SubtaskProposal, TaskProposal } from "@/lib/task-assistant";
@@ -44,7 +45,44 @@ function ProviderSelect({ ai, value, onChange }: { ai: AiChoice; value: string; 
   );
 }
 
-const aiBtn = "btn btn-ghost min-h-9 gap-1.5 px-3 text-sm";
+const aiBtn = "btn btn-ghost min-h-9 min-w-11 gap-1.5 px-3 text-sm";
+
+/** Bouton d'aide IA : icône seule sur mobile (info-bulle à l'appui long), icône et texte au-delà. */
+function AiButton({
+  icon,
+  label,
+  pendingLabel,
+  pending = false,
+  disabled = false,
+  onClick,
+  className = "",
+  expanded,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  pendingLabel?: string;
+  pending?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  className?: string;
+  expanded?: boolean;
+}) {
+  const shown = pending && pendingLabel ? pendingLabel : label;
+  return (
+    <Tip label={shown}>
+      <button
+        type="button"
+        className={`${aiBtn} ${className}`}
+        aria-label={shown}
+        aria-expanded={expanded}
+        onClick={onClick}
+        disabled={disabled || pending}
+      >
+        <IconLabel icon={pending ? <LoaderCircle size={16} className="animate-spin" aria-hidden /> : icon} label={shown} />
+      </button>
+    </Tip>
+  );
+}
 
 function NotConfigured({ isAdmin }: { isAdmin: boolean }) {
   return (
@@ -87,9 +125,7 @@ export function DescriptionAssist({
   if (!ai.providers.length) {
     return (
       <div className="grid gap-1" ref={setAnchor}>
-        <button type="button" className={`${aiBtn} w-fit`} disabled>
-          <Sparkles size={16} aria-hidden /> {label}
-        </button>
+        <AiButton icon={<WandSparkles size={16} aria-hidden />} label={label} disabled className="w-fit" />
         <NotConfigured isAdmin={isAdmin} />
       </div>
     );
@@ -108,9 +144,7 @@ export function DescriptionAssist({
   return (
     <div className="grid gap-2" ref={setAnchor}>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={aiBtn} onClick={run} disabled={pending}>
-          <Sparkles size={16} aria-hidden /> {pending ? "Rédaction en cours…" : label}
-        </button>
+        <AiButton icon={<WandSparkles size={16} aria-hidden />} label={label} pendingLabel="Rédaction en cours…" pending={pending} onClick={run} />
         <ProviderSelect ai={ai} value={provider} onChange={setProvider} />
         {applied && (
           <span role="status" className="text-sm text-moss">
@@ -166,9 +200,7 @@ export function SubtaskAssist({ todoId, ai, isAdmin }: { todoId: string; ai: AiC
   if (!ai.providers.length) {
     return (
       <div className="grid gap-1" ref={setAnchor}>
-        <button type="button" className={`${aiBtn} w-fit`} disabled>
-          <Sparkles size={16} aria-hidden /> Proposer des sous-tâches
-        </button>
+        <AiButton icon={<Sparkles size={16} aria-hidden />} label="Proposer des sous-tâches" disabled className="w-fit" />
         <NotConfigured isAdmin={isAdmin} />
       </div>
     );
@@ -208,9 +240,13 @@ export function SubtaskAssist({ todoId, ai, isAdmin }: { todoId: string; ai: AiC
   return (
     <div className="grid gap-2" ref={setAnchor}>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={aiBtn} onClick={() => run()} disabled={pending}>
-          <Sparkles size={16} aria-hidden /> {pending && !subs ? "Réflexion en cours…" : "Proposer des sous-tâches"}
-        </button>
+        <AiButton
+          icon={<Sparkles size={16} aria-hidden />}
+          label="Proposer des sous-tâches"
+          pendingLabel={subs ? undefined : "Réflexion en cours…"}
+          pending={pending}
+          onClick={() => run()}
+        />
         <InstructionsButton pending={pending} onRun={run} placeholder="Ex. : en 3 étapes maximum, avec le matériel à acheter" />
         <ProviderSelect ai={ai} value={provider} onChange={setProvider} />
         {done && (
@@ -284,7 +320,21 @@ export function SubtaskAssist({ todoId, ai, isAdmin }: { todoId: string; ai: AiC
 }
 
 /** « Proposer des tâches » sur un objet : liste à cocher, tâches créées sur l'objet. */
-export function ObjectTaskAssist({ objectId, ai, isAdmin }: { objectId: string; ai: AiChoice; isAdmin: boolean }) {
+export function ObjectTaskAssist({
+  objectId,
+  ai,
+  isAdmin,
+  leading,
+  quiet = false,
+}: {
+  objectId: string;
+  ai: AiChoice;
+  isAdmin: boolean;
+  /** Boutons placés en tête de la même ligne (ex. « Enregistrer »). */
+  leading?: React.ReactNode;
+  /** Ne pas répéter « Aucun assistant IA n'est configuré » (déjà affiché plus haut). */
+  quiet?: boolean;
+}) {
   const [provider, setProvider] = useState(ai.defaultProvider ?? ai.providers[0]?.id ?? "");
   const [tasks, setTasks] = useState<(TaskProposal & Checked)[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -296,10 +346,11 @@ export function ObjectTaskAssist({ objectId, ai, isAdmin }: { objectId: string; 
   if (!ai.providers.length) {
     return (
       <div className="grid gap-1" ref={setAnchor}>
-        <button type="button" className={`${aiBtn} w-fit`} disabled>
-          <Sparkles size={16} aria-hidden /> Proposer des tâches
-        </button>
-        <NotConfigured isAdmin={isAdmin} />
+        <div className="flex flex-wrap items-center gap-2">
+          {leading}
+          <AiButton icon={<Sparkles size={16} aria-hidden />} label="Proposer des tâches" disabled className="w-fit" />
+        </div>
+        {!quiet && <NotConfigured isAdmin={isAdmin} />}
       </div>
     );
   }
@@ -329,9 +380,14 @@ export function ObjectTaskAssist({ objectId, ai, isAdmin }: { objectId: string; 
   return (
     <div className="grid gap-2" ref={setAnchor}>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={aiBtn} onClick={() => run()} disabled={pending}>
-          <Sparkles size={16} aria-hidden /> {pending && !tasks ? "Réflexion en cours…" : "Proposer des tâches"}
-        </button>
+        {leading}
+        <AiButton
+          icon={<Sparkles size={16} aria-hidden />}
+          label="Proposer des tâches"
+          pendingLabel={tasks ? undefined : "Réflexion en cours…"}
+          pending={pending}
+          onClick={() => run()}
+        />
         <InstructionsButton pending={pending} onRun={run} placeholder="Ex. : seulement l'entretien d'hiver" />
         <ProviderSelect ai={ai} value={provider} onChange={setProvider} />
         {done && (
@@ -397,15 +453,13 @@ function InstructionsButton({
   };
   return (
     <>
-      <button
-        type="button"
-        className={aiBtn}
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+      <AiButton
+        icon={<MessageSquareText size={16} aria-hidden />}
+        label="Avec une consigne…"
+        expanded={open}
         disabled={pending}
-      >
-        <Sparkles size={16} aria-hidden /> Avec une consigne…
-      </button>
+        onClick={() => setOpen((o) => !o)}
+      />
       {open && (
         <div className="grid basis-full gap-2 rounded-xl border border-line bg-surface p-3">
           <label className="field">

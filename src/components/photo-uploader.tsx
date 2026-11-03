@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Camera, ClipboardPaste, ImagePlus, LoaderCircle } from "lucide-react";
 import { uploadPhoto } from "@/lib/photo-upload";
+import { IconLabel, Tip } from "./tip";
+
+/** Boutons carrés (icône seule) sur mobile, icône et texte à partir de « sm ». */
+const btn = "min-w-11 px-3 sm:px-4";
 import { CameraDialog } from "./camera-dialog";
 
 type Props = {
@@ -137,41 +142,66 @@ export function PhotoUploader({ kind, ownerId, prefix, mode }: Props) {
   return (
     <div className="grid gap-2">
       <div className="flex flex-wrap gap-2">
-        <label className={`btn btn-ghost w-fit cursor-pointer ${busy ? "opacity-60" : ""}`}>
-          {busy ? "Envoi en cours…" : "Ajouter des photos"}
-          <input
-            ref={input}
-            type="file"
-            accept="image/*"
-            multiple
-            className="sr-only"
-            disabled={busy}
-            onChange={(e) => onFiles(e.target.files)}
-          />
-        </label>
-        {camera === "native" && (
-          <label className={`btn btn-ghost w-fit cursor-pointer ${busy ? "opacity-60" : ""}`}>
-            Prendre une photo
+        <Tip label={busy ? "Envoi en cours…" : "Ajouter des photos"}>
+          <label className={`btn btn-ghost ${btn} cursor-pointer ${busy ? "opacity-60" : ""}`}>
+            <IconLabel
+              icon={busy ? <LoaderCircle size={18} className="animate-spin" aria-hidden /> : <ImagePlus size={18} aria-hidden />}
+              label={busy ? "Envoi en cours…" : "Ajouter des photos"}
+            />
             <input
-              ref={nativeCamera}
+              ref={input}
               type="file"
               accept="image/*"
-              capture="environment"
+              multiple
+              aria-label="Ajouter des photos"
               className="sr-only"
               disabled={busy}
               onChange={(e) => onFiles(e.target.files)}
             />
           </label>
+        </Tip>
+        {camera === "native" && (
+          <Tip label="Prendre une photo">
+            <label className={`btn btn-ghost ${btn} cursor-pointer ${busy ? "opacity-60" : ""}`}>
+              <IconLabel icon={<Camera size={18} aria-hidden />} label="Prendre une photo" />
+              <input
+                ref={nativeCamera}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                aria-label="Prendre une photo"
+                className="sr-only"
+                disabled={busy}
+                onChange={(e) => onFiles(e.target.files)}
+              />
+            </label>
+          </Tip>
         )}
         {camera === "webcam" && (
-          <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => setCameraOpen(true)}>
-            Prendre une photo
-          </button>
+          <Tip label="Prendre une photo">
+            <button
+              type="button"
+              className={`btn btn-ghost ${btn}`}
+              aria-label="Prendre une photo"
+              disabled={busy}
+              onClick={() => setCameraOpen(true)}
+            >
+              <IconLabel icon={<Camera size={18} aria-hidden />} label="Prendre une photo" />
+            </button>
+          </Tip>
         )}
         {canReadClipboard && (
-          <button type="button" className="btn btn-ghost" disabled={busy} onClick={() => void pasteFromButton()}>
-            Coller une image
-          </button>
+          <Tip label="Coller une image">
+            <button
+              type="button"
+              className={`btn btn-ghost ${btn}`}
+              aria-label="Coller une image"
+              disabled={busy}
+              onClick={() => void pasteFromButton()}
+            >
+              <IconLabel icon={<ClipboardPaste size={18} aria-hidden />} label="Coller une image" />
+            </button>
+          </Tip>
         )}
       </div>
       {camera !== "native" && (

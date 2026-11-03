@@ -196,3 +196,41 @@ test("même zone de description à la création : image et IA avant d'enregistre
     await expect(page.getByRole("region", { name: "Claude (Anthropic)" }).getByText("Pas de clé")).toBeVisible();
   }
 });
+
+test("boutons en icônes sur mobile, avec info-bulle à l'appui long", async ({ page }, info) => {
+  const m = testMarker(info);
+  const objet = `Abri ${m}`;
+  await login(page);
+  await page.goto("/objets/nouveau");
+  await page.getByLabel("Nom").fill(objet);
+  await page.getByRole("button", { name: "Créer l'objet" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: objet })).toBeVisible();
+
+  const add = page.getByRole("link", { name: "Ajouter une tâche", exact: true });
+  const actions = [add, page.getByRole("link", { name: "Modifier ou déplacer" }), page.getByRole("button", { name: "Plusieurs sous-objets" })];
+  if (info.project.name !== "mobile") {
+    // Sur PC le texte est visible, pas besoin d'info-bulle
+    expect(await add.evaluate((el) => (el as HTMLElement).innerText.trim())).toBe("Ajouter une tâche");
+    return;
+  }
+  // Une seule ligne de boutons sur mobile
+  const tops = await Promise.all(actions.map((a) => a.evaluate((el) => Math.round(el.getBoundingClientRect().top))));
+  expect(new Set(tops).size).toBe(1);
+  // Texte masqué : seule l'icône est visible
+  expect(await add.evaluate((el) => (el as HTMLElement).innerText.trim())).toBe("");
+
+  // Appui long : la bulle s'affiche et le lien n'est pas suivi
+  const box = (await add.boundingBox())!;
+  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await add.dispatchEvent("pointerdown", { pointerType: "touch", clientX: at.x, clientY: at.y, bubbles: true });
+  await page.waitForTimeout(600);
+  await expect(page.locator("span[aria-hidden].fixed", { hasText: "Ajouter une tâche" })).toBeVisible();
+  await add.dispatchEvent("pointerup", { pointerType: "touch", bubbles: true });
+  await add.dispatchEvent("click", { bubbles: true });
+  await expect(page.getByRole("heading", { level: 1, name: objet })).toBeVisible();
+  await expect(page.locator("span[aria-hidden].fixed", { hasText: "Ajouter une tâche" })).toBeHidden({ timeout: 3000 });
+
+  // Appui bref : action normale
+  await add.click();
+  await expect(page.getByRole("heading", { name: "Nouvelle tâche" })).toBeVisible();
+});
