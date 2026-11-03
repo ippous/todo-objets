@@ -305,6 +305,7 @@ export function BulkAddButton({
   objectTypes,
   taskTypes,
   label,
+  icon,
   className = "btn btn-ghost",
 }: {
   target: BulkTarget;
@@ -312,14 +313,25 @@ export function BulkAddButton({
   objectTypes?: { id: string; name: string }[];
   taskTypes?: { id: string; name: string }[];
   label: string;
+  /** Icône seule sur mobile, icône et texte à partir de la largeur « sm ». */
+  icon?: React.ReactNode;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   return (
     <>
-      <button type="button" className={className} onClick={() => setOpen(true)}>
-        {label}
+      <button type="button" className={className} onClick={() => setOpen(true)} aria-label={icon ? label : undefined} title={icon ? label : undefined}>
+        {icon ? (
+          <>
+            {icon}
+            <span className="hidden sm:inline" aria-hidden>
+              {label}
+            </span>
+          </>
+        ) : (
+          label
+        )}
       </button>
       <BulkAddDialog
         target={open ? target : null}
