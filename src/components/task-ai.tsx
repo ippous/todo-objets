@@ -4,7 +4,7 @@
 // ils lisent le titre et la description en cours de saisie (même non enregistrés).
 import { Sparkles } from "lucide-react";
 import { useState, useTransition, type RefObject } from "react";
-import { aiCompleteDescriptionAction, aiProposeAction, applyAiProposalsAction } from "@/app/ai-actions";
+import { aiProposeAction, aiProposeObjectTasksAction, applyAiProposalsAction, applyObjectTasksAction } from "@/app/ai-actions";
 import type { SubtaskProposal, TaskProposal } from "@/lib/task-assistant";
 import type { RichTextApi } from "./rich-text-editor";
 import { FormError } from "./submit";
@@ -56,17 +56,21 @@ function NotConfigured({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-/** « Compléter la description » : propose une description, qu'on accepte ou non. */
+type Draft = { title: string; description: string | null };
+
+/** « Compléter la description » : propose une description, qu'on accepte ou non (tâche ou objet). */
 export function DescriptionAssist({
-  todoId,
+  complete,
   ai,
   isAdmin,
   editor,
+  label = "Compléter la description",
 }: {
-  todoId: string;
+  complete: (draft: Draft, provider: string | null) => Promise<{ html?: string; error?: string }>;
   ai: AiChoice;
   isAdmin: boolean;
   editor: RefObject<RichTextApi | null>;
+  label?: string;
 }) {
   const [provider, setProvider] = useState(ai.defaultProvider ?? ai.providers[0]?.id ?? "");
   const [proposal, setProposal] = useState<string | null>(null);
@@ -79,7 +83,7 @@ export function DescriptionAssist({
     return (
       <div className="grid gap-1" ref={setAnchor}>
         <button type="button" className={`${aiBtn} w-fit`} disabled>
-          <Sparkles size={16} aria-hidden /> Compléter la description
+          <Sparkles size={16} aria-hidden /> {label}
         </button>
         <NotConfigured isAdmin={isAdmin} />
       </div>
@@ -91,11 +95,7 @@ export function DescriptionAssist({
       setError(null);
       setApplied(false);
       const draft = readDraft(anchor);
-      const r = await aiCompleteDescriptionAction(
-        todoId,
-        { ...draft, description: editor.current?.getHtml() ?? draft.description },
-        provider,
-      );
+      const r = await complete({ ...draft, description: editor.current?.getHtml() ?? draft.description }, provider);
       if (r.error) setError(r.error);
       else setProposal(r.html ?? null);
     });
@@ -104,7 +104,7 @@ export function DescriptionAssist({
     <div className="grid gap-2" ref={setAnchor}>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className={aiBtn} onClick={run} disabled={pending}>
-          <Sparkles size={16} aria-hidden /> {pending ? "Rédaction en cours…" : "Compléter la description"}
+          <Sparkles size={16} aria-hidden /> {pending ? "Rédaction en cours…" : label}
         </button>
         <ProviderSelect ai={ai} value={provider} onChange={setProvider} />
         {applied && (
@@ -264,6 +264,98 @@ export function SubtaskAssist({ todoId, ai, isAdmin }: { todoId: string; ai: AiC
                 setTasks([]);
               }}
             >
+              Ignorer
+            </button>
+          </div>
+        </div>
+      )}
+      <FormError error={error ?? undefined} />
+    </div>
+  );
+}
+
+/** « Proposer des tâches » sur un objet : liste à cocher, tâches créées sur l'objet. */
+export function ObjectTaskAssist({ objectId, ai, isAdmin }: { objectId: string; ai: AiChoice; isAdmin: boolean }) {
+  const [provider, setProvider] = useState(ai.defaultProvider ?? ai.providers[0]?.id ?? "");
+  const [tasks, setTasks] = useState<(TaskProposal & Checked)[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+
+  if (!ai.providers.length) {
+    return (
+      <div className="grid gap-1" ref={setAnchor}>
+        <button type="button" className={`${aiBtn} w-fit`} disabled>
+          <Sparkles size={16} aria-hidden /> Proposer des tâches
+        </button>
+        <NotConfigured isAdmin={isAdmin} />
+      </div>
+    );
+  }
+
+  const run = () =>
+    start(async () => {
+      setError(null);
+      setDone(null);
+      const r = await aiProposeObjectTasksAction(objectId, readDraft(anchor), provider);
+      if (r.error) return setError(r.error);
+      setTasks((r.tasks ?? []).map((t) => ({ ...t, checked: true })));
+    });
+
+  const apply = () =>
+    start(async () => {
+      setError(null);
+      const picked = (tasks ?? []).filter((t) => t.checked).map(({ title, description, estHours }) => ({ title, description, estHours }));
+      const r = await applyObjectTasksAction(objectId, picked);
+      if (r.error) return setError(r.error);
+      setDone(r.tasks ? `${r.tasks} tâche${r.tasks > 1 ? "s" : ""} créée${r.tasks > 1 ? "s" : ""}.` : "Rien n'était coché.");
+      setTasks(null);
+    });
+
+  const count = (tasks ?? []).filter((t) => t.checked).length;
+
+  return (
+    <div className="grid gap-2" ref={setAnchor}>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className={aiBtn} onClick={run} disabled={pending}>
+          <Sparkles size={16} aria-hidden /> {pending && !tasks ? "Réflexion en cours…" : "Proposer des tâches"}
+        </button>
+        <ProviderSelect ai={ai} value={provider} onChange={setProvider} />
+        {done && (
+          <span role="status" className="text-sm text-moss">
+            {done}
+          </span>
+        )}
+      </div>
+      {tasks && (
+        <div className="grid gap-3 rounded-xl border border-moss bg-surface p-3" data-testid="propositions-taches">
+          <fieldset className="grid gap-1">
+            <legend className="mb-1 text-sm font-bold text-moss">Tâches proposées pour cet objet</legend>
+            {tasks.map((t, i) => (
+              <label key={i} className="flex items-start gap-2 py-1">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-5 shrink-0 accent-moss"
+                  checked={t.checked}
+                  onChange={(e) => setTasks((l) => l!.map((x, j) => (j === i ? { ...x, checked: e.target.checked } : x)))}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="font-bold">{t.title}</span>
+                  {t.description && <span className="block text-sm text-muted">{t.description}</span>}
+                </span>
+                {t.estHours != null && <span className="num shrink-0 text-sm text-muted">{String(t.estHours).replace(".", ",")} h</span>}
+              </label>
+            ))}
+          </fieldset>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-primary min-h-9 px-3 text-sm" onClick={apply} disabled={pending || count === 0}>
+              {pending ? "Création…" : `Créer les tâches cochées (${count})`}
+            </button>
+            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={run} disabled={pending}>
+              Autres propositions
+            </button>
+            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={() => setTasks(null)}>
               Ignorer
             </button>
           </div>

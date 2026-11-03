@@ -24,7 +24,9 @@ import {
 } from "@/lib/repo";
 import { listAudit } from "@/lib/audit";
 import { renderRichText } from "@/lib/rich-text";
-import { RichTextView } from "@/components/rich-text-view";
+import { ObjectDescription } from "@/components/object-description";
+import { getAiChoice } from "@/lib/ai";
+import { getCurrentUser } from "@/lib/session";
 import { storageMode, storagePrefix } from "@/lib/storage";
 import { buildForest, flatten, pathTo } from "@/lib/tree";
 
@@ -58,6 +60,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
     listAudit(db, { objectId: id, limit: 30 }),
     listTypes(db, "tache"),
   ]);
+  const [ai, me] = await Promise.all([getAiChoice(db), getCurrentUser()]);
   const userName = new Map(users.map((u) => [u.id, u.name]));
   const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
   const cover = photos.find((p) => p.isCover);
@@ -120,11 +123,8 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
             {obj.type && <span className="text-muted">{obj.type}</span>}
           </div>
         </div>
-        {(obj.description || obj.location || obj.tags.length > 0) && (
+        {(obj.location || obj.tags.length > 0) && (
           <div className="grid max-w-prose gap-1 text-muted">
-            {obj.description && (
-              <RichTextView className="text-ink" html={renderRichText(obj.description)} context={{ titre: obj.name, objet: obj.name }} />
-            )}
             {obj.location && <p>Emplacement : {obj.location}</p>}
             {obj.tags.length > 0 && <p>{obj.tags.map((t) => `#${t}`).join(" ")}</p>}
           </div>
@@ -155,6 +155,17 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           />
         </div>
       </header>
+
+      <section aria-label="Description de l'objet" className="grid gap-2">
+        <ObjectDescription
+          objectId={obj.id}
+          name={obj.name}
+          description={obj.description ? renderRichText(obj.description) : null}
+          images={{ kind: "objets", ownerId: obj.id, prefix: storagePrefix, mode: storageMode }}
+          ai={ai}
+          isAdmin={me?.role === "admin"}
+        />
+      </section>
 
       <section aria-labelledby="photos" className="grid scroll-mt-4 gap-3">
         <h2 id="photos" className="text-lg font-bold">

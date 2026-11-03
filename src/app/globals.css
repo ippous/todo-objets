@@ -225,3 +225,16 @@ textarea.input {
   white-space: pre-wrap;
 }
 .rich-editor .commande-live.ProseMirror-selectednode { outline: 2px solid var(--moss); }
+
+/* Cases à cocher dans les descriptions */
+.rich ul[data-type="taskList"] { list-style: none; padding-left: 0.1rem; }
+.rich ul[data-type="taskList"] > li { display: flex; align-items: flex-start; gap: 0.5rem; }
+.rich ul[data-type="taskList"] > li > label { flex: none; padding-top: 0.15em; }
+.rich ul[data-type="taskList"] > li > label input { width: 1.1rem; height: 1.1rem; accent-color: var(--moss); cursor: pointer; }
+.rich ul[data-type="taskList"] > li > div { flex: 1; min-width: 0; }
+.rich ul[data-type="taskList"] > li[data-checked="true"] > div { color: var(--muted); text-decoration: line-through; }
+.rich:not(.rich-editor) ul[data-type="taskList"] > li > label input { pointer-events: none; }
+
+/* Images insérées dans le texte */
+.rich img { max-width: 100%; max-height: 24rem; width: auto; height: auto; border-radius: 0.5rem; }
+.rich-editor img.ProseMirror-selectednode { outline: 3px solid var(--moss); }

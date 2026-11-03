@@ -49,8 +49,8 @@ test("descriptions en texte enrichi : objets et tâches", async ({ page }, info)
   await page.getByRole("button", { name: "Créer l'objet" }).click();
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 
-  // Affichage sur la fiche
-  const desc = page.locator("header .rich");
+  // Affichage sur la fiche (modifiable sur place)
+  const desc = page.getByRole("textbox", { name: "Description" });
   await expect(desc.locator("strong")).toHaveText("acier");
   await expect(desc.getByRole("listitem")).toHaveCount(2);
   const link = desc.getByRole("link", { name: "Notice" });
@@ -66,7 +66,7 @@ test("descriptions en texte enrichi : objets et tâches", async ({ page }, info)
   await page.keyboard.type(" (PDF)");
   await page.getByRole("button", { name: /Enregistrer/ }).click();
   await expect(page.getByRole("heading", { level: 1, name, exact: true })).toBeVisible();
-  await expect(page.locator("header .rich")).toContainText("Notice (PDF)");
+  await expect(page.getByRole("textbox", { name: "Description" })).toContainText("Notice (PDF)");
 
   // Tâche avec description en italique, puis recherche dans le texte (pas dans les balises)
   await page.getByRole("link", { name: "Ajouter une tâche", exact: true }).click();

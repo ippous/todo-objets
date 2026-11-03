@@ -5,11 +5,13 @@ import { getDb } from "@/db";
 import { AI_PROVIDERS, AiError, saveAiProvider, setDefaultAiProvider, type AiProvider } from "@/lib/ai";
 import { actorOf } from "@/lib/audit";
 import type { ActionState } from "@/lib/forms";
-import { addSubtask, createTodo, DomainError, getTodo } from "@/lib/repo";
+import { addSubtask, createTodo, DomainError, findTaskTypeByName, getObject, getTodo } from "@/lib/repo";
 import { sanitizeRichText } from "@/lib/rich-text";
 import { requireAdmin, requireUser } from "@/lib/session";
 import {
   completeDescription,
+  completeObjectDescription,
+  proposeObjectTasks,
   proposeSubtasks,
   type SubtaskProposal,
   type TaskProposal,
@@ -143,6 +145,70 @@ export async function applyAiProposalsAction(
     revalidatePath("/", "layout");
     refresh();
     return { subtasks: subs.length, tasks: tasks.length };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ---------- Aides sur un objet ----------
+
+export async function aiCompleteObjectDescriptionAction(
+  objectId: string,
+  draft: Draft,
+  provider: string | null,
+): Promise<{ html?: string; error?: string }> {
+  await requireUser();
+  try {
+    if (!UUID.test(objectId)) throw new DomainError("Identifiant invalide");
+    const r = await completeObjectDescription(getDb(), objectId, asDraft(draft), asProvider(provider));
+    return { html: r.html };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function aiProposeObjectTasksAction(
+  objectId: string,
+  draft: Draft,
+  provider: string | null,
+): Promise<{ tasks?: TaskProposal[]; error?: string }> {
+  await requireUser();
+  try {
+    if (!UUID.test(objectId)) throw new DomainError("Identifiant invalide");
+    const r = await proposeObjectTasks(getDb(), objectId, asDraft(draft), asProvider(provider));
+    return { tasks: r.tasks };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Crée les tâches retenues sur l'objet (type « Entretien » par défaut). */
+export async function applyObjectTasksAction(objectId: string, tasks: TaskProposal[]): Promise<{ tasks?: number; error?: string }> {
+  const user = await requireUser();
+  const actor = actorOf(user, "interface");
+  try {
+    if (!UUID.test(objectId)) throw new DomainError("Identifiant invalide");
+    const db = getDb();
+    if (!(await getObject(db, objectId))) throw new DomainError("Objet introuvable");
+    const typeId = (await findTaskTypeByName(db, "Entretien"))?.id ?? null;
+    const list = (Array.isArray(tasks) ? tasks : []).filter((t) => typeof t?.title === "string" && t.title.trim()).slice(0, 15);
+    for (const t of list) {
+      await createTodo(
+        db,
+        {
+          objectId,
+          title: t.title.trim().slice(0, 200),
+          description: sanitizeRichText(typeof t.description === "string" ? t.description.slice(0, 2000) : null),
+          typeId,
+          estHours: hoursOrNull(t.estHours),
+          createdById: user.id,
+        },
+        actor,
+      );
+    }
+    revalidatePath("/", "layout");
+    refresh();
+    return { tasks: list.length };
   } catch (err) {
     return fail(err);
   }

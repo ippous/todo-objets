@@ -80,19 +80,3 @@ export async function runCommand(name: string, context: CommandContext = {}): Pr
   if (!cmd) return { ok: false, error: `Commande « ${name} » introuvable`, ms: 0 };
   return runCommandCode(cmd.code, cmd.name, context);
 }
-
-/** Remplit les commandes @@ d'un contenu affiché (hors éditeur). */
-export function fillLiveCommands(root: HTMLElement, context: CommandContext = {}) {
-  root.querySelectorAll<HTMLElement>("span[data-commande]").forEach((el) => {
-    const name = el.dataset.commande ?? "";
-    el.classList.add("commande-live");
-    el.title = `@@${name} : recalculé à chaque affichage`;
-    void runCommand(name, context).then((r) => {
-      if (r.ok) el.textContent = r.value;
-      else {
-        el.textContent = `@@${name} ⚠`;
-        el.title = r.error;
-      }
-    });
-  });
-}

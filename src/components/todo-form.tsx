@@ -7,6 +7,8 @@ import { fmtNum, PRIORITY_LABEL, RECURRENCE_LABEL, STATUS_LABEL } from "@/lib/fo
 import type { ActionState } from "@/lib/forms";
 import { RichTextEditor, type RichTextApi } from "./rich-text-editor";
 import { DescriptionAssist, type AiChoice } from "./task-ai";
+import { aiCompleteDescriptionAction } from "@/app/ai-actions";
+import type { PhotoTarget } from "@/lib/photo-upload";
 import type { ObjectOption } from "@/lib/options";
 import { TaskIcon } from "@/lib/task-icons";
 import { FormError } from "./submit";
@@ -42,6 +44,7 @@ export function TodoForm({
   beforeSubmit,
   subtaskHours,
   ai,
+  images,
 }: {
   action: (state: ActionState, fd: FormData) => Promise<ActionState>;
   values?: Values;
@@ -62,6 +65,8 @@ export function TodoForm({
   subtaskHours?: { estHours: number | null; actualHours: number | null };
   /** Aides IA (tâche existante seulement). */
   ai?: { todoId: string; choice: AiChoice; isAdmin: boolean };
+  /** Où ranger les images insérées dans la description (tâche existante seulement). */
+  images?: PhotoTarget;
 }) {
   const editor = useRef<RichTextApi | null>(null);
   const [state, formAction, pending] = useActionState(action, {});
@@ -103,12 +108,20 @@ export function TodoForm({
           label="Description"
           defaultValue={values?.description}
           apiRef={editor}
+          images={images}
           commandContext={{
             titre: values?.title ?? null,
             objet: objects.find((o) => o.id === (values?.objectId ?? objectId))?.label.replace(/^[\s└]+/, "") ?? null,
           }}
         />
-        {ai && <DescriptionAssist todoId={ai.todoId} ai={ai.choice} isAdmin={ai.isAdmin} editor={editor} />}
+        {ai && (
+          <DescriptionAssist
+            complete={(draft, provider) => aiCompleteDescriptionAction(ai.todoId, draft, provider)}
+            ai={ai.choice}
+            isAdmin={ai.isAdmin}
+            editor={editor}
+          />
+        )}
         {afterDescription}
 
         <fieldset className="grid gap-3 sm:grid-cols-3">

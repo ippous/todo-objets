@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { addPhotoAction } from "@/app/actions";
+import { uploadPhoto } from "@/lib/photo-upload";
 import { CameraDialog } from "./camera-dialog";
 
 type Props = {
@@ -10,44 +10,6 @@ type Props = {
   prefix: string;
   mode: "blob" | "local";
 };
-
-const FULL_MAX = 1600;
-const THUMB_MAX = 400;
-
-/** Redimensionne une image (orientation EXIF respectée) en JPEG. */
-async function resize(file: File, max: number, quality: number) {
-  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-  const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-  const w = Math.round(bitmap.width * scale);
-  const h = Math.round(bitmap.height * scale);
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
-  bitmap.close();
-  const blob = await new Promise<Blob>((ok, ko) =>
-    canvas.toBlob((b) => (b ? ok(b) : ko(new Error("Conversion impossible"))), "image/jpeg", quality),
-  );
-  return { blob, width: w, height: h };
-}
-
-async function send(mode: Props["mode"], pathname: string, blob: Blob) {
-  if (mode === "local") {
-    const res = await fetch(`/api/photos/local-upload?pathname=${encodeURIComponent(pathname)}`, {
-      method: "POST",
-      headers: { "content-type": "image/jpeg" },
-      body: blob,
-    });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Envoi refusé");
-    return;
-  }
-  const { upload } = await import("@vercel/blob/client");
-  await upload(pathname, blob, {
-    access: "private",
-    handleUploadUrl: "/api/photos/upload",
-    contentType: "image/jpeg",
-  });
-}
 
 /** Images contenues dans un presse-papiers (fichiers copiés ou image copiée depuis une page / une capture). */
 function imagesFrom(data: DataTransfer | null): File[] {
@@ -126,19 +88,7 @@ export function PhotoUploader({ kind, ownerId, prefix, mode }: Props) {
     try {
       for (const file of files) {
         setStatus(`Envoi de la photo ${done + 1} sur ${files.length}…`);
-        if (!file.type.startsWith("image/")) throw new Error(`« ${file.name} » n'est pas une image`);
-        const [full, thumb] = await Promise.all([resize(file, FULL_MAX, 0.82), resize(file, THUMB_MAX, 0.75)]);
-        const id = crypto.randomUUID();
-        const base = `${prefix}/${kind}/${ownerId}/${id}`;
-        await send(mode, `${base}.jpg`, full.blob);
-        await send(mode, `${base}-v.jpg`, thumb.blob);
-        const res = await addPhotoAction({
-          pathname: `${base}.jpg`,
-          thumbPathname: `${base}-v.jpg`,
-          width: full.width,
-          height: full.height,
-        });
-        if (res.error) throw new Error(res.error);
+        await uploadPhoto(file, { kind, ownerId, prefix, mode });
         done++;
       }
       setStatus(done > 1 ? `${done} photos ajoutées` : "Photo ajoutée");
