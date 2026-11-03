@@ -79,12 +79,14 @@ export function TreeView({
   focusId = null,
   users = [],
   objectTypes = [],
+  taskTypes = [],
 }: {
   forest: TreeViewNode[];
   /** Objet pris comme racine de l'affichage, s'il y en a un */
   focusId?: string | null;
   users?: { id: string; name: string }[];
   objectTypes?: { id: string; name: string }[];
+  taskTypes?: { id: string; name: string }[];
 }) {
   const [bulk, setBulk] = useState<BulkTarget | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -214,6 +216,7 @@ export function TreeView({
         target={bulk}
         users={users}
         objectTypes={objectTypes}
+        taskTypes={taskTypes}
         onClose={() => setBulk(null)}
         onDone={(text) => {
           setMessage({ kind: "ok", text });

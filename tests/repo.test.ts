@@ -170,15 +170,16 @@ describe("ajout en lot", () => {
   });
 
   it("crée plusieurs tâches avec des réglages communs", async () => {
-    const { createTodos } = await import("@/lib/repo");
+    const { createTodos, findTaskTypeByName } = await import("@/lib/repo");
+    const travaux = await findTaskTypeByName(db, "travaux");
     const created = await createTodos(db, ids["La ferme"], ["Gouttières", "Volets", "Cheminée"], {
-      category: "travaux",
+      typeId: travaux!.id,
       priority: "haute",
       dueDate: "2026-12-01",
     });
     expect(created).toHaveLength(3);
     const list = await listTodos(db, { subtreeOf: ids["La ferme"] });
-    expect(list.every((t) => t.category === "travaux" && t.priority === "haute" && t.dueDate === "2026-12-01")).toBe(true);
+    expect(list.every((t) => t.typeName === "Travaux" && t.typeIcon === "hammer" && t.priority === "haute" && t.dueDate === "2026-12-01")).toBe(true);
   });
 });
 

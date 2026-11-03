@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Db } from "@/db";
-import { CATEGORIES, PRIORITIES, RECURRENCES, STATUSES, type NewTodo, type User } from "@/db/schema";
+import { PRIORITIES, RECURRENCES, STATUSES, type NewTodo, type User } from "@/db/schema";
 import { actorOf, type Actor } from "./audit";
 import { decodeBase64Image, ImageError, processImage } from "./photo-processing";
 import {
@@ -14,6 +14,7 @@ import {
   createObject,
   createTodo,
   DomainError,
+  findTaskTypeByName,
   getObject,
   getTodo,
   listTypes,
@@ -75,6 +76,19 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
     return who.id;
   }
 
+  async function resolveTaskType(raw: string | null | undefined): Promise<string | null | undefined> {
+    if (raw === undefined) return undefined;
+    if (raw === null || raw.trim() === "") return null;
+    const types = await listTypes(db, "tache");
+    const t = types.find((x) => x.name.toLowerCase() === raw.trim().toLowerCase());
+    if (!t) {
+      throw new DomainError(
+        `Type de tâche « ${raw} » inconnu. Types existants : ${types.map((x) => x.name).join(", ")}. (Un nouveau type se crée dans Carnet, page Types.)`,
+      );
+    }
+    return t.id;
+  }
+
   async function resolveObjectType(raw: string | null | undefined): Promise<string | null | undefined> {
     if (raw === undefined) return undefined;
     if (raw === null || raw.trim() === "") return null;
@@ -100,7 +114,7 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         description: DESCRIPTION.optional(),
         statut: z.enum(STATUSES).default("a_faire"),
         priorite: z.enum(PRIORITIES).default("moyenne"),
-        categorie: z.enum(CATEGORIES).default("entretien"),
+        categorie: z.string().max(60).optional().describe("Type de tâche (voir vue_ensemble, types_taches) ; « Entretien » par défaut"),
         echeance: DATE.optional(),
         recurrence: z.enum(RECURRENCES).default("aucune"),
         responsable: z.string().max(100).optional().describe("Nom ou e-mail d'un utilisateur, « moi » ou « personne »"),
@@ -118,7 +132,7 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
           description: markdownToRichText(a.description),
           status: a.statut === "fait" ? "a_faire" : a.statut,
           priority: a.priorite,
-          category: a.categorie,
+          typeId: a.categorie ? ((await resolveTaskType(a.categorie)) ?? null) : ((await findTaskTypeByName(db, "Entretien"))?.id ?? null),
           dueDate: a.echeance ?? null,
           recurrence: a.recurrence,
           assigneeId: (await resolveAssignee(a.responsable)) ?? null,
@@ -150,7 +164,7 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         description: DESCRIPTION.nullable().optional(),
         statut: z.enum(STATUSES).optional(),
         priorite: z.enum(PRIORITIES).optional(),
-        categorie: z.enum(CATEGORIES).optional(),
+        categorie: z.string().max(60).nullable().optional().describe("Type de tâche (voir vue_ensemble), ou null pour aucun"),
         echeance: DATE.nullable().optional(),
         recurrence: z.enum(RECURRENCES).optional(),
         responsable: z.string().max(100).nullable().optional().describe("Nom, e-mail, « moi », ou null / « personne » pour retirer"),
@@ -171,7 +185,8 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         if (a.objet_id !== undefined) data.objectId = a.objet_id;
         if (a.description !== undefined) data.description = markdownToRichText(a.description);
         if (a.priorite !== undefined) data.priority = a.priorite;
-        if (a.categorie !== undefined) data.category = a.categorie;
+        const typeId = await resolveTaskType(a.categorie);
+        if (typeId !== undefined) data.typeId = typeId;
         if (a.echeance !== undefined) data.dueDate = a.echeance;
         if (a.recurrence !== undefined) data.recurrence = a.recurrence;
         const assignee = await resolveAssignee(a.responsable);

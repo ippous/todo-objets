@@ -36,11 +36,14 @@ Pour créer une migration : modifier `src/db/schema.ts`, puis lancer `npm run db
 | Variable | Prod | Dev | Rôle |
 |---|---|---|---|
 | `DATABASE_URL`, `DATABASE_URL_UNPOOLED` | ✓ | ✓ | posées par l'intégration Neon |
-| `AUTH_SECRET` | ✓ | ✓ (valeur différente) | signature des sessions |
+| `AUTH_SECRET` | ✓ | ✓ (valeur différente) | signature des sessions ; chiffre aussi les clés d'API des assistants IA (le changer oblige à ressaisir ces clés) |
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | ✓ | ✓ | connexion Google |
 | `ADMIN_EMAILS` | ✓ | ✓ | administrateurs créés à la première connexion |
 | `DEV_LOGIN_SECRET` | ✗ | ✓ (branche `develop`) | connexion de test et route de purge |
 | `BLOB_READ_WRITE_TOKEN` | ✓ | ✓ | store Blob privé `carnet-photos` |
+| `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` | ✗ | ✗ | facultatives : autre adresse d'API (relais, ou faux serveur des e2e) |
+
+Les clés d'API de Claude et ChatGPT ne sont **pas** des variables d'environnement : un administrateur les saisit dans l'appli (Accès › Assistants IA), elles sont chiffrées en base (table `app_settings`).
 
 Une variable modifiée n'est prise en compte qu'au **déploiement suivant** (Redeploy ou nouveau commit).
 

@@ -46,7 +46,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
   if (!obj) notFound();
 
   const showDone = terminees === "1";
-  const [all, photos, users, docs, links, objectTypes, docTypes, history] = await Promise.all([
+  const [all, photos, users, docs, links, objectTypes, docTypes, history, taskTypes] = await Promise.all([
     listTodos(db, { subtreeOf: id }, "echeance"),
     listPhotos(db, { objectId: id }),
     listUsers(db),
@@ -55,6 +55,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
     listTypes(db, "objet"),
     listTypes(db, "document"),
     listAudit(db, { objectId: id, limit: 30 }),
+    listTypes(db, "tache"),
   ]);
   const userName = new Map(users.map((u) => [u.id, u.name]));
   const activeUsers = users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }));
@@ -143,6 +144,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           <BulkAddButton
             target={{ kind: "taches", objectId: id, objectName: obj.name }}
             users={activeUsers}
+            taskTypes={taskTypes.map((t) => ({ id: t.id, name: t.name }))}
             label="Plusieurs tâches"
           />
           <BulkAddButton

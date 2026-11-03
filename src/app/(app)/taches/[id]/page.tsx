@@ -7,6 +7,10 @@ import { ObjectLinks } from "@/components/object-links";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { SubtaskList } from "@/components/subtask-list";
+import { SubtaskAssist, type AiChoice } from "@/components/task-ai";
+import { AI_PROVIDER_LABEL, AI_PROVIDERS, getAiSettings } from "@/lib/ai";
+import { getCurrentUser } from "@/lib/session";
+import { TaskIcon } from "@/lib/task-icons";
 import { TodoForm } from "@/components/todo-form";
 import { getDb } from "@/db";
 import { listAudit } from "@/lib/audit";
@@ -25,7 +29,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
   const db = getDb();
   const todo = await getTodo(db, id);
   if (!todo) notFound();
-  const [objs, users, creator, photos, docs, links, docTypes, subs, history] = await Promise.all([
+  const [objs, users, creator, photos, docs, links, docTypes, subs, history, taskTypes, aiSettings, me] = await Promise.all([
     listObjects(db),
     listUsers(db),
     todo.createdById ? getUser(db, todo.createdById) : undefined,
@@ -35,7 +39,15 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
     listTypes(db, "document"),
     listSubtasks(db, id),
     listAudit(db, { todoId: id, limit: 100 }),
+    listTypes(db, "tache"),
+    getAiSettings(db),
+    getCurrentUser(),
   ]);
+  const aiChoice: AiChoice = {
+    providers: AI_PROVIDERS.filter((p) => aiSettings.providers[p].configured).map((p) => ({ id: p, label: AI_PROVIDER_LABEL[p] })),
+    defaultProvider: aiSettings.defaultProvider,
+  };
+  const ai = { todoId: todo.id, choice: aiChoice, isAdmin: me?.role === "admin" };
   const userName = new Map(users.map((u) => [u.id, u.name]));
   const back = returnPath(retour, `/objets/${todo.objectId}`);
   const created = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" }).format(todo.createdAt);
@@ -43,7 +55,10 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
   return (
     <div className="grid gap-6">
       <div>
-        <h1 className="text-2xl font-bold">{todo.title}</h1>
+        <h1 className="flex items-center gap-2 text-2xl font-bold">
+          <TaskIcon icon={taskTypes.find((t) => t.id === todo.typeId)?.icon} size={26} className="shrink-0 text-moss" />
+          {todo.title}
+        </h1>
         <p className="text-sm text-muted">
           Créée le {created}
           {creator ? ` par ${creator.name}` : ""}
@@ -65,9 +80,11 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
         values={todo}
         objects={objectOptions(objs)}
         users={users.filter((u) => u.active || u.id === todo.assigneeId).map((u) => ({ id: u.id, name: u.name }))}
+        types={taskTypes.map((t) => ({ id: t.id, name: t.name, icon: t.icon }))}
         returnTo={back}
         submitLabel="Enregistrer"
         subtaskHours={sumSubtaskHours(subs)}
+        ai={ai}
         beforeSubmit={
           <>
             <section aria-labelledby="documents" className="grid min-w-0 content-start gap-3 border-t border-line pt-5">
@@ -108,6 +125,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
               todoId={todo.id}
               items={subs.map((s) => ({ id: s.id, title: s.title, done: s.done, estHours: s.estHours, actualHours: s.actualHours }))}
             />
+            <SubtaskAssist todoId={todo.id} ai={aiChoice} isAdmin={ai.isAdmin} />
           </section>
         }
       />

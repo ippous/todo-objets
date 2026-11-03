@@ -2,7 +2,7 @@
 // Les fonctions d'écriture de repo.ts reçoivent un `Actor` facultatif et appellent `logAction`.
 import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
-import { auditLog, objects, todos, users, type AuditEntry, type AuditSource, type Todo, type User } from "@/db/schema";
+import { auditLog, objects, taskTypes, todos, users, type AuditEntry, type AuditSource, type Todo, type User } from "@/db/schema";
 import { CATEGORY_LABEL, fmtDate, PRIORITY_LABEL, RECURRENCE_LABEL, STATUS_LABEL } from "./format";
 
 /** Auteur d'une action et canal utilisé. */
@@ -107,13 +107,14 @@ export const objectSnapshot = (o: { name: string; type: string | null; descripti
 export async function todoSnapshot(db: Db, t: Todo) {
   const [obj] = await db.select({ name: objects.name }).from(objects).where(eq(objects.id, t.objectId));
   const [who] = t.assigneeId ? await db.select({ name: users.name }).from(users).where(eq(users.id, t.assigneeId)) : [];
+  const [type] = t.typeId ? await db.select({ name: taskTypes.name }).from(taskTypes).where(eq(taskTypes.id, t.typeId)) : [];
   return {
     titre: t.title,
     objet: obj?.name ?? null,
     description: t.description,
     statut: t.status,
     priorite: t.priority,
-    categorie: t.category,
+    type_tache: type?.name ?? null,
     echeance: t.dueDate,
     recurrence: t.recurrence,
     responsable: who?.name ?? null,
@@ -191,6 +192,7 @@ const FIELD_LABEL: Record<string, string> = {
   statut: "Statut",
   priorite: "Priorité",
   categorie: "Catégorie",
+  type_tache: "Type",
   echeance: "Échéance",
   recurrence: "Récurrence",
   responsable: "Responsable",
@@ -205,6 +207,7 @@ function fmtValue(field: string, v: unknown): string {
   if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) return "—";
   if (field === "statut") return STATUS_LABEL[v as keyof typeof STATUS_LABEL] ?? String(v);
   if (field === "priorite") return PRIORITY_LABEL[v as keyof typeof PRIORITY_LABEL] ?? String(v);
+  // Anciennes entrées du journal, d'avant les types de tâche
   if (field === "categorie") return CATEGORY_LABEL[v as keyof typeof CATEGORY_LABEL] ?? String(v);
   if (field === "recurrence") return RECURRENCE_LABEL[v as keyof typeof RECURRENCE_LABEL] ?? String(v);
   if (field === "echeance") return fmtDate(String(v));

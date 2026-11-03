@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import { setStatusInlineAction } from "@/app/actions";
 import { dueState, fmtDate, fmtHours, STATUS_LABEL } from "@/lib/format";
-import { Thumb } from "./thumb";
+import { TaskThumb } from "./thumb";
 
 type Status = keyof typeof STATUS_LABEL;
 const COLUMNS: Status[] = ["a_faire", "en_cours", "fait"];
@@ -21,6 +21,7 @@ export type KanbanCard = {
   estHours: number | null;
   recurring: boolean;
   coverPhotoId: string | null;
+  typeIcon: string | null;
 };
 
 export type KanbanLane = { id: string; name: string; cards: KanbanCard[] };
@@ -189,7 +190,7 @@ function Card({
       }`}
     >
       <div className="flex gap-2">
-        <Thumb photoId={card.coverPhotoId} size={36} />
+        <TaskThumb photoId={card.coverPhotoId} icon={card.typeIcon} size={36} />
         <div className="min-w-0">
           {card.priority === "haute" && !done && (
             <span className="mr-1.5 rounded bg-brick-soft px-1.5 text-xs font-bold text-brick">Priorité haute</span>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { createTypeAction, deleteTypeAction, renameTypeAction } from "@/app/actions";
+import { createTypeAction, deleteTypeAction, renameTypeAction, setTaskTypeIconAction } from "@/app/actions";
+import { IconPicker } from "@/components/icon-picker";
 import { FormError, Submit } from "@/components/submit";
 import type { TypeKind, TypeWithUsage } from "@/lib/repo";
 
@@ -18,8 +19,12 @@ export function TypeManager({
 }) {
   const [state, action] = useActionState(createTypeAction.bind(null, kind), {});
   const form = useRef<HTMLFormElement>(null);
+  const [newIcon, setNewIcon] = useState<string | null>(null);
   useEffect(() => {
-    if (state.ok) form.current?.reset();
+    if (!state.ok) return;
+    form.current?.reset();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- remise à zéro après ajout
+    setNewIcon(null);
   }, [state]);
   const headingId = `types-${kind}`;
 
@@ -35,6 +40,7 @@ export function TypeManager({
         {types.length === 0 && <li className="py-3 text-muted">Aucun type pour l&apos;instant.</li>}
       </ul>
       <form ref={form} action={action} className="flex flex-wrap items-end gap-2">
+        {kind === "tache" && <IconPicker name="icon" value={newIcon} onChange={setNewIcon} label="Icône du nouveau type" />}
         <label className="field flex-1">
           <span>Nouveau type</span>
           <input className="input" name="name" required maxLength={60} />
@@ -106,6 +112,7 @@ function TypeRow({ kind, type, unit }: { kind: TypeKind; type: TypeWithUsage; un
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
+          {kind === "tache" && <TaskTypeIcon type={type} onError={setError} />}
           <span className="flex-1 font-bold">{type.name}</span>
           <span className="num text-sm text-muted">
             {used ? `${type.usage} ${type.usage > 1 ? unit[1] : unit[0]}` : "inutilisé"}
@@ -138,5 +145,29 @@ function TypeRow({ kind, type, unit }: { kind: TypeKind; type: TypeWithUsage; un
       )}
       <FormError error={state.error ?? error ?? undefined} />
     </li>
+  );
+}
+
+/** Icône par défaut d'un type de tâche, modifiable sur place. */
+function TaskTypeIcon({ type, onError }: { type: TypeWithUsage; onError: (e: string | null) => void }) {
+  const [icon, setIcon] = useState(type.icon);
+  const [, start] = useTransition();
+  return (
+    <IconPicker
+      value={icon}
+      label={`Icône du type ${type.name}`}
+      onChange={(next) => {
+        const prev = icon;
+        setIcon(next);
+        start(async () => {
+          onError(null);
+          const r = await setTaskTypeIconAction(type.id, next ?? "");
+          if (r.error) {
+            setIcon(prev);
+            onError(r.error);
+          }
+        });
+      }}
+    />
   );
 }
