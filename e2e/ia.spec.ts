@@ -37,7 +37,9 @@ test.beforeAll(async () => {
     req.on("data", (c) => (body += c));
     req.on("end", () => {
       const prompt: string = JSON.parse(body || "{}")?.messages?.[0]?.content ?? "";
-      const text = prompt.includes("Découpe cette tâche")
+      const text = prompt.includes("Consigne de l'utilisateur") && prompt.includes("Découpe cette tâche")
+        ? JSON.stringify({ sous_taches: [{ titre: "Acheter la peinture", heures: 0.5 }], taches_similaires: [] })
+        : prompt.includes("Découpe cette tâche")
         ? JSON.stringify({
             sous_taches: [
               { titre: "Gratter la rouille", heures: 1 },
@@ -126,6 +128,14 @@ test("types de tâche avec icône, réglages IA, compléter la description et pr
   await expect(page.getByText("Ajouté : 2 sous-tâches et 1 tâche.")).toBeVisible();
   await expect(page.getByTestId("sous-tache")).toHaveCount(2);
   await expect(page.getByTestId("sous-taches-total")).toContainText("1,5 h");
+
+  // Second bouton : proposer avec une consigne ajoutée à la demande
+  await page.getByRole("button", { name: "Avec une consigne…" }).click();
+  await page.getByLabel("Consigne pour l'IA (ajoutée à la demande)").fill("avec le matériel à acheter");
+  await page.getByRole("button", { name: "Proposer", exact: true }).click();
+  await expect(props.getByRole("checkbox", { name: /Acheter la peinture/ })).toBeChecked();
+  await props.getByRole("button", { name: "Ajouter la sélection (1)" }).click();
+  await expect(page.getByTestId("sous-tache")).toHaveCount(3);
 
   // La description proposée est enregistrée avec la tâche
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();

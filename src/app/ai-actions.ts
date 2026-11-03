@@ -40,6 +40,8 @@ const asDraft = (d: unknown): Draft => {
   };
 };
 
+const asInstructions = (v: unknown) => (typeof v === "string" ? v.slice(0, 1000) : null);
+
 // ---------- Réglages (administrateurs) ----------
 
 export async function saveAiProviderAction(provider: AiProvider, _: ActionState, fd: FormData): Promise<ActionState> {
@@ -104,11 +106,12 @@ export async function aiProposeAction(
   todoId: string,
   draft: Draft,
   provider: string | null,
+  instructions?: string | null,
 ): Promise<{ subtasks?: SubtaskProposal[]; tasks?: TaskProposal[]; error?: string }> {
   await requireUser();
   try {
     if (!UUID.test(todoId)) throw new DomainError("Identifiant invalide");
-    const r = await proposeSubtasks(getDb(), todoId, asDraft(draft), asProvider(provider));
+    const r = await proposeSubtasks(getDb(), todoId, asDraft(draft), asProvider(provider), asInstructions(instructions));
     return { subtasks: r.subtasks, tasks: r.tasks };
   } catch (err) {
     return fail(err);
@@ -165,11 +168,12 @@ export async function aiProposeObjectTasksAction(
   objectId: string,
   draft: Draft,
   provider: string | null,
+  instructions?: string | null,
 ): Promise<{ tasks?: TaskProposal[]; error?: string }> {
   await requireUser();
   try {
     if (!UUID.test(objectId)) throw new DomainError("Identifiant invalide");
-    const r = await proposeObjectTasks(getDb(), objectId, asDraft(draft), asProvider(provider));
+    const r = await proposeObjectTasks(getDb(), objectId, asDraft(draft), asProvider(provider), asInstructions(instructions));
     return { tasks: r.tasks };
   } catch (err) {
     return fail(err);
