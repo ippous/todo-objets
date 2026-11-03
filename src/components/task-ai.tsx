@@ -14,9 +14,14 @@ export type AiChoice = { providers: { id: string; label: string }[]; defaultProv
 function readDraft(el: HTMLElement | null) {
   const form = el?.closest("form");
   const fd = form ? new FormData(form) : null;
+  const field = (n: string) => String(fd?.get(n) ?? "");
   return {
-    title: String(fd?.get("title") ?? ""),
-    description: String(fd?.get("description") ?? "") || null,
+    // « title » pour une tâche, « name » pour un objet
+    title: field("title") || field("name"),
+    description: field("description") || null,
+    // Pour un élément pas encore créé : son objet (tâche) ou son parent (objet)
+    objectId: field("objectId") || null,
+    parentId: field("parentId") || null,
   };
 }
 
@@ -56,7 +61,7 @@ function NotConfigured({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-type Draft = { title: string; description: string | null };
+type Draft = { title: string; description: string | null; objectId?: string | null; parentId?: string | null };
 
 /** « Compléter la description » : propose une description, qu'on accepte ou non (tâche ou objet). */
 export function DescriptionAssist({

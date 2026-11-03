@@ -2,7 +2,8 @@
 // puis enregistrement en base. Sert à la galerie et aux images insérées dans les descriptions.
 import { addPhotoAction } from "@/app/actions";
 
-export type PhotoTarget = { kind: "objets" | "taches"; ownerId: string; prefix: string; mode: "blob" | "local" };
+/** « brouillons » : image d'une description d'objet ou de tâche pas encore créé (ownerId = identifiant du brouillon). */
+export type PhotoTarget = { kind: "objets" | "taches" | "brouillons"; ownerId: string; prefix: string; mode: "blob" | "local" };
 
 const FULL_MAX = 1600;
 const THUMB_MAX = 400;

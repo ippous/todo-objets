@@ -7,29 +7,37 @@ import { getObject, getTodo, listObjects, listSubtasks, listTodos, listTypes, SU
 import { richTextToPlain, sanitizeRichText } from "./rich-text";
 import { pathTo } from "./tree";
 
-type Draft = { title: string; description: string | null };
+/**
+ * Saisie en cours. Pour une tâche ou un objet pas encore créé, `objectId` (objet de la tâche)
+ * ou `parentId` (parent de l'objet) donnent le contexte.
+ */
+export type Draft = { title: string; description: string | null; objectId?: string | null; parentId?: string | null };
 
-/** Contexte lisible d'une tâche, commun aux deux demandes. */
-async function context(db: Db, todoId: string, draft: Draft) {
-  const todo = await getTodo(db, todoId);
-  if (!todo) throw new AiError("Tâche introuvable");
+/** Contexte lisible d'une tâche (existante, ou en cours de création si todoId est null). */
+async function context(db: Db, todoId: string | null, draft: Draft) {
+  const todo = todoId ? await getTodo(db, todoId) : null;
+  if (todoId && !todo) throw new AiError("Tâche introuvable");
+  const objectId = todo?.objectId ?? draft.objectId ?? null;
+  if (!objectId) throw new AiError("Choisis d'abord l'objet concerné");
   const [subs, objs, types, obj] = await Promise.all([
-    listSubtasks(db, todoId),
+    todoId ? listSubtasks(db, todoId) : Promise.resolve([]),
     listObjects(db),
     listTypes(db, "tache"),
-    getObject(db, todo.objectId),
+    getObject(db, objectId),
   ]);
-  const chemin = pathTo(objs, todo.objectId)
+  if (!obj) throw new AiError("Objet introuvable");
+  const chemin = pathTo(objs, objectId)
     .map((o) => o.name)
     .join(" › ");
-  const typeName = types.find((t) => t.id === todo.typeId)?.name ?? null;
-  const title = draft.title.trim() || todo.title;
+  const typeName = types.find((t) => t.id === todo?.typeId)?.name ?? null;
+  const title = draft.title.trim() || todo?.title || "";
+  if (!title) throw new AiError("Saisis d'abord le titre de la tâche");
   const description = richTextToPlain(sanitizeRichText(draft.description)).trim();
   const lines = [
     `Tâche : ${title}`,
     `Objet concerné : ${chemin || obj?.name || "?"}${obj?.description ? ` — ${richTextToPlain(obj.description).slice(0, 600)}` : ""}`,
     typeName ? `Type : ${typeName}` : null,
-    todo.dueDate ? `Échéance : ${todo.dueDate}` : null,
+    todo?.dueDate ? `Échéance : ${todo.dueDate}` : null,
     `Description actuelle :\n${description || "(vide)"}`,
     subs.length
       ? `Sous-tâches existantes :\n${subs
@@ -51,7 +59,7 @@ const SYSTEM =
 /** Description complétée, en HTML limité aux balises de l'éditeur. */
 export async function completeDescription(
   db: Db,
-  todoId: string,
+  todoId: string | null,
   draft: Draft,
   provider?: AiProvider | null,
 ): Promise<{ html: string; provider: AiProvider }> {
@@ -149,22 +157,26 @@ export async function proposeSubtasks(
 // ---------- Objets ----------
 
 /** Contexte lisible d'un objet : chemin, type, emplacement, sous-objets et tâches ouvertes. */
-async function objectContext(db: Db, objectId: string, draft: Draft) {
-  const obj = await getObject(db, objectId);
-  if (!obj) throw new AiError("Objet introuvable");
-  const [objs, todos] = await Promise.all([listObjects(db), listTodos(db, { subtreeOf: objectId, statuses: ["a_faire", "en_cours"] })]);
-  const chemin = pathTo(objs, objectId)
-    .map((o) => o.name)
-    .join(" › ");
-  const children = objs.filter((o) => o.parentId === objectId).map((o) => o.name);
-  const name = draft.title.trim() || obj.name;
+async function objectContext(db: Db, objectId: string | null, draft: Draft) {
+  const obj = objectId ? await getObject(db, objectId) : null;
+  if (objectId && !obj) throw new AiError("Objet introuvable");
+  const [objs, todos] = await Promise.all([
+    listObjects(db),
+    objectId ? listTodos(db, { subtreeOf: objectId, statuses: ["a_faire", "en_cours"] }) : Promise.resolve([]),
+  ]);
+  const name = draft.title.trim() || obj?.name || "";
+  if (!name) throw new AiError("Saisis d'abord le nom de l'objet");
+  // Objet en cours de création : chemin de son futur parent
+  const parentId = obj ? obj.parentId : (draft.parentId ?? null);
+  const chemin = [...(parentId ? pathTo(objs, parentId).map((o) => o.name) : []), name].join(" › ");
+  const children = objectId ? objs.filter((o) => o.parentId === objectId).map((o) => o.name) : [];
   const description = richTextToPlain(sanitizeRichText(draft.description)).trim();
   const lines = [
     `Objet : ${name}`,
     `Chemin : ${chemin}`,
-    obj.type ? `Type : ${obj.type}` : null,
-    obj.location ? `Emplacement : ${obj.location}` : null,
-    obj.tags.length ? `Tags : ${obj.tags.join(", ")}` : null,
+    obj?.type ? `Type : ${obj.type}` : null,
+    obj?.location ? `Emplacement : ${obj.location}` : null,
+    obj?.tags.length ? `Tags : ${obj.tags.join(", ")}` : null,
     children.length ? `Sous-objets : ${children.join(", ")}` : null,
     `Description actuelle :\n${description || "(vide)"}`,
     todos.length
@@ -180,7 +192,7 @@ async function objectContext(db: Db, objectId: string, draft: Draft) {
 /** Description d'objet créée ou mise à niveau, en HTML limité aux balises de l'éditeur. */
 export async function completeObjectDescription(
   db: Db,
-  objectId: string,
+  objectId: string | null,
   draft: Draft,
   provider?: AiProvider | null,
 ): Promise<{ html: string; provider: AiProvider }> {

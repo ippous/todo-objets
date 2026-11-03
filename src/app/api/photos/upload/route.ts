@@ -21,8 +21,11 @@ export async function POST(request: Request) {
         const parsed = parsePhotoPath(pathname);
         if (!parsed) throw new Error("Chemin de photo invalide");
         const db = getDb();
-        const owner = parsed.kind === "objets" ? await getObject(db, parsed.ownerId) : await getTodo(db, parsed.ownerId);
-        if (!owner) throw new Error("Objet ou tâche introuvable");
+        // Un brouillon n'existe pas encore en base : seule la connexion est exigée
+        if (parsed.kind !== "brouillons") {
+          const owner = parsed.kind === "objets" ? await getObject(db, parsed.ownerId) : await getTodo(db, parsed.ownerId);
+          if (!owner) throw new Error("Objet ou tâche introuvable");
+        }
         return {
           allowedContentTypes: ["image/jpeg"],
           maximumSizeInBytes: MAX_BYTES,

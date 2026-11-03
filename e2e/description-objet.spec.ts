@@ -141,3 +141,58 @@ test("description d'objet : sur la fiche, cases à cocher, image, IA", async ({ 
   await page.getByRole("region", { name: "Claude (Anthropic)" }).getByRole("button", { name: "Retirer la clé" }).click();
   await expect(page.getByRole("region", { name: "Claude (Anthropic)" }).getByText("Pas de clé")).toBeVisible();
 });
+
+test("même zone de description à la création : image et IA avant d'enregistrer", async ({ page }, info) => {
+  const m = testMarker(info);
+  const objet = `Serre ${m}`;
+  const tache = `Arroser ${m}`;
+  await login(page);
+
+  if (FAKE_AI) {
+    await page.goto("/utilisateurs/ia");
+    const claude = page.getByRole("region", { name: "Claude (Anthropic)" });
+    await claude.getByLabel("Clé d'API").fill("sk-ant-test-0123456789abcdefWXYZ");
+    await claude.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(claude.getByText("Clé enregistrée …WXYZ")).toBeVisible();
+  }
+
+  // Nouvel objet : image et texte de l'IA avant création
+  await page.goto("/objets/nouveau");
+  await page.getByLabel("Nom").fill(objet);
+  const editor = page.getByRole("textbox", { name: "Description" });
+  await editor.click();
+  await page.keyboard.type("Serre tunnel");
+  await page.getByLabel("Images à insérer").setInputFiles({ name: "serre.jpg", mimeType: "image/jpeg", buffer: await jpeg(page, "#369") });
+  await expect(editor.locator("img")).toHaveCount(1);
+  if (FAKE_AI) {
+    await page.getByRole("button", { name: "Rédiger ou mettre à niveau la description" }).click();
+    await page.getByTestId("proposition-description").getByRole("button", { name: "Remplacer la description" }).click();
+    await expect(editor).toContainText("Tracteur de la ferme.");
+    await expect(editor.locator("img")).toHaveCount(1);
+  }
+  await page.getByRole("button", { name: "Créer l'objet" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: objet })).toBeVisible();
+  const img = page.getByRole("textbox", { name: "Description" }).locator("img");
+  await expect(img).toHaveCount(1);
+  await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
+  await expect(page.getByRole("heading", { name: /^Photos/ })).toHaveText("Photos");
+
+  // Nouvelle tâche : image avant création
+  await page.getByRole("link", { name: "Ajouter une tâche", exact: true }).click();
+  await page.getByLabel("Titre", { exact: true }).fill(tache);
+  await page.getByRole("textbox", { name: "Description" }).click();
+  await page.getByLabel("Images à insérer").setInputFiles({ name: "tuyau.jpg", mimeType: "image/jpeg", buffer: await jpeg(page, "#963") });
+  await expect(page.getByRole("textbox", { name: "Description" }).locator("img")).toHaveCount(1);
+  await page.getByRole("button", { name: "Créer la tâche" }).click();
+  await page.getByRole("link", { name: tache }).click();
+  await expect(page.getByRole("heading", { level: 1, name: tache })).toBeVisible();
+  const timg = page.getByRole("textbox", { name: "Description" }).locator("img");
+  await expect(timg).toHaveCount(1);
+  await expect.poll(() => timg.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
+
+  if (FAKE_AI) {
+    await page.goto("/utilisateurs/ia");
+    await page.getByRole("region", { name: "Claude (Anthropic)" }).getByRole("button", { name: "Retirer la clé" }).click();
+    await expect(page.getByRole("region", { name: "Claude (Anthropic)" }).getByText("Pas de clé")).toBeVisible();
+  }
+});

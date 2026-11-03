@@ -161,7 +161,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           objectId={obj.id}
           name={obj.name}
           description={obj.description ? renderRichText(obj.description) : null}
-          images={{ kind: "objets", ownerId: obj.id, prefix: storagePrefix, mode: storageMode }}
+          storage={{ prefix: storagePrefix, mode: storageMode }}
           ai={ai}
           isAdmin={me?.role === "admin"}
         />

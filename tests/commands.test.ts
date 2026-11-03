@@ -28,6 +28,11 @@ describe("commandes de saisie", () => {
     expect(await listCommands(db)).toHaveLength(2);
   });
 
+  it("une description qui commence par une image reste du HTML", () => {
+    const img = '<img src="/api/photos/0e3b9a3c-1111-4222-8333-944455556666" alt="x"><p></p>';
+    expect(sanitizeRichText(img)).toContain('data-photo="0e3b9a3c-1111-4222-8333-944455556666"');
+  });
+
   it("gardent les @@ dans les descriptions, sans attribut indésirable", () => {
     const html = sanitizeRichText('<p>Le <span data-commande="Date" onclick="x()">@@date</span> <span data-commande="a b">x</span></p>');
     expect(html).toBe('<p>Le <span data-commande="date">@@date</span> <span>x</span></p>');
