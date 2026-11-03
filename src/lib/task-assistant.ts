@@ -86,6 +86,12 @@ export async function completeDescription(
   return { html, provider: target.provider };
 }
 
+/** Consigne saisie par l'utilisateur, ajoutée à la demande (le format de réponse reste imposé). */
+function userInstructions(instructions?: string | null): string {
+  const t = instructions?.replace(/\s+/g, " ").trim().slice(0, 1000);
+  return t ? `Consigne de l'utilisateur, à suivre en priorité (sans changer le format de réponse) : ${t}\n` : "";
+}
+
 export type SubtaskProposal = { title: string; estHours: number | null };
 export type TaskProposal = { title: string; description: string | null; estHours: number | null };
 
@@ -112,6 +118,7 @@ export async function proposeSubtasks(
   todoId: string,
   draft: Draft,
   provider?: AiProvider | null,
+  instructions?: string | null,
 ): Promise<{ subtasks: SubtaskProposal[]; tasks: TaskProposal[]; provider: AiProvider }> {
   const ctx = await context(db, todoId, draft);
   const target = await resolveProvider(db, provider);
@@ -123,6 +130,7 @@ export async function proposeSubtasks(
       "Chaque titre tient en une ligne courte, commence par un verbe à l'infinitif. Estime la durée de chacune en heures si c'est raisonnable.\n" +
       "2) Propose 0 à 4 autres tâches distinctes, liées à celle-ci sur le même objet (préparation, suite logique, entretien associé), " +
       "uniquement si elles sont vraiment utiles.\n" +
+      userInstructions(instructions) +
       "Réponds uniquement avec un objet JSON, sans texte autour :\n" +
       '{"sous_taches":[{"titre":"…","heures":1.5}],"taches_similaires":[{"titre":"…","description":"une phrase","heures":2}]}',
     maxTokens: 2000,
@@ -238,6 +246,7 @@ export async function proposeObjectTasks(
   objectId: string,
   draft: Draft,
   provider?: AiProvider | null,
+  instructions?: string | null,
 ): Promise<{ tasks: TaskProposal[]; provider: AiProvider }> {
   const ctx = await objectContext(db, objectId, draft);
   const target = await resolveProvider(db, provider);
@@ -248,6 +257,7 @@ export async function proposeObjectTasks(
       "Propose 3 à 8 tâches utiles pour cet objet (entretien, réparations, vérifications, démarches), sans reprendre les tâches déjà ouvertes. " +
       "Appuie-toi d'abord sur la description (cases non cochées, problèmes signalés). Titre court commençant par un verbe à l'infinitif, " +
       "une phrase de description, durée estimée en heures si c'est raisonnable.\n" +
+      userInstructions(instructions) +
       "Réponds uniquement avec un objet JSON, sans texte autour :\n" +
       '{"taches":[{"titre":"…","description":"…","heures":1}]}',
     maxTokens: 2000,

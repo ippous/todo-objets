@@ -160,6 +160,8 @@ export function SubtaskAssist({ todoId, ai, isAdmin }: { todoId: string; ai: AiC
   const [done, setDone] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  // Dernière consigne donnée, reprise par « Autres propositions »
+  const [last, setLast] = useState<string | null>(null);
 
   if (!ai.providers.length) {
     return (
@@ -172,11 +174,12 @@ export function SubtaskAssist({ todoId, ai, isAdmin }: { todoId: string; ai: AiC
     );
   }
 
-  const run = () =>
+  const run = (instructions: string | null = null) =>
     start(async () => {
       setError(null);
       setDone(null);
-      const r = await aiProposeAction(todoId, readDraft(anchor), provider);
+      setLast(instructions);
+      const r = await aiProposeAction(todoId, readDraft(anchor), provider, instructions);
       if (r.error) return setError(r.error);
       setSubs((r.subtasks ?? []).map((s) => ({ ...s, checked: true })));
       // Les autres tâches ne sont pas cochées d'office : on les choisit une par une
@@ -205,9 +208,10 @@ export function SubtaskAssist({ todoId, ai, isAdmin }: { todoId: string; ai: AiC
   return (
     <div className="grid gap-2" ref={setAnchor}>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={aiBtn} onClick={run} disabled={pending}>
+        <button type="button" className={aiBtn} onClick={() => run()} disabled={pending}>
           <Sparkles size={16} aria-hidden /> {pending && !subs ? "Réflexion en cours…" : "Proposer des sous-tâches"}
         </button>
+        <InstructionsButton pending={pending} onRun={run} placeholder="Ex. : en 3 étapes maximum, avec le matériel à acheter" />
         <ProviderSelect ai={ai} value={provider} onChange={setProvider} />
         {done && (
           <span role="status" className="text-sm text-moss">
@@ -258,7 +262,7 @@ export function SubtaskAssist({ todoId, ai, isAdmin }: { todoId: string; ai: AiC
             <button type="button" className="btn btn-primary min-h-9 px-3 text-sm" onClick={apply} disabled={pending || count === 0}>
               {pending ? "Ajout…" : `Ajouter la sélection (${count})`}
             </button>
-            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={run} disabled={pending}>
+            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={() => run(last)} disabled={pending}>
               Autres propositions
             </button>
             <button
@@ -287,6 +291,7 @@ export function ObjectTaskAssist({ objectId, ai, isAdmin }: { objectId: string; 
   const [done, setDone] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [last, setLast] = useState<string | null>(null);
 
   if (!ai.providers.length) {
     return (
@@ -299,11 +304,12 @@ export function ObjectTaskAssist({ objectId, ai, isAdmin }: { objectId: string; 
     );
   }
 
-  const run = () =>
+  const run = (instructions: string | null = null) =>
     start(async () => {
       setError(null);
       setDone(null);
-      const r = await aiProposeObjectTasksAction(objectId, readDraft(anchor), provider);
+      setLast(instructions);
+      const r = await aiProposeObjectTasksAction(objectId, readDraft(anchor), provider, instructions);
       if (r.error) return setError(r.error);
       setTasks((r.tasks ?? []).map((t) => ({ ...t, checked: true })));
     });
@@ -323,9 +329,10 @@ export function ObjectTaskAssist({ objectId, ai, isAdmin }: { objectId: string; 
   return (
     <div className="grid gap-2" ref={setAnchor}>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className={aiBtn} onClick={run} disabled={pending}>
+        <button type="button" className={aiBtn} onClick={() => run()} disabled={pending}>
           <Sparkles size={16} aria-hidden /> {pending && !tasks ? "Réflexion en cours…" : "Proposer des tâches"}
         </button>
+        <InstructionsButton pending={pending} onRun={run} placeholder="Ex. : seulement l'entretien d'hiver" />
         <ProviderSelect ai={ai} value={provider} onChange={setProvider} />
         {done && (
           <span role="status" className="text-sm text-moss">
@@ -357,7 +364,7 @@ export function ObjectTaskAssist({ objectId, ai, isAdmin }: { objectId: string; 
             <button type="button" className="btn btn-primary min-h-9 px-3 text-sm" onClick={apply} disabled={pending || count === 0}>
               {pending ? "Création…" : `Créer les tâches cochées (${count})`}
             </button>
-            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={run} disabled={pending}>
+            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={() => run(last)} disabled={pending}>
               Autres propositions
             </button>
             <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={() => setTasks(null)}>
@@ -368,5 +375,68 @@ export function ObjectTaskAssist({ objectId, ai, isAdmin }: { objectId: string; 
       )}
       <FormError error={error ?? undefined} />
     </div>
+  );
+}
+
+/** Second bouton : proposer avec une consigne libre, ajoutée à la demande faite à l'IA. */
+function InstructionsButton({
+  pending,
+  onRun,
+  placeholder,
+}: {
+  pending: boolean;
+  onRun: (instructions: string) => void;
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const send = () => {
+    if (!text.trim()) return;
+    onRun(text.trim());
+    setOpen(false);
+  };
+  return (
+    <>
+      <button
+        type="button"
+        className={aiBtn}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        disabled={pending}
+      >
+        <Sparkles size={16} aria-hidden /> Avec une consigne…
+      </button>
+      {open && (
+        <div className="grid basis-full gap-2 rounded-xl border border-line bg-surface p-3">
+          <label className="field">
+            <span>Consigne pour l&apos;IA (ajoutée à la demande)</span>
+            <textarea
+              className="input min-h-20"
+              value={text}
+              autoFocus
+              maxLength={1000}
+              placeholder={placeholder}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                // Ctrl+Entrée (ou Cmd+Entrée) envoie ; Entrée seule passe à la ligne
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  send();
+                }
+                if (e.key === "Escape") setOpen(false);
+              }}
+            />
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="btn btn-primary min-h-9 px-3 text-sm" onClick={send} disabled={!text.trim() || pending}>
+              Proposer
+            </button>
+            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={() => setOpen(false)}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

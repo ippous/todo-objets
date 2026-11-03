@@ -143,7 +143,9 @@ describe("aides IA sur une tâche", () => {
         }),
       ),
     );
-    const r = await proposeSubtasks(db, t.id, { title: "", description: null });
+    const r = await proposeSubtasks(db, t.id, { title: "", description: null }, null, "  avec le   matériel ");
+    const sent = JSON.parse(String((vi.mocked(fetch).mock.calls[0] as unknown as [string, RequestInit])[1].body)).messages[0].content;
+    expect(sent).toContain("Consigne de l'utilisateur, à suivre en priorité (sans changer le format de réponse) : avec le matériel");
     expect(r.subtasks).toEqual([
       { title: "Appliquer l'antirouille", estHours: 1.5 },
       { title: "Peindre", estHours: null },
