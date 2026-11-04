@@ -13,7 +13,7 @@
 | Fichiers | Vercel Blob en mode **privé** ; dossier `.uploads/` en local |
 | Aperçus de documents | pdf.js, mammoth, read-excel-file, JSZip, chargés à la demande côté navigateur |
 | Hébergement | Vercel (région `fra1`), domaines chez Hostinger |
-| Rappels | notifications Web Push (`web-push`, clés VAPID, service worker `public/sw.js`), e-mail SMTP (`nodemailer`) ; route d'envoi appelée chaque minute par cron-job.org, et une fois par jour par Vercel Cron |
+| Rappels | notifications Web Push (`web-push`, clés VAPID, service worker `public/sw.js`), e-mail SMTP (`nodemailer`) ; route d'envoi appelée toutes les 5 minutes par cron-job.org, et une fois par jour par Vercel Cron |
 
 ## Vue d'ensemble
 
@@ -33,7 +33,7 @@ flowchart TB
     vcron["Vercel Cron<br/>1×/jour"]
   end
 
-  cronjob["cron-job.org<br/>chaque minute"]
+  cronjob["cron-job.org<br/>toutes les 5 min"]
   neon[("Neon Postgres<br/>prod · dev")]
   blob[("Vercel Blob<br/>privé")]
   google["Google OAuth"]
