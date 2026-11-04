@@ -55,21 +55,18 @@ Les notifications utilisent le standard Web Push : pas de numéro de téléphone
 
 `GET` ou `POST /api/rappels/envoyer`, avec l'en-tête `Authorization: Bearer <CRON_SECRET>`. Elle traite les rappels arrivés à échéance et répond un résumé JSON (envoyés, sautés, sans canal, échecs). Elle est idempotente : deux appels simultanés n'envoient pas deux fois le même rappel (index unique sur tâche + rappel + échéance, table `reminder_deliveries`).
 
-Vercel Cron ne descend pas sous une exécution par jour sur le plan Hobby : on la fait appeler par une tâche planifiée externe, par exemple sur le VPS Hostinger :
+Deux déclencheurs :
+
+1. **Vercel Cron** (`vercel.json`), une fois par jour vers 8 h (7 h 05 UTC ; le plan Hobby ne permet pas plus et l'heure exacte varie dans l'heure). Il suffit aux rappels J des tâches sans heure. Vercel envoie lui-même `Authorization: Bearer <CRON_SECRET>`, et seulement en production.
+2. **Cron du VPS Hostinger**, chaque minute, pour les rappels H et M et les échéances à l'heure :
 
 ```cron
 * * * * * curl -fsS -m 50 -H "Authorization: Bearer <CRON_SECRET>" https://todo.jaume-eric.com/api/rappels/envoyer > /dev/null
 ```
 
-Pour le **dev** (protégé par l'authentification Vercel), ajouter l'en-tête `x-vercel-protection-bypass: <jeton>` (Vercel › Settings › Deployment Protection › Protection Bypass for Automation).
+Pour le **dev** (protégé par l'authentification Vercel), ajouter l'en-tête `x-vercel-protection-bypass: <jeton>` (Vercel › Settings › Deployment Protection › Protection Bypass for Automation) et utiliser le `CRON_SECRET` du dev.
 
-Sur un plan Vercel Pro, un `vercel.json` suffit :
-
-```json
-{ "crons": [{ "path": "/api/rappels/envoyer", "schedule": "* * * * *" }] }
-```
-
-(Vercel envoie alors lui-même `Authorization: Bearer <CRON_SECRET>`.)
+Sur un plan Vercel Pro, il suffirait de passer le `schedule` de `vercel.json` à `* * * * *`.
 
 ## Configuration (variables d'environnement)
 
