@@ -127,6 +127,13 @@
       "when": 1793794012438,
       "tag": "0017_pieces_assistant",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793823179546,
+      "tag": "0018_historique_rappels",
+      "breakpoints": true
     }
   ]
 }

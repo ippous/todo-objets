@@ -13,6 +13,7 @@ import {
   type ReminderOffset,
   type ReminderScheme,
 } from "@/db/schema";
+import { logAction, REMINDER_ACTOR, todoTarget } from "./audit";
 import { fmtDue } from "./format";
 import { addDays, dueInstant, dueKey, dueReminders, fireTimes, sortOffsets, TZ, untilLabel } from "./reminders";
 import { DomainError } from "./repo";
@@ -229,6 +230,7 @@ export async function runReminders(db: Db, opts: { now?: Date; senders: Senders;
       title: todos.title,
       dueDate: todos.dueDate,
       dueTime: todos.dueTime,
+      objectId: todos.objectId,
       assigneeId: todos.assigneeId,
       createdById: todos.createdById,
       updatedAt: todos.updatedAt,
@@ -290,6 +292,13 @@ export async function runReminders(db: Db, opts: { now?: Date; senders: Senders;
       if (ins.length) {
         summary.sautes++;
         summary.details.push({ tache: t.title, rappel: f.label, resultat: "saute", canaux: [] });
+        await logReminder(db, t, {
+          rappel: f.label,
+          resultat: "saute",
+          raison: f.at < t.updatedAt ? "avant_modification" : "rattrape",
+          prevu: when.format(f.at),
+          echeance: dk,
+        });
       }
     }
 
@@ -317,12 +326,32 @@ export async function runReminders(db: Db, opts: { now?: Date; senders: Senders;
       outcome = channels.length ? "envoye" : r.tried === 0 ? "aucun_canal" : "echec";
     }
     await db.update(reminderDeliveries).set({ outcome, channels, error: error ?? null }).where(eq(reminderDeliveries.id, claim.id));
+    await logReminder(db, t, {
+      rappel: send.label,
+      resultat: outcome,
+      canaux: channels,
+      destinataire: recipient?.name ?? null,
+      prevu: when.format(send.at),
+      echeance: dk,
+      ...(error ? { erreur: error.slice(0, 500) } : {}),
+    });
     if (outcome === "envoye") summary.envoyes++;
     else if (outcome === "echec") summary.echecs++;
     else summary.sans_canal++;
     summary.details.push({ tache: t.title, rappel: send.label, resultat: outcome, canaux: channels, ...(error ? { erreur: error } : {}) });
   }
   return summary;
+}
+
+const when = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: TZ });
+
+/** Inscrit le rappel traité dans l'historique de la tâche ; une erreur ici ne bloque pas les envois. */
+async function logReminder(db: Db, t: { id: string; title: string; objectId: string }, details: Record<string, unknown>) {
+  try {
+    await logAction(db, REMINDER_ACTOR, { target: todoTarget(t), action: "rappel", details });
+  } catch (err) {
+    console.error("journal des rappels", err);
+  }
 }
 
 /** Derniers rappels traités pour une tâche (affichés sur sa fiche). */

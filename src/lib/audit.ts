@@ -36,7 +36,8 @@ export type AuditAction =
   | "dependances"
   | "modification_sous_tache"
   | "suppression_sous_tache"
-  | "ordre_sous_taches";
+  | "ordre_sous_taches"
+  | "rappel";
 
 /** Élément concerné : un objet, ou une tâche (avec son objet). */
 export type AuditTarget = { kind: "objet" | "tache"; id: string; label: string; objectId: string | null };
@@ -192,6 +193,22 @@ export const ACTION_LABEL: Record<string, string> = {
   modification_sous_tache: "Modification de sous-tâche",
   suppression_sous_tache: "Suppression de sous-tâche",
   ordre_sous_taches: "Réorganisation des sous-tâches",
+  rappel: "Rappel",
+};
+
+/** Auteur des entrées de rappel dans le journal (envoyées par la route planifiée). */
+export const REMINDER_ACTOR: Actor = { userId: null, userName: "Rappels", source: "systeme" };
+
+const OUTCOME_LABEL: Record<string, string> = {
+  envoye: "envoyé",
+  saute: "non envoyé",
+  aucun_canal: "non envoyé : aucun canal actif (e-mail ou notification)",
+  aucun_destinataire: "non envoyé : ni responsable ni créateur actif",
+  echec: "échec de l'envoi",
+};
+const SKIP_REASON: Record<string, string> = {
+  rattrape: "remplacé par un rappel plus récent",
+  avant_modification: "prévu avant la création ou la dernière modification de la tâche",
 };
 
 const FIELD_LABEL: Record<string, string> = {
@@ -238,6 +255,23 @@ function fmtValue(field: string, v: unknown): string {
 export function describeDetails(e: Pick<AuditEntry, "action" | "details">): string[] {
   const d = (e.details ?? {}) as Record<string, unknown>;
   const lines: string[] = [];
+  if (e.action === "rappel") {
+    const outcome = String(d.resultat ?? "");
+    let head = `${d.rappel ?? "Rappel"} ${OUTCOME_LABEL[outcome] ?? outcome}`;
+    if (outcome === "saute") head += d.raison ? ` (${SKIP_REASON[String(d.raison)] ?? d.raison})` : " (manqué ou antérieur à la tâche)";
+    lines.push(head);
+    const canaux = Array.isArray(d.canaux) ? (d.canaux as string[]) : [];
+    if (outcome === "envoye" && canaux.length) {
+      lines.push(`${canaux.map((c) => (c === "email" ? "e-mail" : c)).join(" et ")}${d.destinataire ? ` à ${d.destinataire}` : ""}`);
+    } else if (d.destinataire) lines.push(`Pour ${d.destinataire}`);
+    if (typeof d.prevu === "string") lines.push(`Prévu le ${d.prevu}`);
+    if (typeof d.echeance === "string") {
+      const [date, time] = d.echeance.split("T");
+      lines.push(`Échéance du ${fmtDate(date)}${time ? ` à ${time}` : ""}`);
+    }
+    if (typeof d.erreur === "string") lines.push(`Erreur : ${d.erreur}`);
+    return lines;
+  }
   const changes = d.changements as Record<string, Change> | undefined;
   if (changes) {
     for (const [k, c] of Object.entries(changes)) {
