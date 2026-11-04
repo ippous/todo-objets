@@ -13,6 +13,51 @@
 | Fichiers | Vercel Blob en mode **privé** ; dossier `.uploads/` en local |
 | Aperçus de documents | pdf.js, mammoth, read-excel-file, JSZip, chargés à la demande côté navigateur |
 | Hébergement | Vercel (région `fra1`), domaines chez Hostinger |
+| Rappels | notifications Web Push (`web-push`, clés VAPID, service worker `public/sw.js`), e-mail SMTP (`nodemailer`) ; route d'envoi appelée chaque minute par cron-job.org, et une fois par jour par Vercel Cron |
+
+## Vue d'ensemble
+
+```mermaid
+flowchart TB
+  subgraph Clients
+    nav["Navigateur / PWA<br/>(téléphone, PC)"]
+    sw["Service worker<br/>sw.js"]
+    ext["Extension Chrome"]
+    ia["Assistants IA<br/>(Claude, ChatGPT…)"]
+  end
+
+  subgraph Vercel["Vercel · fra1"]
+    app["Next.js 16<br/>pages, Server Actions"]
+    mcp["/api/mcp<br/>+ OAuth 2.1"]
+    rap["/api/rappels/envoyer"]
+    vcron["Vercel Cron<br/>1×/jour"]
+  end
+
+  cronjob["cron-job.org<br/>chaque minute"]
+  neon[("Neon Postgres<br/>prod · dev")]
+  blob[("Vercel Blob<br/>privé")]
+  google["Google OAuth"]
+  llm["API Claude / OpenAI"]
+  push["Services Web Push<br/>(Google, Apple, Mozilla)"]
+  smtp["Serveur SMTP<br/>(à configurer)"]
+
+  nav -->|session Google| app
+  app --> google
+  ext -->|jeton MCP| mcp
+  ia -->|OAuth / jeton| mcp
+  app --> neon
+  mcp --> neon
+  app --> blob
+  mcp --> blob
+  app -->|compléter, sous-tâches| llm
+  cronjob -->|Bearer CRON_SECRET| rap
+  vcron -->|Bearer CRON_SECRET| rap
+  rap --> neon
+  rap -->|VAPID| push
+  push --> sw
+  sw -->|clic → fiche| nav
+  rap -.->|nodemailer| smtp
+```
 
 ## Organisation du code
 
@@ -26,9 +71,11 @@ src/
       documents/[id]/      visionneuse
       types/               gestion des types
       journal/             journal des actions
-      utilisateurs/        accès (admin)
+      rappels/             mes rappels : canaux, appareils, essai
+      utilisateurs/        accès, assistants IA, schémas de rappel (admin)
     connexion/             page de connexion
-    actions.ts             toutes les Server Actions (contrôle de session + validation)
+    actions.ts             Server Actions (contrôle de session + validation)
+    reminder-actions.ts    Server Actions des rappels (préférences, schémas, essai)
     api/
       auth/                Auth.js
       photos/              lecture, autorisation d'envoi, envoi local
@@ -36,6 +83,8 @@ src/
       test/purge/          purge des données de test (hors prod)
       mcp/                 serveur MCP (lecture, écriture, suppression selon les droits ; voir docs/mcp.md)
       oauth/               OAuth 2.1 : register, token, revoke
+      rappels/envoyer/     envoi des rappels (Bearer CRON_SECRET, idempotent)
+      rappels/abonnement/  abonnement Web Push de l'appareil courant
     .well-known/           métadonnées OAuth (RFC 9728, RFC 8414)
     oauth/autoriser/       page de consentement OAuth
   components/              composants d'interface (client ou serveur)
@@ -46,7 +95,12 @@ src/
     audit.ts               journal des actions (auteur, origine, différences, libellés)
     storage.ts             Blob / local, chemins, suppression
     document-types.ts      formats acceptés, visionneuses
+    reminders.ts           calcul pur des rappels (J/H/M, heure de Paris, rattrapage)
+    reminder-repo.ts       schémas, appareils, préférences, boucle d'envoi
+    notify.ts              expéditeurs : Web Push (VAPID) et SMTP
     session.ts, forms.ts, seed.ts…
+public/sw.js               service worker : affiche les notifications, ouvre la tâche au clic
+vercel.json                cron Vercel quotidien des rappels
 scripts/migrate.ts         migrations + arbre de départ (lancé au build)
 drizzle/                   migrations SQL et instantanés
 tests/                     tests unitaires (Vitest + PGlite)
@@ -58,17 +112,30 @@ docs/                      cette documentation
 
 ```
 users ──< todos (assignee_id, created_by_id)
+  │  ├──< push_subscriptions            appareils abonnés aux notifications
+  │  ├──< api_tokens >── oauth_clients ──< oauth_codes
+  │  └──  notify_email, notify_push      canaux de rappel choisis
+  │
 object_types ──< objects ──< objects (parent_id, arbre)
-                    │  ├──< todos ──< photos (todo_id)
+                    │  ├──< todos ──< subtasks
+                    │  │     ├──< photos (todo_id)
+                    │  │     ├──< reminder_deliveries      rappels déjà traités
+                    │  │     ├──> reminder_schemes         J-10 / J-1 / H-3 / M-10…
+                    │  │     ├──> task_types
+                    │  │     └──> todos (previous_occurrence_id, récurrence)
                     │  ├──< photos (object_id)
                     │  ├──< documents >── document_types   (documents et liens :
                     │  └──< links                          objet OU tâche)
+
+audit_log      journal (sans clé étrangère vers l'élément : survit à la suppression)
+commands       commandes de saisie $$nom / @@nom
+app_settings   réglages (clés d'API IA chiffrées)
 ```
 
 | Table | Points clés |
 |---|---|
 | `objects` | `parent_id` auto-référencé (`RESTRICT`), contrainte « pas son propre parent », `type_id` → `object_types` (`RESTRICT`), `position` pour l'ordre |
-| `todos` | `object_id` (`RESTRICT`), valeurs numériques estimées/réalisées, enums priorité/statut/catégorie/récurrence, `previous_occurrence_id` unique (une seule occurrence suivante) |
+| `todos` | `object_id` (`RESTRICT`), valeurs numériques estimées/réalisées, enums priorité/statut/catégorie/récurrence, `previous_occurrence_id` unique (une seule occurrence suivante), `due_date` + `due_time` facultative (contrainte : pas d'heure sans date), `reminder_scheme_id` (`SET NULL`) |
 | `photos` | rattachée à un objet **ou** à une tâche (contrainte), `is_cover`, chemins de la photo et de la vignette, `description` (légende) |
 | `documents` | rattaché à un objet **ou** à une tâche (contrainte `documents_one_owner`), `type_id` → `document_types` (`RESTRICT`), nom d'origine, type MIME, taille, chemin (`<env>/documents/<objet>/…` ou `<env>/documents/taches/<tâche>/…`) |
 | `links` | rattaché à un objet **ou** à une tâche (contrainte `links_one_owner`), URL http(s) normalisée, titre facultatif |

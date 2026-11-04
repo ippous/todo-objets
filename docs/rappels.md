@@ -58,7 +58,7 @@ Les notifications utilisent le standard Web Push : pas de numéro de téléphone
 Deux déclencheurs :
 
 1. **Vercel Cron** (`vercel.json`), une fois par jour vers 8 h (7 h 05 UTC ; le plan Hobby ne permet pas plus et l'heure exacte varie dans l'heure). Il suffit aux rappels J des tâches sans heure. Vercel envoie lui-même `Authorization: Bearer <CRON_SECRET>`, et seulement en production.
-2. **Cron du VPS Hostinger**, chaque minute, pour les rappels H et M et les échéances à l'heure :
+2. **cron-job.org**, chaque minute (tâche « Carnet – rappels », `GET`, en-tête `Authorization: Bearer <CRON_SECRET>`, alerte en cas d'échec), pour les rappels H et M et les échéances à l'heure. Un cron sur le VPS ferait le même travail :
 
 ```cron
 * * * * * curl -fsS -m 50 -H "Authorization: Bearer <CRON_SECRET>" https://todo.jaume-eric.com/api/rappels/envoyer > /dev/null
