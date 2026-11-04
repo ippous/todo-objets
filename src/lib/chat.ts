@@ -32,7 +32,26 @@ function baseUrl(p: AiProvider) {
   return (env || (p === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com")).replace(/\/+$/, "").replace(/\/v1$/, "");
 }
 
-function systemPrompt(user: User, instructions: string, allowDelete: boolean) {
+/** Page affichée, en clair pour le modèle (« cette tâche », « cet objet »). */
+export function describePage(page: string | null | undefined, origin: string): string | null {
+  if (!page || !/^\/[\w\-/]*$/.test(page)) return null;
+  const id = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
+  const t = new RegExp(`^/taches/${id}$`, "i").exec(page);
+  if (t) return `L'utilisateur regarde la fiche de la tâche ${t[1]} (${origin}/taches/${t[1]}) : « cette tâche » désigne celle-ci (lis-la avec obtenir_tache).`;
+  const o = new RegExp(`^/objets/${id}(?:/modifier)?$`, "i").exec(page);
+  if (o) return `L'utilisateur regarde la fiche de l'objet ${o[1]} (${origin}/objets/${o[1]}) : « cet objet » ou « ici » désigne celui-ci (lis-le avec obtenir_objet).`;
+  const names: Record<string, string> = {
+    "/": "l'arbre des objets",
+    "/taches": "la liste des tâches",
+    "/taches/nouvelle": "le formulaire de nouvelle tâche",
+    "/journal": "le journal des actions",
+    "/rappels": "ses réglages de rappels",
+    "/types": "la gestion des types",
+  };
+  return `L'utilisateur est sur la page ${names[page] ?? page}.`;
+}
+
+function systemPrompt(user: User, instructions: string, allowDelete: boolean, page: string | null) {
   const today = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", dateStyle: "full" }).format(new Date());
   return [
     `Tu es l'assistant intégré à Carnet, l'appli de ${user.name}. Nous sommes le ${today} (fuseau Europe/Paris).`,
@@ -42,6 +61,7 @@ function systemPrompt(user: User, instructions: string, allowDelete: boolean) {
       "avec l'adresse `url` renvoyée par l'outil, par exemple [Réparer la clôture](https://…/taches/…).",
     "Avant une modification importante ou en lot (plusieurs tâches, déplacement d'objet), résume ce que tu vas faire et demande confirmation, " +
       "sauf si l'utilisateur l'a déjà clairement demandé.",
+    ...(page ? [page] : []),
     allowDelete
       ? "Les suppressions sont autorisées dans cette conversation, mais demande toujours une confirmation explicite avant de supprimer."
       : "Les suppressions ne sont pas autorisées ici : si on t'en demande une, explique qu'il faut cocher « Autoriser les suppressions » ou la faire dans l'appli.",
@@ -102,6 +122,8 @@ export async function runChat(
     target: Target;
     history: ChatTurn[];
     allowDelete?: boolean;
+    /** Chemin de la page affichée (ex. /taches/…), pour comprendre « cette tâche ». */
+    page?: string | null;
     emit: (e: ChatEvent) => void;
     fetchImpl?: typeof fetch;
   },
@@ -121,7 +143,7 @@ export async function runChat(
       // « $schema » n'est pas attendu par les API des modèles
       inputSchema: Object.fromEntries(Object.entries(t.inputSchema as Record<string, unknown>).filter(([k]) => k !== "$schema")),
     }));
-    const system = systemPrompt(user, client.getInstructions() ?? "", !!opts.allowDelete);
+    const system = systemPrompt(user, client.getInstructions() ?? "", !!opts.allowDelete, describePage(opts.page, opts.origin));
     const history = opts.history.filter((m) => m.text.trim()).slice(-HISTORY_MAX);
     if (!history.length || history.at(-1)!.role !== "user") throw new AiError("Pose une question");
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type ToolCall = { id: string; name: string; args: Record<string, unknown>; ok?: boolean; summary?: string };
@@ -121,11 +122,17 @@ export function ChatPanel({
   providers,
   defaultProvider,
   userId,
+  compact = false,
 }: {
   providers: { id: string; label: string }[];
   defaultProvider: string;
   userId: string;
+  /** Fenêtre flottante : options repliées, zone de messages qui défile, saisie en bas. */
+  compact?: boolean;
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [showOptions, setShowOptions] = useState(!compact);
   const [messages, setMessages] = useState<Message[]>([]);
   const [provider, setProvider] = useState(defaultProvider);
   const [allowDelete, setAllowDelete] = useState(false);
@@ -162,13 +169,15 @@ export function ChatPanel({
     setBusy(true);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    let wrote = false;
     const update = (fn: (m: Message) => Message) =>
       setMessages((all) => [...all.slice(0, -1), fn(all[all.length - 1])]);
     try {
       const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ provider, allowDelete, history: history.map((m) => ({ role: m.role, text: m.text })) }),
+        // La page affichée sert de contexte (« cette tâche », « cet objet »)
+        body: JSON.stringify({ provider, allowDelete, page: pathname, history: history.map((m) => ({ role: m.role, text: m.text })) }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) {
@@ -195,7 +204,10 @@ export function ChatPanel({
             | { type: "error"; message: string }
             | { type: "done" };
           if (e.type === "text") update((m) => ({ ...m, text: m.text ? `${m.text}\n\n${e.text}` : e.text }));
-          else if (e.type === "tool") update((m) => ({ ...m, tools: [...(m.tools ?? []), { id: e.id, name: e.name, args: e.args }] }));
+          else if (e.type === "tool") {
+            if (WRITES.test(e.name)) wrote = true;
+            update((m) => ({ ...m, tools: [...(m.tools ?? []), { id: e.id, name: e.name, args: e.args }] }));
+          }
           else if (e.type === "tool_result")
             update((m) => ({ ...m, tools: (m.tools ?? []).map((t) => (t.id === e.id ? { ...t, ok: e.ok, summary: e.summary } : t)) }));
           else if (e.type === "error") update((m) => ({ ...m, error: e.message }));
@@ -208,12 +220,24 @@ export function ChatPanel({
       setBusy(false);
       abortRef.current = null;
       inputRef.current?.focus();
+      // La page affichée reflète les modifications faites par l'assistant
+      if (wrote) router.refresh();
     }
   };
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+    <div className={compact ? "flex h-full min-h-0 flex-col" : "grid gap-4"}>
+      {compact && (
+        <button
+          type="button"
+          className="self-start px-4 pt-1 text-xs text-muted underline underline-offset-4 hover:text-ink"
+          aria-expanded={showOptions}
+          onClick={() => setShowOptions((v) => !v)}
+        >
+          {showOptions ? "Masquer les réglages" : "Réglages"}
+        </button>
+      )}
+      <div className={`flex flex-wrap items-center gap-x-5 gap-y-2 text-sm ${compact ? "px-4 py-2" : ""} ${showOptions ? "" : "hidden"}`}>
         {providers.length > 1 ? (
           <label className="flex items-center gap-2">
             <span className="text-muted">Modèle</span>
@@ -244,7 +268,7 @@ export function ChatPanel({
         )}
       </div>
 
-      <div className="grid gap-4" aria-live="polite">
+      <div className={compact ? "grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-4 py-3" : "grid gap-4"} aria-live="polite">
         {messages.length === 0 && (
           <div className="grid gap-2">
             <p className="text-sm text-muted">Par exemple :</p>
@@ -302,7 +326,11 @@ export function ChatPanel({
       </div>
 
       <form
-        className="sticky bottom-20 grid gap-2 rounded-xl border border-line bg-surface p-2 shadow-sm sm:bottom-4"
+        className={
+          compact
+            ? "grid gap-2 border-t border-line bg-surface p-2"
+            : "sticky bottom-20 grid gap-2 rounded-xl border border-line bg-surface p-2 shadow-sm sm:bottom-4"
+        }
         onSubmit={(e) => {
           e.preventDefault();
           void send(input);

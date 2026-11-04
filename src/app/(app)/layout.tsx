@@ -1,11 +1,18 @@
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
 import { signOutAction } from "@/app/actions";
 import { NavLinks } from "@/components/nav-links";
 import { requireUser } from "@/lib/session";
+import { ChatWidget } from "@/components/chat-widget";
+import { getDb } from "@/db";
+import { AI_PROVIDER_LABEL, AI_PROVIDERS, getAiSettings } from "@/lib/ai";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
+  const ai = await getAiSettings(getDb());
+  const providers = AI_PROVIDERS.filter((p) => ai.providers[p].configured).map((p) => ({
+    id: p,
+    label: `${AI_PROVIDER_LABEL[p]} · ${ai.providers[p].model}`,
+  }));
   return (
     <div className="mx-auto flex min-h-dvh max-w-5xl flex-col">
       <header className="flex items-center gap-3 px-4 sm:gap-4 pt-4 pb-2 sm:px-6">
@@ -17,16 +24,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <nav aria-label="Navigation principale" className="hidden flex-1 sm:block">
           <NavLinks isAdmin={user.role === "admin"} variant="top" />
         </nav>
-        <Link
-          href="/assistant"
-          aria-label="Assistant"
-          title="Assistant"
-          className="ml-auto flex items-center gap-1 whitespace-nowrap text-sm font-bold text-moss underline-offset-4 hover:underline sm:ml-0"
-        >
-          <MessageCircle size={18} aria-hidden className="sm:hidden" />
-          <span className="hidden sm:inline">Assistant</span>
-        </Link>
-        <Link href="/journal" className="whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline">
+        <Link href="/journal" className="ml-auto whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline sm:ml-0">
           Journal
         </Link>
         <Link href="/rappels" className="whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline">
@@ -42,7 +40,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </button>
         </form>
       </header>
-      <main className="flex-1 px-4 pt-2 pb-28 sm:px-6 sm:pb-12">{children}</main>
+      <main className="flex-1 px-4 pt-2 pb-36 sm:px-6 sm:pb-24">{children}</main>
+      <ChatWidget providers={providers} defaultProvider={ai.defaultProvider} userId={user.id} isAdmin={user.role === "admin"} />
       <nav
         aria-label="Navigation principale"
         className="fixed inset-x-0 bottom-0 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] sm:hidden"
