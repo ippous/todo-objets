@@ -114,3 +114,15 @@ describe("chat de Carnet", () => {
     ).rejects.toThrow("refuse la clé");
   });
 });
+
+describe("contexte de page", () => {
+  it("décrit la tâche ou l'objet affiché, ignore une adresse douteuse", async () => {
+    const { describePage } = await import("@/lib/chat");
+    const id = "3b23c320-47b0-458a-8781-e35132a9c29d";
+    expect(describePage(`/taches/${id}`, "https://c.test")).toContain(`tâche ${id}`);
+    expect(describePage(`/objets/${id}/modifier`, "https://c.test")).toContain(`objet ${id}`);
+    expect(describePage("/taches", "https://c.test")).toContain("liste des tâches");
+    expect(describePage("/x<script>", "https://c.test")).toBeNull();
+    expect(describePage(null, "https://c.test")).toBeNull();
+  });
+});

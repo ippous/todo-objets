@@ -10,7 +10,7 @@ export const maxDuration = 300;
 export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Non connecté" }, { status: 401 });
-  const body = (await request.json().catch(() => null)) as { provider?: string; history?: unknown; allowDelete?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { provider?: string; history?: unknown; allowDelete?: unknown; page?: unknown } | null;
   const history: ChatTurn[] = Array.isArray(body?.history)
     ? (body.history as unknown[])
         .filter((m): m is ChatTurn => !!m && typeof m === "object" && ((m as ChatTurn).role === "user" || (m as ChatTurn).role === "assistant") && typeof (m as ChatTurn).text === "string")
@@ -30,7 +30,8 @@ export async function POST(request: Request) {
     async start(controller) {
       const emit = (e: ChatEvent) => controller.enqueue(encoder.encode(`${JSON.stringify(e)}\n`));
       try {
-        await runChat(db, { user, origin, target, history, allowDelete: body?.allowDelete === true, emit });
+        const page = typeof body?.page === "string" ? body.page.slice(0, 200) : null;
+        await runChat(db, { user, origin, target, history, allowDelete: body?.allowDelete === true, page, emit });
       } catch (err) {
         if (!(err instanceof AiError)) console.error("assistant", err);
         emit({ type: "error", message: err instanceof AiError ? err.message : "Une erreur est survenue. Réessaie dans un instant." });

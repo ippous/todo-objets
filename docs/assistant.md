@@ -2,7 +2,12 @@
 
 [← Retour au README](../README.md)
 
-La page **Assistant** (`/assistant`, lien en haut de chaque page ; bulle 💬 sur téléphone) permet de discuter avec Claude ou ChatGPT **directement dans Carnet**. L'assistant utilise les **mêmes outils que le serveur MCP** ([mcp.md](mcp.md)) : il cherche, lit et modifie objets et tâches pour répondre.
+L'**assistant** se discute avec Claude ou ChatGPT **directement dans Carnet**, depuis n'importe quelle page :
+
+- **bulle 💬 en bas à droite** de chaque page : elle ouvre une fenêtre flottante (plein écran sur téléphone) ; `Échap` ou × la ferme, la conversation reste ;
+- bouton **plein écran** (⤢) : la page `/assistant`, avec la même conversation.
+
+L'assistant sait **quelle page est affichée** : sur la fiche d'une tâche ou d'un objet, « cette tâche », « cet objet » ou « ici » la désignent. Après une modification faite par l'assistant, la page affichée se met à jour. L'assistant utilise les **mêmes outils que le serveur MCP** ([mcp.md](mcp.md)) : il cherche, lit et modifie objets et tâches pour répondre.
 
 ## Utilisation
 
@@ -11,7 +16,7 @@ La page **Assistant** (`/assistant`, lien en haut de chaque page ; bulle 💬 su
 - Les tâches et objets cités sont des **liens** vers leur page.
 - **Modèle** : choix entre les fournisseurs configurés (Claude, ChatGPT), avec le modèle réglé dans *Accès › Assistants IA*.
 - **Arrêter** interrompt une réponse en cours. **Nouvelle conversation** efface l'historique.
-- La conversation est gardée **dans ce navigateur** (60 derniers messages), pas sur le serveur.
+- La conversation est gardée **dans ce navigateur** (60 derniers messages), pas sur le serveur ; elle suit d'une page à l'autre. Dans la fenêtre flottante, *Réglages* affiche le choix du modèle, l'autorisation des suppressions et *Nouvelle conversation*.
 
 ## Droits
 
@@ -26,7 +31,8 @@ Il faut au moins une clé d'API (Claude ou ChatGPT) dans *Accès › Assistants 
 
 ## Fonctionnement technique
 
-- `POST /api/assistant` (session obligatoire) reçoit l'historique (`{ role, text }`), le fournisseur et l'autorisation de supprimer ; la réponse est un flux **NDJSON** : `tool` (appel d'outil), `tool_result` (résumé), `text`, `error`, `done`.
+- `src/components/chat-widget.tsx` (bulle et fenêtre, dans la mise en page commune) et `src/components/chat-panel.tsx` (conversation, partagée avec la page `/assistant`).
+- `POST /api/assistant` (session obligatoire) reçoit l'historique (`{ role, text }`), le fournisseur, l'autorisation de supprimer et la page affichée (`page`, décrite au modèle par `describePage`) ; la réponse est un flux **NDJSON** : `tool` (appel d'outil), `tool_result` (résumé), `text`, `error`, `done`.
 - `src/lib/chat.ts` construit le serveur MCP de Carnet **en mémoire** (`buildMcpServer` + `InMemoryTransport`, client « Chat Carnet »), passe la liste de ses outils au modèle (outils Anthropic ou fonctions OpenAI), exécute les appels demandés et renvoie les résultats, jusqu'à la réponse finale.
 - Les images renvoyées par `voir_photo` sont transmises au modèle (bloc image pour Claude ; message utilisateur `image_url` pour ChatGPT, dont les messages d'outil n'acceptent que du texte). Le texte d'un résultat est limité à 40 000 caractères.
 - Les adresses d'API suivent `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` (faux serveur des tests e2e).
