@@ -95,6 +95,9 @@ src/
     audit.ts               journal des actions (auteur, origine, différences, libellés)
     storage.ts             Blob / local, chemins, suppression
     document-types.ts      formats acceptés, visionneuses
+    dependencies.ts        enchaînement des tâches : attend / débloque, anti-boucle, tâches prêtes
+    gantt.ts               calcul pur du Gantt (échelle, barres, flèches, conflits) et de l'avancement
+    notify-ready.ts        notification « Prête » quand une tâche attendue est faite
     reminders.ts           calcul pur des rappels (J/H/M, heure de Paris, rattrapage)
     reminder-repo.ts       schémas, appareils, préférences, boucle d'envoi
     notify.ts              expéditeurs : Web Push (VAPID) et SMTP
@@ -121,6 +124,7 @@ object_types ──< objects ──< objects (parent_id, arbre)
                     │  │     ├──< photos (todo_id)
                     │  │     ├──< reminder_deliveries      rappels déjà traités
                     │  │     ├──> reminder_schemes         J-10 / J-1 / H-3 / M-10…
+                    │  │     ├──< todo_dependencies >── todos   (« attend », fin → début)
                     │  │     ├──> task_types
                     │  │     └──> todos (previous_occurrence_id, récurrence)
                     │  ├──< photos (object_id)
@@ -140,6 +144,7 @@ app_settings   réglages (clés d'API IA chiffrées)
 | `documents` | rattaché à un objet **ou** à une tâche (contrainte `documents_one_owner`), `type_id` → `document_types` (`RESTRICT`), nom d'origine, type MIME, taille, chemin (`<env>/documents/<objet>/…` ou `<env>/documents/taches/<tâche>/…`) |
 | `links` | rattaché à un objet **ou** à une tâche (contrainte `links_one_owner`), URL http(s) normalisée, titre facultatif |
 | `object_types`, `document_types` | `name` unique sans tenir compte de la casse (index sur `lower(name)`) |
+| `todo_dependencies` | enchaînement des tâches (`todo_id` attend `depends_on_id`), sans boucle (voir [gestion-de-projet.md](gestion-de-projet.md)) |
 | `reminder_schemes`, `push_subscriptions`, `reminder_deliveries` | rappels : schémas, appareils abonnés aux notifications, rappels déjà traités (voir [rappels.md](rappels.md)) |
 | `audit_log` | journal des actions sur les objets et les tâches : origine (`interface`, `api`, `mcp`, `systeme`), application, auteur, élément (sans clé étrangère : survit à la suppression), objet concerné, action, détails JSON (voir [journal.md](journal.md)) |
 | `users` | e-mail unique, rôle, actif, heures/semaine, compétences |

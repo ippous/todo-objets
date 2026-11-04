@@ -11,6 +11,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   time,
   timestamp,
@@ -126,6 +127,8 @@ export const todos = pgTable(
     actualHours: numeric("actual_hours", { precision: 8, scale: 2, mode: "number" }),
     estValueEur: numeric("est_value_eur", { precision: 12, scale: 2, mode: "number" }),
     actualValueEur: numeric("actual_value_eur", { precision: 12, scale: 2, mode: "number" }),
+    /** Début prévu, facultatif (barre du Gantt : début → échéance). */
+    startDate: date("start_date", { mode: "string" }),
     dueDate: date("due_date", { mode: "string" }),
     /** Heure d'échéance facultative (heure de Paris), seulement avec une date. */
     dueTime: time("due_time"),
@@ -147,10 +150,33 @@ export const todos = pgTable(
     index("todos_type_idx").on(t.typeId),
     index("todos_due_idx").on(t.dueDate),
     check("todos_time_needs_date", sql`${t.dueTime} IS NULL OR ${t.dueDate} IS NOT NULL`),
+    check("todos_start_before_due", sql`${t.startDate} IS NULL OR ${t.dueDate} IS NULL OR ${t.startDate} <= ${t.dueDate}`),
     uniqueIndex("todos_previous_occurrence_uq").on(t.previousOccurrenceId),
     foreignKey({ columns: [t.previousOccurrenceId], foreignColumns: [t.id], name: "todos_previous_occurrence_fk" }).onDelete(
       "set null",
     ),
+  ],
+);
+
+/**
+ * Enchaînement des tâches (fin → début) : `todoId` attend que `dependsOnId` soit faite.
+ * Les boucles sont refusées par le code (voir setDependencies).
+ */
+export const todoDependencies = pgTable(
+  "todo_dependencies",
+  {
+    todoId: uuid("todo_id")
+      .notNull()
+      .references(() => todos.id, { onDelete: "cascade" }),
+    dependsOnId: uuid("depends_on_id")
+      .notNull()
+      .references(() => todos.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.todoId, t.dependsOnId] }),
+    index("todo_dependencies_depends_idx").on(t.dependsOnId),
+    check("todo_dependencies_not_self", sql`${t.todoId} <> ${t.dependsOnId}`),
   ],
 );
 

@@ -156,7 +156,7 @@ export type RunSummary = {
 const parisToday = (now: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(now);
 
 /** Destinataire et canaux d'un envoi : ce que chaque canal a donné. */
-async function deliver(
+export async function deliver(
   db: Db,
   user: { id: string; email: string; name: string; notifyEmail: boolean; notifyPush: boolean },
   msg: ReminderMessage,

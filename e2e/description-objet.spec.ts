@@ -86,7 +86,7 @@ test("description d'objet : sur la fiche, cases à cocher, image, IA", async ({ 
   await expect(page.getByRole("heading", { level: 1, name: objet })).toBeVisible();
 
   // Saisie sur la fiche : texte et cases à cocher
-  const editor = page.getByRole("textbox", { name: "Description" });
+  const editor = page.getByRole("textbox", { name: "Description", exact: true });
   await editor.click();
   await page.keyboard.type("Révision annuelle");
   await page.keyboard.press("Enter");
@@ -159,7 +159,7 @@ test("même zone de description à la création : image et IA avant d'enregistre
   // Nouvel objet : image et texte de l'IA avant création
   await page.goto("/objets/nouveau");
   await page.getByLabel("Nom").fill(objet);
-  const editor = page.getByRole("textbox", { name: "Description" });
+  const editor = page.getByRole("textbox", { name: "Description", exact: true });
   await editor.click();
   await page.keyboard.type("Serre tunnel");
   await page.getByLabel("Images à insérer").setInputFiles({ name: "serre.jpg", mimeType: "image/jpeg", buffer: await jpeg(page, "#369") });
@@ -172,7 +172,7 @@ test("même zone de description à la création : image et IA avant d'enregistre
   }
   await page.getByRole("button", { name: "Créer l'objet" }).click();
   await expect(page.getByRole("heading", { level: 1, name: objet })).toBeVisible();
-  const img = page.getByRole("textbox", { name: "Description" }).locator("img");
+  const img = page.getByRole("textbox", { name: "Description", exact: true }).locator("img");
   await expect(img).toHaveCount(1);
   await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
   await expect(page.getByRole("heading", { name: /^Photos/ })).toHaveText("Photos");
@@ -180,13 +180,13 @@ test("même zone de description à la création : image et IA avant d'enregistre
   // Nouvelle tâche : image avant création
   await page.getByRole("link", { name: "Ajouter une tâche", exact: true }).click();
   await page.getByLabel("Titre", { exact: true }).fill(tache);
-  await page.getByRole("textbox", { name: "Description" }).click();
+  await page.getByRole("textbox", { name: "Description", exact: true }).click();
   await page.getByLabel("Images à insérer").setInputFiles({ name: "tuyau.jpg", mimeType: "image/jpeg", buffer: await jpeg(page, "#963") });
-  await expect(page.getByRole("textbox", { name: "Description" }).locator("img")).toHaveCount(1);
+  await expect(page.getByRole("textbox", { name: "Description", exact: true }).locator("img")).toHaveCount(1);
   await page.getByRole("button", { name: "Créer la tâche" }).click();
   await page.getByRole("link", { name: tache }).click();
   await expect(page.getByRole("heading", { level: 1, name: tache })).toBeVisible();
-  const timg = page.getByRole("textbox", { name: "Description" }).locator("img");
+  const timg = page.getByRole("textbox", { name: "Description", exact: true }).locator("img");
   await expect(timg).toHaveCount(1);
   await expect.poll(() => timg.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
 

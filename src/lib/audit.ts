@@ -33,6 +33,7 @@ export type AuditAction =
   | "suppression_lien"
   | "description_lien"
   | "ajout_sous_tache"
+  | "dependances"
   | "modification_sous_tache"
   | "suppression_sous_tache"
   | "ordre_sous_taches";
@@ -118,6 +119,7 @@ export async function todoSnapshot(db: Db, t: Todo) {
     statut: t.status,
     priorite: t.priority,
     type_tache: type?.name ?? null,
+    debut: t.startDate,
     echeance: t.dueDate,
     heure_echeance: t.dueTime ? t.dueTime.slice(0, 5) : null,
     rappels: t.reminderSchemeId
@@ -186,6 +188,7 @@ export const ACTION_LABEL: Record<string, string> = {
   ajout_lien: "Ajout de lien",
   suppression_lien: "Suppression de lien",
   ajout_sous_tache: "Ajout de sous-tâche",
+  dependances: "Enchaînement modifié",
   modification_sous_tache: "Modification de sous-tâche",
   suppression_sous_tache: "Suppression de sous-tâche",
   ordre_sous_taches: "Réorganisation des sous-tâches",
@@ -204,6 +207,7 @@ const FIELD_LABEL: Record<string, string> = {
   categorie: "Catégorie",
   type_tache: "Type",
   echeance: "Échéance",
+  debut: "Début",
   heure_echeance: "Heure d'échéance",
   rappels: "Rappels",
   recurrence: "Récurrence",
@@ -222,7 +226,7 @@ function fmtValue(field: string, v: unknown): string {
   // Anciennes entrées du journal, d'avant les types de tâche
   if (field === "categorie") return CATEGORY_LABEL[v as keyof typeof CATEGORY_LABEL] ?? String(v);
   if (field === "recurrence") return RECURRENCE_LABEL[v as keyof typeof RECURRENCE_LABEL] ?? String(v);
-  if (field === "echeance") return fmtDate(String(v));
+  if (field === "echeance" || field === "debut") return fmtDate(String(v));
   if (field.startsWith("heures_")) return `${String(v).replace(".", ",")} h`;
   if (field.startsWith("valeur_")) return `${String(v).replace(".", ",")} €`;
   if (field === "fait") return v ? "oui" : "non";

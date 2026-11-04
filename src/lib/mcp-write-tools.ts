@@ -41,6 +41,8 @@ import {
 import { isTaskIcon } from "./task-icons";
 import { markdownToRichText } from "./rich-text";
 import { findSchemeByName, getDefaultSchemeId, listReminderSchemes } from "./reminder-repo";
+import { DEPENDENCIES_MAX, setDependencies } from "./dependencies";
+import { notifyReady } from "./notify-ready";
 import { remove, save, storagePrefix } from "./storage";
 
 export const CREATE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
@@ -97,6 +99,15 @@ const cleanTags = (tags: string[]) => [...new Set(tags.map((t) => t.trim().toLow
 export function registerWriteTools(server: McpServer, { db, user, client, objectUrl, todoUrl, docUrl = (id) => id }: Ctx) {
   // Chaque écriture est inscrite au journal comme venant du MCP, avec le nom du jeton ou de l'application
   const actor: Actor = actorOf(user, "mcp", client);
+  const origin = todoUrl("x").replace(/\/taches\/x$/, "");
+  /** Tâche faite : prévient les tâches qui l'attendaient et sont désormais prêtes. */
+  const onDone = async (id: string, title: string) => {
+    await notifyReady(db, id, title, origin).catch((err) => console.error("notifyReady", err));
+  };
+  const DEPS = z
+    .array(UUID)
+    .max(DEPENDENCIES_MAX)
+    .describe("Tâches à terminer avant celle-ci (identifiants) : elle est « bloquée » tant que l'une n'est pas faite ; les boucles sont refusées");
 
   async function resolveAssignee(raw: string | null | undefined): Promise<string | null | undefined> {
     if (raw === undefined) return undefined;
@@ -159,8 +170,10 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         statut: z.enum(STATUSES).default("a_faire"),
         priorite: z.enum(PRIORITIES).default("moyenne"),
         categorie: z.string().max(60).optional().describe("Type de tâche (voir vue_ensemble, types_taches) ; « Entretien » par défaut"),
+        date_debut: DATE.optional().describe("Début prévu (AAAA-MM-JJ), au plus tard l'échéance"),
         echeance: DATE.optional(),
         heure_echeance: TIME.optional(),
+        dependances: DEPS.optional(),
         rappels: RAPPELS.optional().describe("Schéma de rappel ; le schéma par défaut s'il y a une échéance et que rien n'est indiqué"),
         recurrence: z.enum(RECURRENCES).default("aucune"),
         responsable: z.string().max(100).optional().describe("Nom ou e-mail d'un utilisateur, « moi » ou « personne »"),
@@ -173,6 +186,7 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
     async (a) =>
       guard(async () => {
         if (a.heure_echeance && !a.echeance) return fail("Une heure d'échéance demande une date d'échéance (echeance)");
+        if (a.date_debut && a.echeance && a.date_debut > a.echeance) return fail("date_debut doit précéder l'échéance");
         const data: NewTodo = {
           objectId: a.objet_id,
           title: a.titre.trim(),
@@ -180,6 +194,7 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
           status: a.statut === "fait" ? "a_faire" : a.statut,
           priority: a.priorite,
           typeId: a.categorie ? ((await resolveTaskType(a.categorie)) ?? null) : ((await findTaskTypeByName(db, "Entretien"))?.id ?? null),
+          startDate: a.date_debut ?? null,
           dueDate: a.echeance ?? null,
           dueTime: a.echeance ? (a.heure_echeance ?? null) : null,
           reminderSchemeId: a.rappels !== undefined ? ((await resolveScheme(a.rappels)) ?? null) : a.echeance ? await getDefaultSchemeId(db) : null,
@@ -191,6 +206,7 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
           createdById: user.id,
         };
         const t = await createTodo(db, data, actor);
+        if (a.dependances?.length) await setDependencies(db, t.id, a.dependances, actor);
         if (a.statut === "fait") await setTodoStatus(db, t.id, "fait", { today: parisToday(), actor });
         const obj = await getObject(db, t.objectId);
         return ok({ cree: true, id: t.id, titre: t.title, objet: obj?.name, url: todoUrl(t.id) });
@@ -214,8 +230,10 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         statut: z.enum(STATUSES).optional(),
         priorite: z.enum(PRIORITIES).optional(),
         categorie: z.string().max(60).nullable().optional().describe("Type de tâche (voir vue_ensemble), ou null pour aucun"),
+        date_debut: DATE.nullable().optional(),
         echeance: DATE.nullable().optional(),
         heure_echeance: TIME.nullable().optional(),
+        dependances: DEPS.optional().describe("Remplace la liste des tâches attendues ([] pour la vider)"),
         rappels: RAPPELS.nullable().optional(),
         recurrence: z.enum(RECURRENCES).optional(),
         responsable: z.string().max(100).nullable().optional().describe("Nom, e-mail, « moi », ou null / « personne » pour retirer"),
@@ -238,8 +256,15 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         if (a.priorite !== undefined) data.priority = a.priorite;
         const typeId = await resolveTaskType(a.categorie);
         if (typeId !== undefined) data.typeId = typeId;
+        if (a.date_debut !== undefined) data.startDate = a.date_debut;
         if (a.echeance !== undefined) data.dueDate = a.echeance;
         if (a.heure_echeance !== undefined) data.dueTime = a.heure_echeance;
+        {
+          const s = data.startDate !== undefined ? data.startDate : before.startDate;
+          const d = data.dueDate !== undefined ? data.dueDate : before.dueDate;
+          if (s && d && s > d) return fail("date_debut doit précéder l'échéance");
+        }
+        if (a.dependances !== undefined) await setDependencies(db, a.id, a.dependances, actor);
         if (a.echeance === null) data.dueTime = null;
         if ((data.dueTime ?? null) !== null && (data.dueDate ?? before.dueDate) == null) {
           return fail("Une heure d'échéance demande une date d'échéance (echeance)");
@@ -256,7 +281,10 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         if (a.tags !== undefined) data.tags = cleanTags(a.tags);
         if (Object.keys(data).length) await updateTodo(db, a.id, data, actor);
         let suivante: string | null = null;
-        if (a.statut !== undefined && a.statut !== before.status) suivante = await setTodoStatus(db, a.id, a.statut, { today: parisToday(), actor });
+        if (a.statut !== undefined && a.statut !== before.status) {
+          suivante = await setTodoStatus(db, a.id, a.statut, { today: parisToday(), actor });
+          if (a.statut === "fait") await onDone(a.id, before.title);
+        }
         const after = (await getTodo(db, a.id))!;
         return ok({
           modifie: true,
