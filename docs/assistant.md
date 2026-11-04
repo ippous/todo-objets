@@ -13,7 +13,8 @@ L'assistant sait **quelle page est affichée** : sur la fiche d'une tâche ou d'
 
 - Écrire la demande, puis `Entrée` (`Maj+Entrée` pour aller à la ligne). Exemples proposés sur une conversation vide : tâches en retard, avancement d'un projet, création de tâche, tâches bloquées.
 - Au-dessus de chaque réponse, les **outils utilisés** s'affichent en pastilles : vert = lecture, ocre = écriture, rouge = erreur. Le survol montre les paramètres et le résultat.
-- Les tâches et objets cités sont des **liens** vers leur page.
+- Les tâches et objets cités sont des **liens** vers leur page ; les suivre garde la conversation ouverte (sauf sur téléphone, où la fenêtre se ferme pour montrer la page).
+- **Ouvrir une page** : « ouvre la tâche Chaudière », « montre-moi le Gantt de la grange », « va sur le journal ». L'assistant trouve la page (outil `ouvrir_page`) et l'affiche **à la fin de sa réponse** : fiche de tâche ou d'objet, arbre, liste des tâches avec filtres (vue tableau ou Gantt, sous-arbre d'un objet, recherche, statut, priorité, échéance…), nouvelle tâche ou nouvel objet pré-rattaché, journal, rappels, types, commandes. Seules les pages de Carnet sont acceptées (ni autre site, ni API). Depuis la page Assistant en plein écran, la conversation continue dans la fenêtre flottante (sur ordinateur).
 - **Modèle** : choix entre les fournisseurs configurés (Claude, ChatGPT), avec le modèle réglé dans *Accès › Assistants IA*.
 - **Arrêter** interrompt une réponse en cours. **Nouvelle conversation** efface l'historique.
 - La conversation est gardée **dans ce navigateur** (60 derniers messages), pas sur le serveur ; elle suit d'une page à l'autre. Dans la fenêtre flottante, *Réglages* affiche le choix du modèle, l'autorisation des suppressions et *Nouvelle conversation*.

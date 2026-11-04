@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Paperclip, X as Close } from "lucide-react";
 import { ACCEPT_ATTR } from "@/lib/document-types";
@@ -72,7 +73,10 @@ const TOOL_LABEL: Record<string, string> = {
   ajouter_sous_taches: "Ajout de sous-tâches",
   modifier_sous_tache: "Sous-tâche",
   joindre_piece: "Pièce jointe ajoutée",
+  ouvrir_page: "Page ouverte",
 };
+/** Fenêtre de l'assistant ouverte (mémorisé pour l'onglet) — partagé avec la bulle. */
+export const CHAT_OPEN_KEY = "carnet-chat-ouvert";
 const WRITES = /^(creer|modifier|deplacer|ajouter|supprimer|joindre)_/;
 
 // ---------- Markdown minimal (sans HTML injecté) ----------
@@ -97,12 +101,21 @@ function inline(text: string, key: string): ReactNode[] {
 }
 
 function ChatLink({ href, label }: { href: string; label: string }) {
-  const internal = href.startsWith("/") || (typeof window !== "undefined" && href.startsWith(window.location.origin));
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const internal = href.startsWith("/") || (!!origin && (href === origin || href.startsWith(`${origin}/`)));
+  // Lien interne : navigation dans l'appli, la conversation reste ouverte
+  if (internal)
+    return (
+      <Link href={href.startsWith("/") ? href : href.slice(origin.length) || "/"} className="font-bold text-moss underline underline-offset-4">
+        {label}
+      </Link>
+    );
   return (
     <a
       href={href}
       className="font-bold text-moss underline underline-offset-4"
-      {...(internal ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+      target="_blank"
+      rel="noopener noreferrer"
     >
       {label}
     </a>
@@ -247,6 +260,7 @@ export function ChatPanel({
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     let wrote = false;
+    let goTo: string | null = null;
     const update = (fn: (m: Message) => Message) =>
       setMessages((all) => [...all.slice(0, -1), fn(all[all.length - 1])]);
     try {
@@ -283,6 +297,7 @@ export function ChatPanel({
             | { type: "tool"; id: string; name: string; args: Record<string, unknown> }
             | { type: "tool_result"; id: string; ok: boolean; summary: string }
             | { type: "text"; text: string }
+            | { type: "navigate"; path: string }
             | { type: "error"; message: string }
             | { type: "done" };
           if (e.type === "text") update((m) => ({ ...m, text: m.text ? `${m.text}\n\n${e.text}` : e.text }));
@@ -292,6 +307,7 @@ export function ChatPanel({
           }
           else if (e.type === "tool_result")
             update((m) => ({ ...m, tools: (m.tools ?? []).map((t) => (t.id === e.id ? { ...t, ok: e.ok, summary: e.summary } : t)) }));
+          else if (e.type === "navigate") goTo = e.path;
           else if (e.type === "error") update((m) => ({ ...m, error: e.message }));
         }
       }
@@ -304,6 +320,15 @@ export function ChatPanel({
       inputRef.current?.focus();
       // La page affichée reflète les modifications faites par l'assistant
       if (wrote) router.refresh();
+      // Page demandée par l'assistant (ouvrir_page), une fois la réponse terminée
+      if (goTo && !ctrl.signal.aborted) {
+        // Depuis la page Assistant, la conversation continue dans la fenêtre flottante
+        if (!compact)
+          try {
+            sessionStorage.setItem(CHAT_OPEN_KEY, "1");
+          } catch {}
+        router.push(goTo);
+      }
     }
   };
 

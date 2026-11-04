@@ -41,6 +41,15 @@ test.beforeAll(async () => {
         res.end(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: `Reçu : ${kinds.join(", ")}` }] }));
         return;
       }
+      // « Ouvre le journal » : outil ouvrir_page, puis réponse courte
+      if (typeof last.content === "string" && last.content.startsWith("Ouvre")) {
+        res.end(JSON.stringify({ stop_reason: "tool_use", content: [{ type: "tool_use", id: "o1", name: "ouvrir_page", input: { page: "/journal" } }] }));
+        return;
+      }
+      if (JSON.stringify(last.content).includes('"tool_use_id":"o1"')) {
+        res.end(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: "Voilà le journal." }] }));
+        return;
+      }
       // 1er appel : demande l'outil ; 2e appel (résultat reçu) : répond avec le lien trouvé
       if (typeof last.content === "string") {
         res.end(
@@ -170,6 +179,44 @@ test("assistant : joindre une image et un PDF, coller une capture", async ({ pag
     await expect(sent.locator("img")).toHaveCount(1);
     await chat.getByRole("button", { name: /Réglages/ }).click();
     await chat.getByRole("button", { name: "Nouvelle conversation" }).click();
+  } finally {
+    await page.goto("/utilisateurs/ia");
+    await page.getByRole("region", { name: "Claude (Anthropic)" }).getByRole("button", { name: "Retirer la clé" }).click();
+  }
+});
+
+test("assistant : ouvrir une page de Carnet à la demande", async ({ page, isMobile }) => {
+  test.skip(!FAKE_AI, "faux serveur IA requis (E2E_FAKE_AI=1)");
+  await login(page);
+  await page.goto("/utilisateurs/ia");
+  const claude = page.getByRole("region", { name: "Claude (Anthropic)" });
+  await claude.getByLabel("Clé d'API").fill("sk-ant-test-0123456789abcdefWXYZ");
+  await claude.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(claude.getByText("Clé enregistrée …WXYZ")).toBeVisible();
+  try {
+    // Depuis la bulle : la page s'affiche, la fenêtre reste ouverte (fermée sur téléphone)
+    await page.goto("/taches");
+    await page.getByRole("button", { name: "Ouvrir l'assistant" }).click();
+    const chat = page.getByRole("dialog", { name: "Assistant" });
+    await chat.getByRole("button", { name: /Nouvelle conversation/ }).click({ timeout: 2000 }).catch(() => {});
+    await chat.getByLabel("Message pour l'assistant").fill("Ouvre le journal");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { level: 1, name: "Journal" })).toBeVisible();
+    await expect(page).toHaveURL(/\/journal$/);
+    if (isMobile) await expect(chat).toBeHidden();
+    else {
+      await expect(chat.getByText("Voilà le journal.")).toBeVisible();
+      await expect(chat.getByRole("list", { name: "Outils utilisés" })).toContainText("Page ouverte · /journal");
+    }
+
+    // Depuis la page Assistant : la page s'ouvre, la conversation continue dans la bulle (ordinateur)
+    await page.goto("/assistant");
+    await page.getByLabel("Message pour l'assistant").fill("Ouvre le journal encore");
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { level: 1, name: "Journal" })).toBeVisible();
+    if (!isMobile) await expect(chat.getByText("Ouvre le journal encore")).toBeVisible();
+    await page.goto("/assistant");
+    await page.getByRole("button", { name: "Nouvelle conversation" }).click();
   } finally {
     await page.goto("/utilisateurs/ia");
     await page.getByRole("region", { name: "Claude (Anthropic)" }).getByRole("button", { name: "Retirer la clé" }).click();

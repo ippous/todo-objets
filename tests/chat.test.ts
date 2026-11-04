@@ -127,6 +127,36 @@ describe("contexte de page", () => {
   });
 });
 
+describe("ouvrir une page", () => {
+  it("ouvrir_page : chemin de Carnet seulement, envoyé au navigateur", async () => {
+    const { pagePath } = await import("@/lib/chat");
+    const o = "https://carnet.test";
+    expect(pagePath("/taches?vue=gantt&objet=3b23c320-47b0-458a-8781-e35132a9c29d", o)).toBe("/taches?vue=gantt&objet=3b23c320-47b0-458a-8781-e35132a9c29d");
+    expect(pagePath(`${o}/taches/abc`, o)).toBe("/taches/abc");
+    expect(pagePath(o, o)).toBe("/");
+    expect(pagePath("https://carnet.test.evil.fr/x", o)).toBeNull();
+    expect(pagePath("https://ailleurs.fr/taches", o)).toBeNull();
+    expect(pagePath("//ailleurs.fr", o)).toBeNull();
+    expect(pagePath("javascript:alert(1)", o)).toBeNull();
+    expect(pagePath("/api/assistant", o)).toBeNull();
+    expect(pagePath("/taches\"><script>", o)).toBeNull();
+
+    const { events, calls } = await run("anthropic", [
+      { stop_reason: "tool_use", content: [{ type: "tool_use", id: "o1", name: "ouvrir_page", input: { page: `${o}/journal` } }] },
+      { stop_reason: "end_turn", content: [{ type: "text", text: "Voilà." }] },
+    ]);
+    expect((calls[0].body.tools as { name: string }[]).map((t) => t.name)).toContain("ouvrir_page");
+    expect(events.find((e) => e.type === "navigate")).toEqual({ type: "navigate", path: "/journal" });
+    expect(events.find((e) => e.type === "tool_result")).toMatchObject({ ok: true, summary: "/journal" });
+    const bad = await run("anthropic", [
+      { stop_reason: "tool_use", content: [{ type: "tool_use", id: "o2", name: "ouvrir_page", input: { page: "https://ailleurs.fr" } }] },
+      { stop_reason: "end_turn", content: [{ type: "text", text: "Non." }] },
+    ]);
+    expect(bad.events.some((e) => e.type === "navigate")).toBe(false);
+    expect(bad.events.find((e) => e.type === "tool_result")).toMatchObject({ ok: false });
+  });
+});
+
 describe("pièces jointes", () => {
   it("transmet image, PDF et texte au modèle, et joindre_piece les range dans Carnet", async () => {
     const { savePiece, deleteExpiredPieces, getPieces } = await import("@/lib/chat-pieces");
