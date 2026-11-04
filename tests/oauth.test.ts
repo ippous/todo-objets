@@ -8,8 +8,10 @@ import {
   exchangeCode,
   isValidRedirectUri,
   listAccess,
+  canWrite,
   OAuthError,
   refreshTokens,
+  rightsOf,
   registerClient,
   revokeAccess,
   revokeByToken,
@@ -35,7 +37,7 @@ const pkce = () => {
   return { verifier, challenge };
 };
 
-async function authorize(redirect = "https://claude.ai/api/mcp/auth_callback", write = false) {
+async function authorize(redirect = "https://claude.ai/api/mcp/auth_callback", write = false, del = false) {
   const client = await registerClient(db, { client_name: "Claude", redirect_uris: [redirect] });
   const { verifier, challenge } = pkce();
   const req = {
@@ -43,11 +45,11 @@ async function authorize(redirect = "https://claude.ai/api/mcp/auth_callback", w
     redirectUri: redirect,
     codeChallenge: challenge,
     codeChallengeMethod: "S256",
-    scope: write ? "lecture ecriture" : "lecture",
+    scope: del ? "lecture ecriture suppression" : write ? "lecture ecriture" : "lecture",
     resource: null,
   };
   await validateAuthorize(db, { ...req, responseType: "code" });
-  const code = await createAuthCode(db, userId, req, write);
+  const code = await createAuthCode(db, userId, req, write, del);
   return { client, code, verifier, redirect };
 }
 
@@ -108,7 +110,7 @@ describe("OAuth 2.1", () => {
     const base = { clientId: client.id, redirectUri: "https://claude.ai/cb", codeChallenge: pkce().challenge, codeChallengeMethod: "S256", scope: "", resource: null, responseType: "code" };
     await expect(validateAuthorize(db, { ...base, codeChallengeMethod: "plain" })).rejects.toBeInstanceOf(OAuthError);
     await expect(validateAuthorize(db, { ...base, redirectUri: "https://claude.ai/autre" })).rejects.toBeInstanceOf(OAuthError);
-    await expect(validateAuthorize(db, { ...base, scope: "suppression" })).rejects.toBeInstanceOf(OAuthError);
+    await expect(validateAuthorize(db, { ...base, scope: "admin" })).rejects.toBeInstanceOf(OAuthError);
     await expect(validateAuthorize(db, { ...base, clientId: "inconnu" })).rejects.toBeInstanceOf(OAuthError);
     await expect(registerClient(db, { redirect_uris: ["http://evil.fr/cb"] })).rejects.toBeInstanceOf(OAuthError);
   });
@@ -155,6 +157,15 @@ describe("OAuth 2.1", () => {
     expect(tw2.scope).toBe("lecture ecriture");
     expect((await verifyBearerAccess(db, tw2.access_token))?.write).toBe(true);
   });
+
+  it("droit de suppression : portée émise et conservée", async () => {
+    const r = await authorize(undefined, true, true);
+    const t = await exchangeCode(db, { code: r.code, clientId: r.client.id, redirectUri: r.redirect, codeVerifier: r.verifier });
+    expect(t.scope).toBe("lecture ecriture suppression");
+    expect(await verifyBearerAccess(db, t.access_token)).toMatchObject({ write: true, delete: true });
+    const t2 = await refreshTokens(db, { refreshToken: t.refresh_token, clientId: r.client.id });
+    expect(t2.scope).toBe("lecture ecriture suppression");
+  });
 });
 
 describe("droits des jetons personnels", () => {
@@ -165,5 +176,15 @@ describe("droits des jetons personnels", () => {
     expect(await verifyBearerAccess(db, rw.token)).toMatchObject({ write: true });
     const list = await listAccess(db, userId);
     expect(Object.fromEntries(list.map((a) => [a.name, a.write]))).toEqual({ lecture: false, écriture: true });
+  });
+
+  it("suppression : implique l'écriture", async () => {
+    const del = await createPersonalToken(db, userId, "suppression", true, true);
+    expect(del.row.scope).toBe("lecture ecriture suppression");
+    expect(await verifyBearerAccess(db, del.token)).toMatchObject({ write: true, delete: true });
+    const rw = await createPersonalToken(db, userId, "écriture", true);
+    expect(await verifyBearerAccess(db, rw.token)).toMatchObject({ write: true, delete: false });
+    expect(rightsOf("lecture suppression")).toBe("suppression");
+    expect(canWrite("lecture suppression")).toBe(true);
   });
 });

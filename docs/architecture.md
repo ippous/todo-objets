@@ -34,7 +34,7 @@ src/
       photos/              lecture, autorisation d'envoi, envoi local
       documents/           lecture, autorisation d'envoi
       test/purge/          purge des données de test (hors prod)
-      mcp/                 serveur MCP (lecture seule, voir docs/mcp.md)
+      mcp/                 serveur MCP (lecture, écriture, suppression selon les droits ; voir docs/mcp.md)
       oauth/               OAuth 2.1 : register, token, revoke
     .well-known/           métadonnées OAuth (RFC 9728, RFC 8414)
     oauth/autoriser/       page de consentement OAuth
@@ -69,7 +69,7 @@ object_types ──< objects ──< objects (parent_id, arbre)
 |---|---|
 | `objects` | `parent_id` auto-référencé (`RESTRICT`), contrainte « pas son propre parent », `type_id` → `object_types` (`RESTRICT`), `position` pour l'ordre |
 | `todos` | `object_id` (`RESTRICT`), valeurs numériques estimées/réalisées, enums priorité/statut/catégorie/récurrence, `previous_occurrence_id` unique (une seule occurrence suivante) |
-| `photos` | rattachée à un objet **ou** à une tâche (contrainte), `is_cover`, chemins de la photo et de la vignette |
+| `photos` | rattachée à un objet **ou** à une tâche (contrainte), `is_cover`, chemins de la photo et de la vignette, `description` (légende) |
 | `documents` | rattaché à un objet **ou** à une tâche (contrainte `documents_one_owner`), `type_id` → `document_types` (`RESTRICT`), nom d'origine, type MIME, taille, chemin (`<env>/documents/<objet>/…` ou `<env>/documents/taches/<tâche>/…`) |
 | `links` | rattaché à un objet **ou** à une tâche (contrainte `links_one_owner`), URL http(s) normalisée, titre facultatif |
 | `object_types`, `document_types` | `name` unique sans tenir compte de la casse (index sur `lower(name)`) |

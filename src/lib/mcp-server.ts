@@ -1,11 +1,13 @@
 import "server-only";
-// Serveur MCP de Carnet : outils de lecture, et outils d'écriture si l'accès le permet (sans suppression).
+// Serveur MCP de Carnet : outils de lecture, outils d'écriture et de suppression selon les droits de l'accès.
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Db } from "@/db";
-import { PRIORITIES, STATUSES, type ObjectRow, type User } from "@/db/schema";
+import { PRIORITIES, STATUSES, type DocumentRow, type ObjectRow, type Photo, type User } from "@/db/schema";
 import {
+  getDocument,
   getObject,
+  getPhoto,
   getTodo,
   listDocuments,
   listLinks,
@@ -23,8 +25,11 @@ import {
   type TodoSort,
 } from "./repo";
 import { describeDetails, listAudit } from "./audit";
+import { registerDeleteTools } from "./mcp-delete-tools";
 import { registerWriteTools } from "./mcp-write-tools";
+import { DOCUMENT_TYPES } from "./document-types";
 import { richTextToPlain } from "./rich-text";
+import { read } from "./storage";
 import { buildForest, flatten, pathTo, subtreeIds, type TreeNode } from "./tree";
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
@@ -44,17 +49,29 @@ function error(message: string) {
 
 const UUID = z.string().uuid();
 
-export function buildMcpServer(db: Db, user: User, origin: string, write = false, client: string | null = null): McpServer {
+export function buildMcpServer(
+  db: Db,
+  user: User,
+  origin: string,
+  write = false,
+  client: string | null = null,
+  del = false,
+): McpServer {
+  // La suppression n'existe pas sans l'écriture
+  if (del) write = true;
   const server = new McpServer(
     { name: "carnet", title: "Carnet — objets et tâches", version: "1.0.0" },
     {
       instructions:
         "Carnet gère des tâches rattachées à des objets classés en arbres (propriété › bâtiment › pièce, véhicule, projet…). " +
-        (write
-          ? "Cet accès permet de lire ET de modifier (créer/modifier des tâches, créer/modifier/déplacer des objets, ajouter des liens ; aucune suppression). Vérifie l'objet ou la tâche avant de modifier. "
-          : "Accès en lecture seule. ") +
+        (del
+          ? "Cet accès permet de lire, de modifier ET de supprimer (tâches, sous-tâches, objets vides, photos, documents, liens). " +
+            "Une suppression est définitive : vérifie l'élément et demande confirmation à l'utilisateur avant de supprimer. "
+          : write
+            ? "Cet accès permet de lire ET de modifier (tâches et sous-tâches, objets, liens, photos, documents, types ; aucune suppression). Vérifie l'objet ou la tâche avant de modifier. "
+            : "Accès en lecture seule. ") +
         "Commence par `vue_ensemble`, puis `lister_objets` pour l'arbre, `rechercher_taches` pour les tâches, " +
-        "et `obtenir_objet` / `obtenir_tache` pour le détail (description, documents, liens). Les montants sont en euros, les durées en heures, " +
+        "et `obtenir_objet` / `obtenir_tache` pour le détail (description, sous-tâches, photos, documents, liens, avec leurs identifiants). Les montants sont en euros, les durées en heures, " +
         "les dates au format AAAA-MM-JJ (fuseau Europe/Paris). Chaque résultat contient une `url` vers la page Carnet correspondante.",
     },
   );
@@ -62,6 +79,25 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
   const objectUrl = (id: string) => `${origin}/objets/${id}`;
   const todoUrl = (id: string) => `${origin}/taches/${id}`;
   const docUrl = (id: string) => `${origin}/documents/${id}`;
+  const photoInfo = (p: Photo) => ({
+    id: p.id,
+    description: p.description,
+    vignette: p.isCover,
+    largeur: p.width,
+    hauteur: p.height,
+    ajoutee_le: p.createdAt.toISOString().slice(0, 10),
+    url: `${origin}/api/photos/${p.id}`,
+  });
+  const docInfo = (d: DocumentRow & { typeName: string }) => ({
+    id: d.id,
+    nom: d.filename,
+    description: d.description,
+    type: d.typeName,
+    format: d.contentType,
+    taille_octets: d.size,
+    ajoute_le: d.createdAt.toISOString().slice(0, 10),
+    url: docUrl(d.id),
+  });
   const chemin = (objs: ObjectRow[], id: string) =>
     pathTo(objs, id)
       .map((o) => o.name)
@@ -205,7 +241,7 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
       title: "Détail d'un objet",
       description:
         "Fiche complète d'un objet : chemin, type, description (texte), emplacement, tags, sous-objets directs, " +
-        "bilan de la branche, tâches de l'objet et de ses descendants, documents (avec lien vers la visionneuse) et liens web.",
+        "bilan de la branche, tâches de l'objet et de ses descendants, documents (avec lien vers la visionneuse), liens web et photos, avec leurs identifiants.",
       inputSchema: {
         id: UUID.describe("Identifiant de l'objet"),
         inclure_taches_faites: z.boolean().default(false).describe("Inclure aussi les tâches terminées"),
@@ -239,9 +275,9 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
           valeur_estimee_eur: node.total.estValueEur,
         },
         taches: todos.map((t) => todoSummary(objs, t)),
-        documents: docs.map((d) => ({ id: d.id, nom: d.filename, type: d.typeName, format: d.contentType, taille_octets: d.size, ajoute_le: d.createdAt.toISOString().slice(0, 10), url: docUrl(d.id) })),
-        liens: links.map((l) => ({ titre: l.title, url: l.url })),
-        photos: photos.length,
+        documents: docs.map(docInfo),
+        liens: links.map((l) => ({ id: l.id, titre: l.title, url: l.url })),
+        photos: photos.map(photoInfo),
         url: objectUrl(id),
       });
     },
@@ -359,10 +395,10 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
         valeur_realisee_eur: t.actualValueEur,
         euros_par_heure: estHours && t.estValueEur ? Math.round((t.estValueEur / estHours) * 100) / 100 : null,
         tags: t.tags,
-        sous_taches: subs.map((st) => ({ texte: st.title, faite: st.done, heures_estimees: st.estHours, heures_realisees: st.actualHours })),
-        documents: docs.map((d) => ({ id: d.id, nom: d.filename, type: d.typeName, format: d.contentType, taille_octets: d.size, url: docUrl(d.id) })),
-        liens: links.map((l) => ({ titre: l.title, url: l.url })),
-        photos: photos.length,
+        sous_taches: subs.map((st) => ({ id: st.id, texte: st.title, faite: st.done, heures_estimees: st.estHours, heures_realisees: st.actualHours })),
+        documents: docs.map(docInfo),
+        liens: links.map((l) => ({ id: l.id, titre: l.title, url: l.url })),
+        photos: photos.map(photoInfo),
         url: todoUrl(t.id),
       });
     },
@@ -409,7 +445,90 @@ export function buildMcpServer(db: Db, user: User, origin: string, write = false
     },
   );
 
-  if (write) registerWriteTools(server, { db, user, client, objectUrl, todoUrl });
+  async function readBytes(pathname: string): Promise<Buffer | null> {
+    const stream = await read(pathname);
+    if (!stream) return null;
+    return Buffer.from(await new Response(stream).arrayBuffer());
+  }
+  const FILE_MAX = 10 * 1024 * 1024;
+  const TEXT_TYPES = new Set(["text/plain", "text/markdown", "text/csv", "application/json"]);
+  const DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+  // ---------- voir_photo ----------
+  server.registerTool(
+    "voir_photo",
+    {
+      title: "Voir une photo",
+      description:
+        "Renvoie l'image d'une photo (identifiant donné par obtenir_objet / obtenir_tache) pour la regarder, avec sa description. " +
+        "taille : « vignette » (400 px, par défaut) ou « complete » (1600 px).",
+      inputSchema: {
+        id: UUID.describe("Identifiant de la photo"),
+        taille: z.enum(["vignette", "complete"]).default("vignette"),
+      },
+      annotations: READ_ONLY,
+    },
+    async ({ id, taille }) => {
+      const p = await getPhoto(db, id);
+      if (!p || (!p.objectId && !p.todoId)) return error(`Photo ${id} introuvable`);
+      const bytes = await readBytes(taille === "complete" ? p.pathname : p.thumbPathname);
+      if (!bytes) return error("Fichier de la photo introuvable dans le stockage");
+      const info = { ...photoInfo(p), page: p.objectId ? objectUrl(p.objectId) : todoUrl(p.todoId!) };
+      return {
+        content: [
+          { type: "image" as const, data: bytes.toString("base64"), mimeType: "image/jpeg" },
+          { type: "text" as const, text: JSON.stringify(info, null, 2) },
+        ],
+        structuredContent: info as Record<string, unknown>,
+      };
+    },
+  );
+
+  // ---------- lire_document ----------
+  server.registerTool(
+    "lire_document",
+    {
+      title: "Lire un document",
+      description:
+        "Renvoie le contenu d'un document (identifiant donné par obtenir_objet / obtenir_tache), avec sa description : " +
+        "texte pour TXT, Markdown, CSV, JSON et Word (.docx), image pour les images, fichier joint pour PDF et les autres formats. 10 Mo au plus.",
+      inputSchema: { id: UUID.describe("Identifiant du document") },
+      annotations: READ_ONLY,
+    },
+    async ({ id }) => {
+      const d = await getDocument(db, id);
+      if (!d) return error(`Document ${id} introuvable`);
+      const info = {
+        id: d.id,
+        nom: d.filename,
+        description: d.description,
+        format: DOCUMENT_TYPES[d.contentType] ?? d.contentType,
+        taille_octets: d.size,
+        url: docUrl(d.id),
+        page: d.objectId ? objectUrl(d.objectId) : todoUrl(d.todoId!),
+      };
+      if (d.size > FILE_MAX) return error(`Document trop gros pour être transmis (${Math.round(d.size / 1024 / 1024)} Mo) : ouvre-le dans Carnet (${info.url}).`);
+      const bytes = await readBytes(d.pathname);
+      if (!bytes) return error("Fichier du document introuvable dans le stockage");
+      const meta = { type: "text" as const, text: JSON.stringify(info, null, 2) };
+      let body;
+      if (TEXT_TYPES.has(d.contentType)) {
+        body = { type: "text" as const, text: bytes.toString("utf8") };
+      } else if (d.contentType === DOCX) {
+        const mammoth = await import("mammoth");
+        const { value } = await mammoth.extractRawText({ buffer: bytes });
+        body = { type: "text" as const, text: value };
+      } else if (d.contentType.startsWith("image/") && d.contentType !== "image/heic") {
+        body = { type: "image" as const, data: bytes.toString("base64"), mimeType: d.contentType };
+      } else {
+        body = { type: "resource" as const, resource: { uri: info.url, mimeType: d.contentType, blob: bytes.toString("base64") } };
+      }
+      return { content: [meta, body], structuredContent: info as Record<string, unknown> };
+    },
+  );
+
+  if (write) registerWriteTools(server, { db, user, client, objectUrl, todoUrl, docUrl });
+  if (del) registerDeleteTools(server, { db, user, client, objectUrl, todoUrl, docUrl });
 
   return server;
 }

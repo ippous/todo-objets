@@ -37,6 +37,7 @@ Les vignettes s'affichent dans l'arbre, dans l'en-tête de la fiche d'un objet e
 ## Afficher et supprimer
 
 - Un clic sur une photo l'ouvre en grand.
+- Sous la photo agrandie, **Ajouter une description** (ou **Modifier la description**) saisit une légende en texte simple (2 000 caractères au plus) ; la vider l'efface. Le changement est inscrit au journal.
 - **Supprimer** demande une confirmation et efface les deux fichiers (photo et vignette).
 - Supprimer un objet ou une tâche supprime aussi ses photos.
 

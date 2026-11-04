@@ -27,6 +27,8 @@ export type AuditAction =
   | "ajout_document"
   | "suppression_document"
   | "type_document"
+  | "description_document"
+  | "description_photo"
   | "ajout_lien"
   | "suppression_lien"
   | "ajout_sous_tache"
@@ -173,6 +175,8 @@ export const ACTION_LABEL: Record<string, string> = {
   ajout_document: "Ajout de document",
   suppression_document: "Suppression de document",
   type_document: "Changement de type de document",
+  description_document: "Description de document",
+  description_photo: "Description de photo",
   ajout_lien: "Ajout de lien",
   suppression_lien: "Suppression de lien",
   ajout_sous_tache: "Ajout de sous-tâche",
@@ -234,6 +238,8 @@ export function describeDetails(e: Pick<AuditEntry, "action" | "details">): stri
   if ("de" in d || "vers" in d) lines.push(`De ${d.de ?? "(racine)"} vers ${d.vers ?? "(racine)"}`);
   if (typeof d.occurrence_de === "string") lines.push(`Occurrence suivante de « ${d.occurrence_de} »`);
   if (typeof d.fichier === "string") lines.push(d.type ? `${d.fichier} (${d.type})` : d.fichier);
+  if (typeof d.legende === "string") lines.push(`« ${d.legende} »`);
+  else if ("legende" in d) lines.push("Description effacée");
   if (typeof d.url === "string") lines.push(d.titre ? `${d.titre} — ${d.url}` : d.url);
   else if (typeof d.titre === "string") lines.push(`« ${d.titre} »`);
   if (d.lot) lines.push("Ajout en lot");

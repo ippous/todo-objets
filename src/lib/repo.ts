@@ -684,9 +684,11 @@ export async function addPhoto(
     height?: number | null;
     createdById?: string | null;
     inline?: boolean;
+    description?: string | null;
   },
   actor?: Actor,
 ): Promise<Photo> {
+  data = { ...data, description: cleanCaption(data.description) };
   return db.transaction(async (tx) => {
     if ("objectId" in owner) {
       const [o] = await tx.select({ id: objects.id }).from(objects).where(eq(objects.id, owner.objectId)).for("update");
@@ -705,9 +707,33 @@ export async function addPhoto(
       .values({ ...data, ...owner, inline: Boolean(data.inline), isCover: !cover && !data.inline })
       .returning();
     const target = await ownerTarget(tx, owner);
-    if (target && !data.inline) await logAction(tx, actor, { target, action: "ajout_photo" });
+    if (target && !data.inline) {
+      await logAction(tx, actor, { target, action: "ajout_photo", details: row.description ? { legende: row.description } : undefined });
+    }
     return row;
   });
+}
+
+/** Description (légende) d'une photo ou d'un document : texte simple, 2 000 caractères au plus ; vide = aucune. */
+export const CAPTION_MAX_LENGTH = 2000;
+function cleanCaption(raw: string | null | undefined): string | null {
+  const v = (raw ?? "").replace(/\r\n?/g, "\n").trim();
+  if (!v) return null;
+  if (v.length > CAPTION_MAX_LENGTH) throw new DomainError(`Description trop longue (${CAPTION_MAX_LENGTH} caractères au plus)`);
+  return v;
+}
+
+/** Change la description d'une photo (null ou vide pour l'effacer). */
+export async function setPhotoDescription(db: Db, id: string, raw: string | null, actor?: Actor): Promise<Photo> {
+  const description = cleanCaption(raw);
+  const [before] = await db.select().from(photos).where(eq(photos.id, id));
+  if (!before) throw new DomainError("Photo introuvable");
+  if (before.inline) throw new DomainError("Cette image fait partie d'une description : modifie le texte à la place");
+  if (before.description === description) return before;
+  const [row] = await db.update(photos).set({ description }).where(eq(photos.id, id)).returning();
+  const target = await ownerTarget(db, ownerOf(row));
+  if (target) await logAction(db, actor, { target, action: "description_photo", details: { legende: description } });
+  return row;
 }
 
 /** Image d'une description en cours de création (objet ou tâche pas encore enregistré). */
@@ -816,9 +842,11 @@ export async function addDocument(
     contentType: string;
     size: number;
     createdById?: string | null;
+    description?: string | null;
   },
   actor?: Actor,
 ): Promise<DocumentRow> {
+  data = { ...data, description: cleanCaption(data.description) };
   await assertOwner(db, data.owner);
   const [t] = await db.select({ name: documentTypes.name }).from(documentTypes).where(eq(documentTypes.id, data.typeId));
   if (!t) throw new DomainError("Type de document introuvable");
@@ -843,6 +871,20 @@ export async function deleteDocument(db: Db, id: string, actor?: Actor): Promise
   const target = await ownerTarget(db, ownerOf(row));
   if (target) await logAction(db, actor, { target, action: "suppression_document", details: { fichier: row.filename } });
   return row.p;
+}
+
+/** Change la description d'un document (null ou vide pour l'effacer). */
+export async function setDocumentDescription(db: Db, id: string, raw: string | null, actor?: Actor): Promise<DocumentRow> {
+  const description = cleanCaption(raw);
+  const [before] = await db.select().from(documents).where(eq(documents.id, id));
+  if (!before) throw new DomainError("Document introuvable");
+  if (before.description === description) return before;
+  const [row] = await db.update(documents).set({ description }).where(eq(documents.id, id)).returning();
+  const target = await ownerTarget(db, ownerOf(row));
+  if (target) {
+    await logAction(db, actor, { target, action: "description_document", details: { fichier: row.filename, legende: description } });
+  }
+  return row;
 }
 
 /** Change le type d'un document. */
