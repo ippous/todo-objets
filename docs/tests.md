@@ -28,6 +28,7 @@ Ils s'exécutent sur un **Postgres en mémoire** (PGlite), avec les vraies migra
 | `tests/contact-links.test.ts` | commandes intégrées `$$tel`, `$$mail`, `$$what`, `$$contact` : saisie repérée, alias, numéros (international pour WhatsApp), adresses, fiche vCard, liens conservés par le nettoyage du HTML |
 | `tests/dependencies.test.ts` | enchaînement : attend / débloque, bloquée puis prête, boucles directes et indirectes refusées, suppression, journal, date de début (contrainte, récurrence) |
 | `tests/gantt.test.ts` | barres et jalons, retard, échelle automatique, groupes par objet, conflits d'enchaînement, graduations, liste chronologique mobile, avancement |
+| `tests/chat.test.ts` | chat avec un faux fournisseur : Claude (outil de Carnet puis réponse, outils et schémas transmis, résultat renvoyé), ChatGPT (fonctions, création de tâche journalisée « MCP · Chat Carnet »), suppressions selon l'autorisation, erreur d'outil, clé refusée |
 | `tests/purge.test.ts` | purge des données de test (sous-arbres, fichiers, types, jokers) |
 
 ## Tests de bout en bout (Playwright)
@@ -54,6 +55,7 @@ Ils tournent sur deux profils : **mobile** (Pixel 7) et **desktop**.
 | `e2e/rappels.spec.ts` | schéma créé par un admin (saisie souple, erreur), tâche avec date, heure et schéma, heure affichée dans la liste, prochain rappel sur la fiche, préférences de la page Rappels, route d'envoi refusée sans secret |
 | `e2e/liens-contact.spec.ts` | `$$tel` choisi dans la liste, `$$mail`, `$$WHAT`, `$$contact` transformés en liens, adresse invalide signalée, liens enregistrés, fiche vCard servie (et refusée sans connexion) |
 | `e2e/gestion-projet.spec.ts` | projet (objet), deux tâches avec début et échéance, « Attend » choisi par recherche, « Bloquée » dans la liste et sur la fiche, « Débloque », boucle refusée, carte Avancement, Gantt (conflit signalé, échelle) ou liste mobile, tâche « Prête » une fois l'autre faite |
+| `e2e/assistant.spec.ts` | avec un faux serveur Claude (comme `ia.spec.ts`) : question, outil « Recherche de tâches · 1 tâche », réponse avec lien et gras, conversation gardée au rechargement puis effacée ; sans clé, invitation à configurer |
 | `e2e/visionneuses.spec.ts` | aperçu PDF, Word, ODT, Excel, ODS, PowerPoint, CSV, texte, ZIP ; visionneuse refusée sans connexion |
 
 Les fichiers d'exemple sont dans `e2e/fixtures/`.
