@@ -7,13 +7,16 @@ import type { Db } from "@/db";
 import type { User } from "@/db/schema";
 import { AI_PROVIDER_LABEL, AiError, type AiProvider } from "./ai";
 import { buildMcpServer } from "./mcp-server";
+import { getPieces, pieceContent, readPiece, type PieceContent } from "./chat-pieces";
+import type { ChatAttachment } from "@/db/schema";
 
 export const CHAT_CLIENT = "Chat Carnet";
 export const CHAT_MAX_STEPS = 12;
 const TOOL_TEXT_MAX = 40_000;
 const HISTORY_MAX = 30;
 
-export type ChatTurn = { role: "user" | "assistant"; text: string };
+/** Un message ; `pieces` : identifiants des pièces jointes (messages de l'utilisateur). */
+export type ChatTurn = { role: "user" | "assistant"; text: string; pieces?: string[] };
 
 /** Évènements envoyés au navigateur au fil de la réponse. */
 export type ChatEvent =
@@ -25,7 +28,35 @@ export type ChatEvent =
 
 type Target = { provider: AiProvider; model: string; apiKey: string };
 type Tool = { name: string; description: string; inputSchema: Record<string, unknown> };
-type ToolOutput = { text: string; images: { mediaType: string; data: string }[]; isError: boolean };
+type ToolOutput = {
+  text: string;
+  images: { mediaType: string; data: string }[];
+  /** PDF renvoyés par lire_document, transmis au modèle comme documents */
+  pdfs: { name: string; data: string }[];
+  isError: boolean;
+};
+
+/** Contenu des pièces des derniers messages : au-delà, seul leur nom est rappelé (coût). */
+const PIECES_READ_MESSAGES = 2;
+
+const JOIN_TOOL: Tool = {
+  name: "joindre_piece",
+  description:
+    "Ajoute une pièce jointe de cette conversation (identifiant piece_id donné avec le message de l'utilisateur) à une tâche OU à un objet : " +
+    "une image devient une photo (comme ajouter_photo), sauf comme=document ; un autre fichier devient un document (comme ajouter_document).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      piece_id: { type: "string", description: "Identifiant de la pièce jointe" },
+      tache_id: { type: "string", description: "Tâche à laquelle l'ajouter" },
+      objet_id: { type: "string", description: "Objet auquel l'ajouter" },
+      comme: { type: "string", enum: ["photo", "document"], description: "Pour une image : photo (par défaut) ou document" },
+      description: { type: "string", description: "Légende ou description, facultative" },
+      type_document: { type: "string", description: "Type de document (Facture, Garantie…), pour un document ; « Autre » par défaut" },
+    },
+    required: ["piece_id"],
+  },
+};
 
 function baseUrl(p: AiProvider) {
   const env = p === "anthropic" ? process.env.ANTHROPIC_BASE_URL : process.env.OPENAI_BASE_URL;
@@ -59,6 +90,8 @@ function systemPrompt(user: User, instructions: string, allowDelete: boolean, pa
     "Réponds en français, brièvement et concrètement. Utilise les outils plutôt que de supposer : cherche avant de répondre, " +
       "et vérifie l'objet ou la tâche avant de modifier. Quand tu cites une tâche ou un objet, donne un lien Markdown vers sa page " +
       "avec l'adresse `url` renvoyée par l'outil, par exemple [Réparer la clôture](https://…/taches/…).",
+    "L'utilisateur peut joindre des images et des documents à ses messages : tu les vois (images, PDF, texte extrait). " +
+      "Pour en ajouter un à une tâche ou à un objet, utilise joindre_piece avec son piece_id (jamais ajouter_photo ou ajouter_document avec un contenu recopié).",
     "Avant une modification importante ou en lot (plusieurs tâches, déplacement d'objet), résume ce que tu vas faire et demande confirmation, " +
       "sauf si l'utilisateur l'a déjà clairement demandé.",
     ...(page ? [page] : []),
@@ -144,26 +177,106 @@ export async function runChat(
       inputSchema: Object.fromEntries(Object.entries(t.inputSchema as Record<string, unknown>).filter(([k]) => k !== "$schema")),
     }));
     const system = systemPrompt(user, client.getInstructions() ?? "", !!opts.allowDelete, describePage(opts.page, opts.origin));
-    const history = opts.history.filter((m) => m.text.trim()).slice(-HISTORY_MAX);
+    tools.push(JOIN_TOOL);
+    const history = opts.history.filter((m) => m.text.trim() || m.pieces?.length).slice(-HISTORY_MAX);
     if (!history.length || history.at(-1)!.role !== "user") throw new AiError("Pose une question");
+
+    // Pièces jointes : celles de cet utilisateur seulement ; contenu lu pour les derniers messages
+    const pieceRows = await getPieces(db, user.id, history.flatMap((m) => m.pieces ?? []));
+    const pieceById = new Map(pieceRows.map((p) => [p.id, p]));
+    const withPieces = history.map((m, i) => (m.role === "user" && m.pieces?.some((id) => pieceById.has(id)) ? i : -1)).filter((i) => i >= 0);
+    const readable = new Set(withPieces.slice(-PIECES_READ_MESSAGES));
+    const contents = new Map<string, PieceContent>();
+    for (const i of readable) for (const id of history[i].pieces ?? []) if (pieceById.has(id)) contents.set(id, await pieceContent(pieceById.get(id)!));
+    const label = (p: ChatAttachment) => `Pièce jointe « ${p.filename} » (piece_id ${p.id}, ${p.contentType}, ${Math.round(p.size / 1024)} Ko)`;
+    const piecesOf = (m: ChatTurn) => (m.pieces ?? []).map((id) => pieceById.get(id)).filter((p): p is ChatAttachment => !!p);
+    const textOf = (m: ChatTurn) => m.text.trim() || "(voir les pièces jointes)";
+
+    /** Message utilisateur pour Claude : texte, puis chaque pièce (image, PDF, texte extrait ou simple nom). */
+    const anthropicContent = (m: ChatTurn) => {
+      const ps = piecesOf(m);
+      if (!ps.length) return m.text;
+      const parts: Record<string, unknown>[] = [{ type: "text", text: textOf(m) }];
+      for (const p of ps) {
+        const c = contents.get(p.id);
+        parts.push({ type: "text", text: label(p) + (c ? "" : " — contenu déjà vu plus haut, non renvoyé") });
+        if (c?.kind === "image") parts.push({ type: "image", source: { type: "base64", media_type: c.mediaType, data: c.data } });
+        else if (c?.kind === "pdf") parts.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: c.data }, title: p.filename });
+        else if (c?.kind === "text") parts.push({ type: "text", text: `Contenu de « ${p.filename} » :\n${c.text}` });
+        else if (c) parts.push({ type: "text", text: "(contenu non lisible par l'assistant)" });
+      }
+      return parts;
+    };
+    /** Même chose pour ChatGPT (image_url, file). */
+    const openaiContent = (m: ChatTurn) => {
+      const ps = piecesOf(m);
+      if (!ps.length) return m.text;
+      const parts: Record<string, unknown>[] = [{ type: "text", text: textOf(m) }];
+      for (const p of ps) {
+        const c = contents.get(p.id);
+        parts.push({ type: "text", text: label(p) + (c ? "" : " — contenu déjà vu plus haut, non renvoyé") });
+        if (c?.kind === "image") parts.push({ type: "image_url", image_url: { url: `data:${c.mediaType};base64,${c.data}` } });
+        else if (c?.kind === "pdf") parts.push({ type: "file", file: { filename: p.filename, file_data: `data:application/pdf;base64,${c.data}` } });
+        else if (c?.kind === "text") parts.push({ type: "text", text: `Contenu de « ${p.filename} » :\n${c.text}` });
+        else if (c) parts.push({ type: "text", text: "(contenu non lisible par l'assistant)" });
+      }
+      return parts;
+    };
+
+    /** joindre_piece : la pièce passe par ajouter_photo / ajouter_document, en mémoire. */
+    const joinPiece = async (args: Record<string, unknown>) => {
+      const p = typeof args.piece_id === "string" ? (pieceById.get(args.piece_id) ?? (await getPieces(db, user.id, [args.piece_id]))[0]) : undefined;
+      if (!p) return { content: [{ type: "text", text: "Pièce jointe introuvable (piece_id)" }], isError: true };
+      const bytes = await readPiece(p);
+      if (!bytes) return { content: [{ type: "text", text: "Fichier de la pièce jointe introuvable" }], isError: true };
+      const owner = typeof args.tache_id === "string" ? { kind: "tache", id: args.tache_id } : typeof args.objet_id === "string" ? { kind: "objet", id: args.objet_id } : null;
+      if (!owner) return { content: [{ type: "text", text: "Indique tache_id ou objet_id" }], isError: true };
+      const description = typeof args.description === "string" && args.description.trim() ? args.description : undefined;
+      const asPhoto = p.contentType.startsWith("image/") && args.comme !== "document";
+      return asPhoto
+        ? client.callTool({
+            name: "ajouter_photo",
+            arguments: { image_base64: bytes.toString("base64"), [`${owner.kind}_ids`]: [owner.id], description },
+          })
+        : client.callTool({
+            name: "ajouter_document",
+            arguments: {
+              [`${owner.kind}_id`]: owner.id,
+              nom_fichier: p.filename,
+              fichier_base64: bytes.toString("base64"),
+              format: p.contentType,
+              type_document: typeof args.type_document === "string" ? args.type_document : undefined,
+              description,
+            },
+          });
+    };
 
     const runTool = async (name: string, args: Record<string, unknown>): Promise<ToolOutput> => {
       try {
-        const r = await client.callTool({ name, arguments: args });
-        const content = (r.content ?? []) as { type: string; text?: string; data?: string; mimeType?: string }[];
+        const r = name === JOIN_TOOL.name ? await joinPiece(args) : await client.callTool({ name, arguments: args });
+        const content = (r.content ?? []) as {
+          type: string;
+          text?: string;
+          data?: string;
+          mimeType?: string;
+          resource?: { uri?: string; mimeType?: string; blob?: string };
+        }[];
         return {
           text: content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n").slice(0, TOOL_TEXT_MAX) || "(vide)",
           images: content.filter((c) => c.type === "image" && c.data).map((c) => ({ mediaType: c.mimeType ?? "image/jpeg", data: c.data! })),
+          pdfs: content
+            .filter((c) => c.type === "resource" && c.resource?.mimeType === "application/pdf" && c.resource.blob)
+            .map((c) => ({ name: c.resource!.uri?.split("/").pop() ?? "document.pdf", data: c.resource!.blob! })),
           isError: !!r.isError,
         };
       } catch (err) {
-        return { text: `Erreur : ${err instanceof Error ? err.message : String(err)}`, images: [], isError: true };
+        return { text: `Erreur : ${err instanceof Error ? err.message : String(err)}`, images: [], pdfs: [], isError: true };
       }
     };
 
     let steps = 0;
     if (target.provider === "anthropic") {
-      const messages: Record<string, unknown>[] = history.map((m) => ({ role: m.role, content: m.text }));
+      const messages: Record<string, unknown>[] = history.map((m) => ({ role: m.role, content: m.role === "user" ? anthropicContent(m) : m.text }));
       const toolDefs = tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }));
       for (;;) {
         steps++;
@@ -190,13 +303,17 @@ export async function runChat(
             content: [
               { type: "text", text: out.text },
               ...out.images.map((img) => ({ type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } })),
+              ...out.pdfs.map((d) => ({ type: "document", source: { type: "base64", media_type: "application/pdf", data: d.data } })),
             ],
           });
         }
         messages.push({ role: "user", content: results });
       }
     } else {
-      const messages: Record<string, unknown>[] = [{ role: "system", content: system }, ...history.map((m) => ({ role: m.role, content: m.text }))];
+      const messages: Record<string, unknown>[] = [
+        { role: "system", content: system },
+        ...history.map((m) => ({ role: m.role, content: m.role === "user" ? openaiContent(m) : m.text })),
+      ];
       const toolDefs = tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.inputSchema } }));
       for (;;) {
         steps++;
@@ -214,6 +331,7 @@ export async function runChat(
         }
         messages.push({ role: "assistant", content: msg.content ?? null, tool_calls: calls });
         const images: { mediaType: string; data: string }[] = [];
+        const pdfs: { name: string; data: string }[] = [];
         for (const c of calls) {
           let args: Record<string, unknown> = {};
           try {
@@ -225,13 +343,18 @@ export async function runChat(
           const out = await runTool(c.function.name, args);
           emit({ type: "tool_result", id: c.id, name: c.function.name, ok: !out.isError, summary: summarize(c.function.name, out) });
           images.push(...out.images);
-          messages.push({ role: "tool", tool_call_id: c.id, content: out.text + (out.images.length ? `\n(${out.images.length} image(s) jointe(s) ci-après)` : "") });
+          pdfs.push(...out.pdfs);
+          const extra = out.images.length + out.pdfs.length;
+          messages.push({ role: "tool", tool_call_id: c.id, content: out.text + (extra ? `\n(${extra} fichier(s) joint(s) ci-après)` : "") });
         }
         // Les messages « tool » n'acceptent que du texte : les images suivent dans un message utilisateur
-        if (images.length) {
+        if (images.length || pdfs.length) {
           messages.push({
             role: "user",
-            content: images.map((img) => ({ type: "image_url", image_url: { url: `data:${img.mediaType};base64,${img.data}` } })),
+            content: [
+              ...images.map((img) => ({ type: "image_url", image_url: { url: `data:${img.mediaType};base64,${img.data}` } })),
+              ...pdfs.map((d) => ({ type: "file", file: { filename: d.name, file_data: `data:application/pdf;base64,${d.data}` } })),
+            ],
           });
         }
       }

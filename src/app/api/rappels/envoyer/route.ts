@@ -5,6 +5,7 @@ import { timingSafeEqual } from "node:crypto";
 import { getDb } from "@/db";
 import { configuredSenders } from "@/lib/notify";
 import { runReminders } from "@/lib/reminder-repo";
+import { deleteExpiredPieces } from "@/lib/chat-pieces";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,7 +22,9 @@ async function handle(request: Request) {
   if (!authorized(request)) return Response.json({ error: "Non autorisé" }, { status: 401 });
   const origin = process.env.APP_URL?.replace(/\/$/, "") || new URL(request.url).origin;
   const summary = await runReminders(getDb(), { senders: configuredSenders(), origin });
-  return Response.json(summary);
+  // Ménage : pièces jointes du chat de plus de 7 jours
+  const pieces_effacees = await deleteExpiredPieces(getDb()).catch((err) => (console.error("pieces", err), 0));
+  return Response.json({ ...summary, pieces_effacees });
 }
 
 export const GET = handle;

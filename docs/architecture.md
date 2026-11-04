@@ -147,6 +147,7 @@ app_settings   réglages (clés d'API IA chiffrées)
 | `documents` | rattaché à un objet **ou** à une tâche (contrainte `documents_one_owner`), `type_id` → `document_types` (`RESTRICT`), nom d'origine, type MIME, taille, chemin (`<env>/documents/<objet>/…` ou `<env>/documents/taches/<tâche>/…`) |
 | `links` | rattaché à un objet **ou** à une tâche (contrainte `links_one_owner`), URL http(s) normalisée, titre facultatif |
 | `object_types`, `document_types` | `name` unique sans tenir compte de la casse (index sur `lower(name)`) |
+| `chat_attachments` | pièces jointes du chat de l'assistant (7 jours, propriétaire seul) |
 | `todo_dependencies` | enchaînement des tâches (`todo_id` attend `depends_on_id`), sans boucle (voir [gestion-de-projet.md](gestion-de-projet.md)) |
 | `reminder_schemes`, `push_subscriptions`, `reminder_deliveries` | rappels : schémas, appareils abonnés aux notifications, rappels déjà traités (voir [rappels.md](rappels.md)) |
 | `audit_log` | journal des actions sur les objets et les tâches : origine (`interface`, `api`, `mcp`, `systeme`), application, auteur, élément (sans clé étrangère : survit à la suppression), objet concerné, action, détails JSON (voir [journal.md](journal.md)) |

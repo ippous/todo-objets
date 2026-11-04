@@ -120,6 +120,13 @@
       "when": 1793787477506,
       "tag": "0016_dependances",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793794012438,
+      "tag": "0017_pieces_assistant",
+      "breakpoints": true
     }
   ]
 }
