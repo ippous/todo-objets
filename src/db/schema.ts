@@ -245,6 +245,8 @@ export const links = pgTable(
     todoId: uuid("todo_id").references(() => todos.id, { onDelete: "cascade" }),
     url: text("url").notNull(),
     title: text("title").notNull(),
+    /** Description libre (texte simple). */
+    description: text("description"),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

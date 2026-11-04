@@ -29,6 +29,7 @@ import {
   moveObject,
   setDocumentDescription,
   setDocumentType,
+  setLinkDescription,
   setPhotoDescription,
   setTodoStatus,
   SUBTASK_MAX_LENGTH,
@@ -356,12 +357,13 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
     "ajouter_lien",
     {
       title: "Ajouter un lien",
-      description: "Ajoute un lien web (http/https) à un objet OU à une tâche (fournir exactement l'un des deux).",
+      description: "Ajoute un lien web (http/https) à un objet OU à une tâche (fournir exactement l'un des deux), avec un titre et une description facultatifs.",
       inputSchema: {
         objet_id: UUID.optional(),
         tache_id: UUID.optional(),
         url: z.string().min(3).max(2000),
         titre: z.string().max(200).optional(),
+        description: CAPTION.optional().describe("Description du lien (texte simple)"),
       },
       annotations: CREATE,
     },
@@ -369,10 +371,12 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
       guard(async () => {
         if (!!a.objet_id === !!a.tache_id) return fail("Fournis soit objet_id, soit tache_id (un seul des deux).");
         const owner = a.objet_id ? { objectId: a.objet_id } : { todoId: a.tache_id! };
-        const l = await addLink(db, { owner, url: a.url, title: a.titre, createdById: user.id }, actor);
+        const l = await addLink(db, { owner, url: a.url, title: a.titre, description: a.description, createdById: user.id }, actor);
         return ok({
           ajoute: true,
+          id: l.id,
           titre: l.title,
+          description: l.description,
           url_lien: l.url,
           page: a.objet_id ? objectUrl(a.objet_id) : todoUrl(a.tache_id!),
         });
@@ -604,6 +608,25 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         }
         const after = a.description !== undefined ? await setDocumentDescription(db, a.id, a.description, actor) : d;
         return ok({ modifie: true, id: a.id, nom: d.filename, type: typeName, description: after.description, url: docUrl(a.id) });
+      }),
+  );
+
+  // ---------- modifier_lien ----------
+  server.registerTool(
+    "modifier_lien",
+    {
+      title: "Modifier un lien",
+      description: "Change la description d'un lien (identifiant donné par obtenir_objet / obtenir_tache) ; null l'efface.",
+      inputSchema: {
+        id: UUID.describe("Identifiant du lien"),
+        description: CAPTION.nullable(),
+      },
+      annotations: UPDATE,
+    },
+    async (a) =>
+      guard(async () => {
+        const l = await setLinkDescription(db, a.id, a.description, actor);
+        return ok({ modifie: true, id: l.id, titre: l.title, url_lien: l.url, description: l.description });
       }),
   );
 

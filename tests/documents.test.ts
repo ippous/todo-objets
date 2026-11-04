@@ -3,6 +3,7 @@ import type { Db } from "@/db";
 import {
   addDocument,
   addLink,
+  setLinkDescription,
   addPhoto,
   createTodo,
   deleteDocument,
@@ -46,6 +47,15 @@ describe("liens", () => {
     await deleteLink(db, l.id);
     expect(await listLinks(db, { objectId: ids["PoolHouse"] })).toHaveLength(1);
     await expect(deleteLink(db, l.id)).rejects.toBeInstanceOf(DomainError);
+  });
+
+  it("garde une description de lien, modifiable et effaçable", async () => {
+    const l = await addLink(db, { owner: { objectId: ids["PoolHouse"] }, url: "https://a.fr", description: "  Notice de la pompe  " });
+    expect(l.description).toBe("Notice de la pompe");
+    expect((await setLinkDescription(db, l.id, "Garantie 2 ans")).description).toBe("Garantie 2 ans");
+    expect((await setLinkDescription(db, l.id, "  ")).description).toBeNull();
+    expect((await addLink(db, { owner: { objectId: ids["PoolHouse"] }, url: "https://b.fr" })).description).toBeNull();
+    await expect(setLinkDescription(db, "00000000-0000-0000-0000-000000000000", "x")).rejects.toBeInstanceOf(DomainError);
   });
 });
 

@@ -36,7 +36,7 @@ html, body { margin: 0; background: var(--paper); color: var(--ink); }
 body {
   font: 14px/1.4 "Atkinson Hyperlegible", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-button, input { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--moss); outline-offset: 1px; border-radius: 4px; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 [hidden] { display: none !important; }
@@ -130,7 +130,7 @@ main { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 
 /* Bascule Lien / Photo */
 .modes { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 2px; margin-right: 4px; }
-.modes button { border: 0; background: none; padding: 3px 12px; border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: 700; font-size: 13px; }
+.modes button { border: 0; background: none; padding: 3px 9px; border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: 700; font-size: 13px; }
 .modes button[aria-checked="true"] { background: var(--moss); color: var(--on-moss); }
 
 /* Carte photo */
@@ -156,6 +156,21 @@ main { display: flex; flex-direction: column; min-height: 0; flex: 1; }
   position: fixed; inset: 6px; border: 2px dashed var(--moss); border-radius: 12px; background: color-mix(in srgb, var(--moss-soft) 88%, transparent);
   display: grid; place-items: center; font-weight: 700; color: var(--moss); pointer-events: none; font-size: 16px;
 }
+
+/* Carte document */
+.doc-preview { font-weight: 700; font-size: 18px; color: var(--moss); letter-spacing: .03em; }
+.doc-type { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.doc-type select {
+  flex: 1; min-width: 0; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); font: inherit;
+}
+
+/* Description */
+.desc-card { margin: 6px 12px 0; }
+.desc-card textarea {
+  width: 100%; resize: vertical; min-height: 40px; max-height: 140px; padding: 6px 9px; font: inherit; color: inherit;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface);
+}
+.desc-card textarea:focus { border-color: var(--moss); outline: none; }
 
 /* Pied */
 .footer { border-top: 1px solid var(--line); padding: 8px 12px 10px; background: var(--paper); display: grid; gap: 6px; }
@@ -199,3 +214,4 @@ body.options { max-width: 640px; margin: 0 auto; padding: 28px 20px 40px; font-s
 .options ol { padding-left: 20px; margin: 6px 0 0; }
 .options h2 { font-size: 16px; margin: 24px 0 6px; }
 .options kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 13px; background: var(--surface); }
+.doc-preview:not(:has(.preview-empty)) { border-style: solid; border-color: var(--line); }

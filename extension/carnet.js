@@ -75,7 +75,7 @@ export async function callTool(name, args = {}, settings) {
   }
 }
 
-const WRITE_TOOLS = new Set(["ajouter_lien", "ajouter_photo", "creer_tache", "modifier_tache"]);
+const WRITE_TOOLS = new Set(["ajouter_lien", "ajouter_photo", "ajouter_document", "creer_tache", "modifier_tache"]);
 
 async function readBody(res) {
   const raw = await res.text();

@@ -35,7 +35,7 @@ async function connect(write: boolean, del = false) {
 }
 
 const DELETE_TOOLS = ["supprimer_tache", "supprimer_objet", "supprimer_sous_tache", "supprimer_photo", "supprimer_document", "supprimer_lien"];
-const NEW_WRITE_TOOLS = ["ajouter_document", "modifier_document", "ajouter_sous_taches", "modifier_sous_tache", "creer_type", "modifier_photo"];
+const NEW_WRITE_TOOLS = ["ajouter_document", "modifier_document", "ajouter_sous_taches", "modifier_sous_tache", "creer_type", "modifier_photo", "modifier_lien"];
 
 describe("MCP — droits de suppression", () => {
   it("écriture seule : nouveaux outils d'écriture, aucun de suppression ; lecture : voir_photo / lire_document", async () => {

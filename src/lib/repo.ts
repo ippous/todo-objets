@@ -1030,18 +1030,31 @@ export async function listLinks(db: Db, owner: AttachmentOwner): Promise<LinkRow
 
 export async function addLink(
   db: Db,
-  data: { owner: AttachmentOwner; url: string; title?: string | null; createdById?: string | null },
+  data: { owner: AttachmentOwner; url: string; title?: string | null; description?: string | null; createdById?: string | null },
   actor?: Actor,
 ): Promise<LinkRow> {
   await assertOwner(db, data.owner);
   const url = normalizeUrl(data.url);
   const title = (data.title ?? "").trim().slice(0, 200) || new URL(url).hostname.replace(/^www\./, "");
+  const description = cleanCaption(data.description ?? null);
   const [row] = await db
     .insert(links)
-    .values({ ...data.owner, url, title, createdById: data.createdById ?? null })
+    .values({ ...data.owner, url, title, description, createdById: data.createdById ?? null })
     .returning();
   const target = await ownerTarget(db, data.owner);
   if (target) await logAction(db, actor, { target, action: "ajout_lien", details: { titre: title, url } });
+  return row;
+}
+
+/** Change la description d'un lien (null ou vide pour l'effacer). */
+export async function setLinkDescription(db: Db, id: string, raw: string | null, actor?: Actor): Promise<LinkRow> {
+  const description = cleanCaption(raw);
+  const [before] = await db.select().from(links).where(eq(links.id, id));
+  if (!before) throw new DomainError("Lien introuvable");
+  if (before.description === description) return before;
+  const [row] = await db.update(links).set({ description }).where(eq(links.id, id)).returning();
+  const target = await ownerTarget(db, ownerOf(row));
+  if (target) await logAction(db, actor, { target, action: "description_lien", details: { titre: row.title, legende: description } });
   return row;
 }
 

@@ -16,10 +16,10 @@ Carnet est une application web personnelle, multi-utilisateurs, pour gérer des 
 | Échéances et rappels | échéance au jour ou à l'heure ; schémas de rappel (J-10 / J-1 / H-3 / M-10…) gérés par les admins et choisis sur chaque tâche ; envoi par e-mail et notification sur téléphone / PC | [docs/rappels.md](docs/rappels.md) |
 | Ajout en lot | créer n objets ou n tâches d'un coup, avec réglages communs | [docs/ajout-en-lot.md](docs/ajout-en-lot.md) |
 | Photos | photos sur les objets et les tâches, avec une description, une vignette par élément | [docs/photos.md](docs/photos.md) |
-| Documents et liens | factures, garanties, modes d'emploi… classés par type, avec une description et une visionneuse intégrée ; liens web | [docs/documents-et-liens.md](docs/documents-et-liens.md) |
+| Documents et liens | factures, garanties, modes d'emploi… classés par type, avec une description et une visionneuse intégrée ; liens web avec description | [docs/documents-et-liens.md](docs/documents-et-liens.md) |
 | Types | listes modifiables des types d'objets et de documents, suppression bloquée tant qu'ils sont utilisés | [docs/types.md](docs/types.md) |
 | Assistants IA (MCP) | serveur MCP pour Claude, ChatGPT, Cursor… : lecture de l'arbre, des objets, des tâches, des photos et des documents ; sur autorisation, création / modification de tâches, sous-tâches, objets, liens, photos, documents et types ; sur autorisation à part, suppressions ; connexion OAuth ou jeton personnel | [docs/mcp.md](docs/mcp.md) |
-| Extension Chrome | ajouter à une tâche ou un objet (trouvé par son nom ou dans l'arborescence) la page courante en lien, ou une photo : capture, clic droit sur une image, coller, glisser, fichier | [docs/extension-chrome.md](docs/extension-chrome.md) |
+| Extension Chrome | ajouter à une tâche ou un objet (trouvé par son nom ou dans l'arborescence) la page courante en lien, une photo (capture, clic droit sur une image, coller, glisser, fichier) ou un document (fichier, page courante, clic droit sur un lien), avec une description | [docs/extension-chrome.md](docs/extension-chrome.md) |
 | Journal des actions | qui a fait quoi, quand, et depuis où (interface, MCP / extension Chrome) sur les objets et les tâches ; historique sur chaque fiche et page Journal | [docs/journal.md](docs/journal.md) |
 | Utilisateurs et accès | connexion Google, liste d'adresses autorisées, rôles | [docs/utilisateurs-et-acces.md](docs/utilisateurs-et-acces.md) |
 
