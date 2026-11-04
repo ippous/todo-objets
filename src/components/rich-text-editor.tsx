@@ -13,6 +13,11 @@ import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { getCommands, runCommandCode, type CommandContext, type CommandDef } from "@/lib/command-runtime";
 import { CommandNode } from "./command-node";
 import { toEditorHtml } from "@/lib/rich-text-shared";
+import { buildContactLink, CONTACT_COMMANDS, CONTACT_TRIGGER, contactKind, isActionHref } from "@/lib/contact-links";
+
+/** Entrée de la liste des raccourcis : commande écrite par un admin, ou commande intégrée (lien d'action). */
+type MenuItem = CommandDef & { builtin?: string };
+const BUILTIN_ITEMS: MenuItem[] = CONTACT_COMMANDS.map((c) => ({ name: c.name, description: `${c.description} · ${c.usage}`, code: "", builtin: c.usage }));
 
 type Props = {
   name: string;
@@ -68,9 +73,10 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
   const [cmdError, setCmdError] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<Trigger | null>(null);
-  const matchesRef = useRef<CommandDef[]>([]);
+  const matchesRef = useRef<MenuItem[]>([]);
   const activeRef = useRef(0);
-  const chooseRef = useRef<(c: CommandDef) => void>(() => {});
+  const chooseRef = useRef<(c: MenuItem) => void>(() => {});
+  const linkingRef = useRef(false);
   // Images : envoi puis insertion à l'endroit du curseur (bouton, collage ou glisser-déposer)
   const [imageStatus, setImageStatus] = useState<string | null>(null);
   const insertImagesRef = useRef<(files: File[], at?: number) => void>(() => {});
@@ -112,6 +118,16 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
         insertImagesRef.current(files, pos);
         return true;
       },
+      // Liens d'action ($$tel, $$mail, $$what, $$contact) : un clic appelle, écrit ou ouvre la fiche
+      handleClick: (_view, _pos, event) => {
+        const a = (event.target as HTMLElement | null)?.closest?.("a");
+        const href = a?.getAttribute("href") ?? "";
+        if (!a || !isActionHref(href)) return false;
+        event.preventDefault();
+        if (/^(tel|mailto):/i.test(href)) window.location.href = href;
+        else window.open(href, "_blank", "noopener");
+        return true;
+      },
       handleKeyDown: (_view, event) => {
         const t = triggerRef.current;
         const list = matchesRef.current;
@@ -144,7 +160,33 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
       let next: Trigger | null = null;
       if (selection.empty) {
         const $from = selection.$from;
-        const before = $from.parent.textBetween(Math.max(0, $from.parentOffset - 50), $from.parentOffset, undefined, "\ufffc");
+        const before = $from.parent.textBetween(Math.max(0, $from.parentOffset - 250), $from.parentOffset, undefined, "\ufffc");
+        // « $$tel(…) » refermé : remplacé par le lien d'action
+        const link = CONTACT_TRIGGER.exec(before);
+        const kind = link ? contactKind(link[1]) : null;
+        if (link && kind && !linkingRef.current) {
+          linkingRef.current = true;
+          const from = $from.pos - link[0].length;
+          const to = $from.pos;
+          const built = buildContactLink(kind, link[2]);
+          queueMicrotask(() => {
+            linkingRef.current = false;
+            if ("error" in built) {
+              setCmdError(`$$${kind} : ${built.error}`);
+              return;
+            }
+            setCmdError(null);
+            editor
+              .chain()
+              .focus()
+              .insertContentAt({ from, to }, [
+                { type: "text", text: built.text, marks: [{ type: "link", attrs: { href: built.href } }] },
+                { type: "text", text: " " },
+              ])
+              .unsetMark("link")
+              .run();
+          });
+        }
         const m = /(\$\$|@@)([a-z0-9_-]{0,40})$/i.exec(before);
         if (m) {
           const coords = editor.view.coordsAtPos($from.pos);
@@ -175,17 +217,27 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
     if (trigger && !commands) void getCommands().then(setCommands);
   }, [trigger, commands]);
 
-  const matches = trigger && commands ? commands.filter((c) => c.name.startsWith(trigger.query)) : [];
+  const matches: MenuItem[] =
+    trigger && commands
+      ? [...(trigger.kind === "$$" ? BUILTIN_ITEMS.filter((b) => !commands.some((c) => c.name === b.name)) : []), ...commands].filter((c) =>
+          c.name.startsWith(trigger.query),
+        )
+      : [];
   useEffect(() => {
     matchesRef.current = matches;
   });
 
-  const choose = (c: CommandDef) => {
+  const choose = (c: MenuItem) => {
     const t = triggerRef.current;
     if (!editor || !t) return;
     triggerRef.current = null;
     setTrigger(null);
     setCmdError(null);
+    if (c.builtin) {
+      // Commande intégrée : on écrit « $$tel( » et on laisse saisir la valeur, puis « ) »
+      editor.chain().focus().insertContentAt({ from: t.from, to: t.to }, `$$${c.name}(`).run();
+      return;
+    }
     if (t.kind === "@@") {
       editor.chain().focus().insertContentAt({ from: t.from, to: t.to }, [{ type: "commande", attrs: { name: c.name } }, { type: "text", text: " " }]).run();
       return;
@@ -304,7 +356,9 @@ export function RichTextEditor({ name, label, defaultValue, placeholder, apiRef,
       </div>
       <p className="text-xs text-muted">
         Raccourcis : <span className="font-bold">$$commande</span> insère son résultat,{" "}
-        <span className="font-bold">@@commande</span> le recalcule à chaque affichage ·{" "}
+        <span className="font-bold">@@commande</span> le recalcule à chaque affichage ;{" "}
+        <span className="font-bold">$$tel(…)</span>, <span className="font-bold">$$mail(…)</span>,{" "}
+        <span className="font-bold">$$what(…)</span>, <span className="font-bold">$$contact(nom; tél; e-mail)</span> insèrent un lien ·{" "}
         <Link href="/commandes" target="_blank" className="text-moss underline-offset-4 hover:underline">
           Commandes
         </Link>

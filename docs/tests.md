@@ -25,6 +25,7 @@ Ils s'exécutent sur un **Postgres en mémoire** (PGlite), avec les vraies migra
 | `tests/ai.test.ts` | types de tâche (reprise des catégories, icône, suppression bloquée), réglages IA (chiffrement des clés, fournisseur par défaut), appels Claude / ChatGPT simulés, compléter la description, propositions de sous-tâches sans doublon |
 | `tests/commands.test.ts` | commandes de saisie : date et heure fournies, création, nom invalide ou en double, modification, suppression, `span[data-commande]` conservé et nettoyé, code écrit par l'IA (appel simulé) |
 | `tests/reminders.test.ts` | décalages J / H / M (lecture, tri), heure de Paris été / hiver, instants des rappels avec et sans heure, schémas (nom unique, défaut, suppression), envoi une seule fois par e-mail et notification, rattrapage du seul dernier rappel, réarmement quand l'échéance change, préférences, créateur sans responsable, appareil expiré, récurrence |
+| `tests/contact-links.test.ts` | commandes intégrées `$$tel`, `$$mail`, `$$what`, `$$contact` : saisie repérée, alias, numéros (international pour WhatsApp), adresses, fiche vCard, liens conservés par le nettoyage du HTML |
 | `tests/purge.test.ts` | purge des données de test (sous-arbres, fichiers, types, jokers) |
 
 ## Tests de bout en bout (Playwright)
@@ -49,6 +50,7 @@ Ils tournent sur deux profils : **mobile** (Pixel 7) et **desktop**.
 | `e2e/recherche-objets.spec.ts` | recherche d'objets dans l'arbre : sans accents ni majuscules, chemin affiché, clavier, clic, aucun résultat |
 | `e2e/journal.spec.ts` | historique sur la fiche d'un objet après création et modification d'une tâche, page Journal filtrée par origine |
 | `e2e/rappels.spec.ts` | schéma créé par un admin (saisie souple, erreur), tâche avec date, heure et schéma, heure affichée dans la liste, prochain rappel sur la fiche, préférences de la page Rappels, route d'envoi refusée sans secret |
+| `e2e/liens-contact.spec.ts` | `$$tel` choisi dans la liste, `$$mail`, `$$WHAT`, `$$contact` transformés en liens, adresse invalide signalée, liens enregistrés, fiche vCard servie (et refusée sans connexion) |
 | `e2e/visionneuses.spec.ts` | aperçu PDF, Word, ODT, Excel, ODS, PowerPoint, CSV, texte, ZIP ; visionneuse refusée sans connexion |
 
 Les fichiers d'exemple sont dans `e2e/fixtures/`.

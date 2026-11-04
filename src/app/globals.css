@@ -238,3 +238,10 @@ textarea.input {
 /* Images insérées dans le texte */
 .rich img { max-width: 100%; max-height: 24rem; width: auto; height: auto; border-radius: 0.5rem; }
 .rich-editor img.ProseMirror-selectednode { outline: 3px solid var(--moss); }
+
+/* Liens d'action insérés par $$tel, $$mail, $$what, $$contact */
+.rich a[href^="tel:"]::before { content: "☎ "; text-decoration: none; display: inline-block; }
+.rich a[href^="mailto:"]::before { content: "✉ "; text-decoration: none; display: inline-block; }
+.rich a[href^="https://wa.me/"]::before { content: "💬 "; text-decoration: none; display: inline-block; }
+.rich a[href^="/api/vcard"]::before { content: "👤 "; text-decoration: none; display: inline-block; }
+.rich-editor a[href^="tel:"], .rich-editor a[href^="mailto:"], .rich-editor a[href^="https://wa.me/"], .rich-editor a[href^="/api/vcard"] { cursor: pointer; }
