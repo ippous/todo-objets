@@ -99,3 +99,21 @@ Un collage depuis une page web ou un traitement de texte garde la mise en forme 
 Sécurité : le HTML est **nettoyé côté serveur** avant l'enregistrement et avant l'affichage (seules les balises de l'éditeur sont conservées ; scripts, styles, évènements et liens `javascript:` sont retirés). Les liens s'ouvrent dans un nouvel onglet.
 
 Les descriptions saisies avant l'éditeur (texte brut, comme la surface des parcelles) s'affichent et s'éditent normalement : chaque ligne vide sépare un paragraphe.
+
+### Liens d'action : appeler, écrire, WhatsApp, contact
+
+Quatre commandes intégrées, proposées dans la liste qui s'ouvre après `$$`, insèrent un lien. Le lien est créé dès la parenthèse fermante ; le nom de la commande s'écrit en majuscules ou en minuscules.
+
+| Saisie | Lien inséré | Au clic |
+|---|---|---|
+| `$$tel(06 12 34 56 78)` | ☎ 06 12 34 56 78 (`tel:0612345678`) | appel sur un téléphone ; sur PC, l'appli d'appel installée (Teams, Phone Link…) |
+| `$$mail(jean@societe.fr)` | ✉ jean@societe.fr (`mailto:`) | nouveau message dans l'appli de messagerie |
+| `$$what(06 12 34 56 78)` | 💬 WhatsApp 06 12 34 56 78 (`https://wa.me/33612345678`) | discussion WhatsApp (appli sur téléphone, WhatsApp Web sur PC) |
+| `$$contact(Jean Dupont; 06 12 34 56 78; jean@societe.fr)` | 👤 Jean Dupont | fiche contact `.vcf` à ajouter au carnet d'adresses du téléphone |
+
+- Alias acceptés : `$$telephone`, `$$appel`, `$$email`, `$$courriel`, `$$whatsapp`, `$$wa`, `$$vcard`.
+- Pour WhatsApp, un numéro français `06…` devient `336…` ; un numéro étranger s'écrit avec son indicatif (`+32 470…`).
+- `$$contact` : nom, numéros et adresses séparés par `;`, dans n'importe quel ordre (au moins un des trois). La fiche est servie par `/api/vcard`, réservée aux personnes connectées.
+- Dans l'éditeur, ces liens s'ouvrent d'un simple clic ; les autres liens restent modifiables (bouton 🔗).
+- Un numéro ou une adresse invalide affiche un message sous l'éditeur, et la saisie reste telle quelle.
+- Une commande créée dans *Commandes* avec le même nom (`tel`, `mail`…) prend le pas sur la commande intégrée.
