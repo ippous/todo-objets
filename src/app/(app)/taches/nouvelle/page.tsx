@@ -4,7 +4,7 @@ import { createTodoAction } from "@/app/actions";
 import { TodoForm } from "@/components/todo-form";
 import { getDb } from "@/db";
 import { objectOptions } from "@/lib/options";
-import { listObjects, listTypes, listUsers } from "@/lib/repo";
+import { listObjects, listTodos, listTypes, listUsers } from "@/lib/repo";
 import { getAiChoice } from "@/lib/ai";
 import { getCurrentUser } from "@/lib/session";
 import { listReminderSchemes } from "@/lib/reminder-repo";
@@ -17,13 +17,14 @@ export const metadata: Metadata = { title: "Nouvelle tâche" };
 export default async function NouvelleTachePage(props: PageProps<"/taches/nouvelle">) {
   const { objet, retour } = await props.searchParams;
   const db = getDb();
-  const [objs, users, types, ai, me, schemes] = await Promise.all([
+  const [objs, users, types, ai, me, schemes, open] = await Promise.all([
     listObjects(db),
     listUsers(db),
     listTypes(db, "tache"),
     getAiChoice(db),
     getCurrentUser(),
     listReminderSchemes(db),
+    listTodos(db, { statuses: ["a_faire", "en_cours"] }),
   ]);
   const objectId = typeof objet === "string" && objs.some((o) => o.id === objet) ? objet : undefined;
 
@@ -49,6 +50,10 @@ export default async function NouvelleTachePage(props: PageProps<"/taches/nouvel
         users={users.filter((u) => u.active).map((u) => ({ id: u.id, name: u.name }))}
         types={types.map((t) => ({ id: t.id, name: t.name, icon: t.icon }))}
         schemes={schemes.map((x) => ({ id: x.id, name: x.name, offsets: formatOffsets(x.offsets), isDefault: x.isDefault }))}
+        dependencies={{
+          candidates: open.map((t) => ({ id: t.id, title: t.title, objectName: t.objectName, status: t.status, dueDate: t.dueDate })),
+          value: [],
+        }}
         returnTo={returnPath(retour, objectId ? `/objets/${objectId}` : "/taches")}
         submitLabel="Créer la tâche"
         description={{ todoId: null, storage: { prefix: storagePrefix, mode: storageMode }, ai, isAdmin: me?.role === "admin" }}

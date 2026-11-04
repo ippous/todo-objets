@@ -23,6 +23,8 @@ export type KanbanCard = {
   recurring: boolean;
   coverPhotoId: string | null;
   typeIcon: string | null;
+  /** Attend encore des tâches ouvertes */
+  blocked: boolean;
 };
 
 export type KanbanLane = { id: string; name: string; cards: KanbanCard[] };
@@ -224,6 +226,7 @@ function Card({
           </span>
         )}
         {card.recurring && <span>Récurrente</span>}
+        {card.blocked && !done && <span className="rounded bg-ochre-soft px-1 font-bold text-ochre">Bloquée</span>}
       </p>
       <div className="flex justify-between">
         {prev ? (

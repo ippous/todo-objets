@@ -5,7 +5,7 @@ import type { Db } from "@/db";
 import { users, type User } from "@/db/schema";
 import { buildMcpServer } from "@/lib/mcp-server";
 import sharp from "sharp";
-import { createObject, createTodo, getObject, getTodo, listLinks, listPhotos } from "@/lib/repo";
+import { createObject, createTodo, getObject, getTodo, listLinks, listObjects, listPhotos } from "@/lib/repo";
 import { exists, remove } from "@/lib/storage";
 import { createTestDb } from "./helpers";
 
@@ -151,5 +151,30 @@ describe("MCP — photos", () => {
   it("lecture seule : pas d'outil photo", async () => {
     const { client } = await connect(false);
     expect((await client.listTools()).tools.map((t) => t.name)).not.toContain("ajouter_photo");
+  });
+});
+
+describe("MCP — enchaînement et date de début", () => {
+  it("crée des tâches enchaînées, signale la boucle et l'état bloquée", async () => {
+    const { call } = await connect(true);
+    const objetId = (await listObjects(db))[0]?.id ?? (await createObject(db, { name: "Grange" })).id;
+    const a = (await call("creer_tache", { objet_id: objetId, titre: "Démonter", date_debut: "2026-11-05", echeance: "2026-11-08" })).data;
+    const b = (await call("creer_tache", { objet_id: objetId, titre: "Semer", date_debut: "2026-11-10", echeance: "2026-11-12", dependances: [a.id] })).data;
+    let tb = (await call("obtenir_tache", { id: b.id })).data;
+    expect(tb.date_debut).toBe("2026-11-10");
+    expect(tb.bloquee).toBe(true);
+    expect(tb.attend.map((x: { titre: string }) => x.titre)).toEqual(["Démonter"]);
+    expect((await call("obtenir_tache", { id: a.id })).data.debloque.map((x: { titre: string }) => x.titre)).toEqual(["Semer"]);
+
+    const loop = await call("modifier_tache", { id: a.id, dependances: [b.id] });
+    expect(loop.error).toBe(true);
+    expect(loop.text).toContain("Boucle");
+    expect((await call("modifier_tache", { id: a.id, date_debut: "2026-11-20" })).text).toContain("précéder");
+
+    await call("modifier_tache", { id: a.id, statut: "fait" });
+    tb = (await call("obtenir_tache", { id: b.id })).data;
+    expect(tb.bloquee).toBe(false);
+    await call("modifier_tache", { id: b.id, dependances: [] });
+    expect((await call("obtenir_tache", { id: b.id })).data.attend).toEqual([]);
   });
 });

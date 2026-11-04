@@ -9,7 +9,8 @@ import { BulkAddButton } from "@/components/bulk-add";
 import { PhotoGallery } from "@/components/photo-gallery";
 import { PhotoUploader } from "@/components/photo-uploader";
 import { TodoRow } from "@/components/todo-row";
-import { fmtEur, fmtHours } from "@/lib/format";
+import { fmtDate, fmtEur, fmtHours, todayIso } from "@/lib/format";
+import { progressOf } from "@/lib/gantt";
 import { ObjectDocuments } from "@/components/object-documents";
 import { ObjectLinks } from "@/components/object-links";
 import {
@@ -71,6 +72,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
   const cover = photos.find((p) => p.isCover);
   const todos = showDone ? all : all.filter((t) => t.status !== "fait");
   const totals = computeTotals(all);
+  const progress = progressOf(all, todayIso());
 
   // Sous-arbre dans l'ordre d'affichage, pour grouper les tâches par sous-objet
   const subtree = flatten(buildForest(objs)).filter((n) => pathTo(objs, n.id).some((p) => p.id === id));
@@ -212,6 +214,59 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
             : "« Utiliser comme vignette » sous une photo pour en faire la vignette de l'objet."}
         </p>
       </section>
+
+      {progress.total > 0 && (
+        <section aria-labelledby="avancement" className="grid gap-3 rounded-xl bg-surface p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 id="avancement" className="text-lg font-bold">
+              Avancement
+            </h2>
+            <Link
+              href={`/taches?vue=gantt&statut=toutes&objet=${id}`}
+              className="text-sm font-bold text-moss underline-offset-4 hover:underline"
+            >
+              Voir le Gantt →
+            </Link>
+          </div>
+          <div
+            role="progressbar"
+            aria-label="Tâches faites"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={progress.pct}
+            className="h-3 overflow-hidden rounded-full bg-paper"
+          >
+            <div className="h-full rounded-full bg-moss" style={{ width: `${progress.pct}%` }} />
+          </div>
+          <dl className="num grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div>
+              <dt className="text-muted">Tâches faites</dt>
+              <dd className="text-lg font-bold">
+                {progress.done} / {progress.total} <span className="text-sm font-normal text-muted">({progress.pct} %)</span>
+              </dd>
+            </div>
+            {progress.hoursPct != null && (
+              <div>
+                <dt className="text-muted">Heures prévues faites</dt>
+                <dd className="text-lg font-bold">
+                  {fmtHours(progress.doneEstHours)} / {fmtHours(progress.estHours)}{" "}
+                  <span className="text-sm font-normal text-muted">({progress.hoursPct} %)</span>
+                </dd>
+              </div>
+            )}
+            <div>
+              <dt className="text-muted">Fin prévue</dt>
+              <dd className="text-lg font-bold">{progress.plannedEnd ? fmtDate(progress.plannedEnd) : "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted">En retard · bloquées</dt>
+              <dd className={`text-lg font-bold ${progress.late ? "text-brick" : ""}`}>
+                {progress.late} · {progress.blocked}
+              </dd>
+            </div>
+          </dl>
+        </section>
+      )}
 
       <section aria-label="Bilan" className="num grid grid-cols-2 gap-3 rounded-xl bg-surface p-4 sm:grid-cols-4">
         <Stat label="Tâches ouvertes" value={String(totals.open.openCount)} />

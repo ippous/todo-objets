@@ -10,6 +10,7 @@ import type { AiChoice } from "./task-ai";
 import type { ObjectOption } from "@/lib/options";
 import { TaskIcon } from "@/lib/task-icons";
 import { FormError } from "./submit";
+import { DependencyPicker, type DependencyCandidate } from "./dependency-picker";
 
 type Values = Pick<
   Todo,
@@ -23,6 +24,7 @@ type Values = Pick<
   | "actualHours"
   | "estValueEur"
   | "actualValueEur"
+  | "startDate"
   | "dueDate"
   | "dueTime"
   | "reminderSchemeId"
@@ -39,6 +41,7 @@ export function TodoForm({
   users,
   types,
   schemes,
+  dependencies,
   returnTo,
   submitLabel,
   afterDescription,
@@ -54,6 +57,8 @@ export function TodoForm({
   types: { id: string; name: string; icon: string | null }[];
   /** Schémas de rappel ; `offsets` déjà mis en forme (« J-10 / J-1 / H-3 »). */
   schemes: { id: string; name: string; offsets: string; isDefault: boolean }[];
+  /** Tâches que celle-ci peut attendre, et celles qu'elle attend déjà. */
+  dependencies: { candidates: DependencyCandidate[]; value: string[] };
   returnTo: string;
   submitLabel: string;
   /** Contenu affiché juste sous la description (les sous-tâches). */
@@ -218,6 +223,10 @@ export function TodoForm({
         <fieldset className="grid gap-3 sm:grid-cols-3">
           <legend className="sr-only">Planification</legend>
           <label className="field">
+            <span>Début (facultatif)</span>
+            <input className="input" type="date" name="startDate" defaultValue={values?.startDate ?? ""} max={due.date || undefined} />
+          </label>
+          <label className="field">
             <span>Échéance</span>
             <input
               className="input"
@@ -288,6 +297,8 @@ export function TodoForm({
             </select>
           </label>
         </fieldset>
+
+        <DependencyPicker candidates={dependencies.candidates} value={dependencies.value} />
 
         <label className="field">
           <span>Tags, séparés par des virgules</span>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteTodoAction, updateTodoAction } from "@/app/actions";
 import { AuditTrail } from "@/components/audit-trail";
@@ -12,12 +13,14 @@ import { AI_PROVIDER_LABEL, AI_PROVIDERS, getAiSettings } from "@/lib/ai";
 import { getCurrentUser } from "@/lib/session";
 import { listReminderSchemes, listTodoDeliveries, upcomingFires } from "@/lib/reminder-repo";
 import { formatOffsets } from "@/lib/reminders";
+import { getDependencies, isBlocked } from "@/lib/dependencies";
+import { fmtDate, STATUS_LABEL } from "@/lib/format";
 import { TaskIcon } from "@/lib/task-icons";
 import { TodoForm } from "@/components/todo-form";
 import { getDb } from "@/db";
 import { listAudit } from "@/lib/audit";
 import { objectOptions } from "@/lib/options";
-import { getTodo, getUser, listDocuments, listLinks, listObjects, listPhotos, listSubtasks, listTypes, listUsers, sumSubtaskHours } from "@/lib/repo";
+import { listTodos, getTodo, getUser, listDocuments, listLinks, listObjects, listPhotos, listSubtasks, listTypes, listUsers, sumSubtaskHours } from "@/lib/repo";
 import { storageMode, storagePrefix } from "@/lib/storage";
 import { returnPath } from "@/lib/return-to";
 import { DeleteTodo } from "./delete-todo";
@@ -31,7 +34,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
   const db = getDb();
   const todo = await getTodo(db, id);
   if (!todo) notFound();
-  const [objs, users, creator, photos, docs, links, docTypes, subs, history, taskTypes, aiSettings, me, schemes, deliveries] = await Promise.all([
+  const [objs, users, creator, photos, docs, links, docTypes, subs, history, taskTypes, aiSettings, me, schemes, deliveries, deps, allTodos] = await Promise.all([
     listObjects(db),
     listUsers(db),
     todo.createdById ? getUser(db, todo.createdById) : undefined,
@@ -46,7 +49,14 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
     getCurrentUser(),
     listReminderSchemes(db),
     listTodoDeliveries(db, id, 1),
+    getDependencies(db, id),
+    listTodos(db, {}),
   ]);
+  const blocked = todo.status !== "fait" && isBlocked(deps.attend);
+  const waitIds = new Set(deps.attend.map((t) => t.id));
+  const candidates = allTodos
+    .filter((t) => t.id !== id && (t.status !== "fait" || waitIds.has(t.id)))
+    .map((t) => ({ id: t.id, title: t.title, objectName: t.objectName, status: t.status, dueDate: t.dueDate }));
   const scheme = schemes.find((x) => x.id === todo.reminderSchemeId);
   const nextFire = upcomingFires(todo, scheme?.offsets)[0];
   const lastDelivery = deliveries.find((d) => d.outcome !== "saute");
@@ -71,6 +81,27 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
           Créée le {created}
           {creator ? ` par ${creator.name}` : ""}
         </p>
+        {deps.attend.length > 0 && todo.status !== "fait" && (
+          <p className={`mt-1 w-fit rounded px-2 py-0.5 text-sm font-bold ${blocked ? "bg-ochre-soft text-ochre" : "bg-moss-soft text-moss"}`}>
+            {blocked
+              ? `Bloquée : attend ${deps.attend.filter((t) => t.status !== "fait").map((t) => `« ${t.title} »`).join(", ")}`
+              : "Prête : les tâches attendues sont faites"}
+          </p>
+        )}
+        {deps.debloque.length > 0 && (
+          <p className="mt-1 text-sm text-muted">
+            Débloque :{" "}
+            {deps.debloque.map((t, i) => (
+              <span key={t.id}>
+                {i > 0 && ", "}
+                <Link href={`/taches/${t.id}`} className="text-moss underline-offset-4 hover:underline">
+                  {t.title}
+                </Link>
+                {` (${STATUS_LABEL[t.status].toLowerCase()}${t.dueDate ? `, ${fmtDate(t.dueDate)}` : ""})`}
+              </span>
+            ))}
+          </p>
+        )}
         {scheme && todo.dueDate && todo.status !== "fait" && (
           <p className="text-sm text-muted">
             Rappels « {scheme.name} » :{" "}
@@ -104,6 +135,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
         users={users.filter((u) => u.active || u.id === todo.assigneeId).map((u) => ({ id: u.id, name: u.name }))}
         types={taskTypes.map((t) => ({ id: t.id, name: t.name, icon: t.icon }))}
         schemes={schemes.map((x) => ({ id: x.id, name: x.name, offsets: formatOffsets(x.offsets), isDefault: x.isDefault }))}
+        dependencies={{ candidates, value: deps.attend.map((t) => t.id) }}
         returnTo={back}
         submitLabel="Enregistrer"
         subtaskHours={sumSubtaskHours(subs)}

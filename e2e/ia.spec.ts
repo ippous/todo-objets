@@ -116,7 +116,7 @@ test("types de tâche avec icône, réglages IA, compléter la description et pr
   await expect(prop).toContainText("protéger le portail");
   await prop.getByRole("button", { name: "Remplacer la description" }).click();
   await expect(page.getByText("Description remplacée : pense à enregistrer.")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Description" })).toContainText("protéger le portail");
+  await expect(page.getByRole("textbox", { name: "Description", exact: true })).toContainText("protéger le portail");
 
   // Proposer des sous-tâches : tout ajouter, y compris la tâche voisine
   await page.getByRole("button", { name: "Proposer des sous-tâches" }).click();
@@ -142,7 +142,7 @@ test("types de tâche avec icône, réglages IA, compléter la description et pr
   await expect(page.getByRole("heading", { level: 1, name: objet })).toBeVisible();
   await expect(page.getByRole("link", { name: "Huiler les gonds" })).toBeVisible();
   await page.getByRole("link", { name: tache }).click();
-  await expect(page.getByRole("textbox", { name: "Description" })).toContainText("protéger le portail");
+  await expect(page.getByRole("textbox", { name: "Description", exact: true })).toContainText("protéger le portail");
 
   // Sans clé, les boutons expliquent quoi faire
   await page.goto("/utilisateurs/ia");

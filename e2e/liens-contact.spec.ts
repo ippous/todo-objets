@@ -24,7 +24,7 @@ test("$$tel, $$mail, $$what, $$contact insèrent des liens d'action", async ({ p
   await page.goto("/taches/nouvelle");
   await page.getByLabel("Titre", { exact: true }).fill(`Appeler le maréchal ${m}`);
   await page.getByLabel("Objet concerné").selectOption({ index: 1 });
-  const desc = page.getByRole("textbox", { name: "Description" });
+  const desc = page.getByRole("textbox", { name: "Description", exact: true });
   await desc.click();
 
   // Les commandes intégrées sont proposées après $$
@@ -47,7 +47,7 @@ test("$$tel, $$mail, $$what, $$contact insèrent des liens d'action", async ({ p
   await page.getByRole("button", { name: "Créer la tâche" }).click();
   await page.goto(`/taches?q=${encodeURIComponent(m)}`);
   await page.getByRole("link", { name: `Appeler le maréchal ${m}` }).click();
-  const saved = page.getByRole("textbox", { name: "Description" });
+  const saved = page.getByRole("textbox", { name: "Description", exact: true });
   await expect(saved.locator('a[href="tel:0612345678"]')).toBeVisible();
   await expect(saved.locator('a[href="https://wa.me/33612345678"]')).toBeVisible();
 
