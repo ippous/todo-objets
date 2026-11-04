@@ -12,6 +12,7 @@ import {
   pgEnum,
   pgTable,
   text,
+  time,
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -29,6 +30,10 @@ export const users = pgTable("users", {
   weeklyHoursAvailable: numeric("weekly_hours_available", { precision: 6, scale: 2, mode: "number" }),
   skills: text("skills"),
   active: boolean("active").notNull().default(true),
+  /** Rappels reçus par e-mail. */
+  notifyEmail: boolean("notify_email").notNull().default(true),
+  /** Rappels reçus en notification sur les appareils abonnés. */
+  notifyPush: boolean("notify_push").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -62,6 +67,25 @@ export const taskTypes = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("task_types_name_uq").on(sql`lower(${t.name})`)],
+);
+
+/** Un décalage de rappel : n jours (j), heures (h) ou minutes (m) avant l'échéance. */
+export type ReminderOffset = { n: number; unit: "j" | "h" | "m" };
+
+/** Schémas de rappel (ex. J-10 / J-5 / J-2 / J-1), gérés par les administrateurs. */
+export const reminderSchemes = pgTable(
+  "reminder_schemes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    offsets: jsonb("offsets").$type<ReminderOffset[]>().notNull(),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("reminder_schemes_name_uq").on(sql`lower(${t.name})`),
+    uniqueIndex("reminder_schemes_default_uq").on(t.isDefault).where(sql`${t.isDefault}`),
+  ],
 );
 
 export const objects = pgTable(
@@ -103,6 +127,10 @@ export const todos = pgTable(
     estValueEur: numeric("est_value_eur", { precision: 12, scale: 2, mode: "number" }),
     actualValueEur: numeric("actual_value_eur", { precision: 12, scale: 2, mode: "number" }),
     dueDate: date("due_date", { mode: "string" }),
+    /** Heure d'échéance facultative (heure de Paris), seulement avec une date. */
+    dueTime: time("due_time"),
+    /** Schéma de rappel choisi (null : pas de rappel). */
+    reminderSchemeId: uuid("reminder_scheme_id").references(() => reminderSchemes.id, { onDelete: "set null" }),
     recurrence: recurrenceEnum("recurrence").notNull().default("aucune"),
     assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
@@ -117,6 +145,8 @@ export const todos = pgTable(
     index("todos_status_idx").on(t.status),
     index("todos_assignee_idx").on(t.assigneeId),
     index("todos_type_idx").on(t.typeId),
+    index("todos_due_idx").on(t.dueDate),
+    check("todos_time_needs_date", sql`${t.dueTime} IS NULL OR ${t.dueDate} IS NOT NULL`),
     uniqueIndex("todos_previous_occurrence_uq").on(t.previousOccurrenceId),
     foreignKey({ columns: [t.previousOccurrenceId], foreignColumns: [t.id], name: "todos_previous_occurrence_fk" }).onDelete(
       "set null",
@@ -224,6 +254,55 @@ export const links = pgTable(
     check("links_one_owner", sql`(${t.objectId} IS NULL) <> (${t.todoId} IS NULL)`),
   ],
 );
+
+// ---------- Rappels ----------
+
+/** Appareils abonnés aux notifications (Web Push) d'un utilisateur. */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** Nom lisible de l'appareil (navigateur, système). */
+    label: text("label").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("push_subscriptions_endpoint_uq").on(t.endpoint), index("push_subscriptions_user_idx").on(t.userId)],
+);
+
+/**
+ * Rappels déjà traités : une ligne par tâche, décalage et échéance.
+ * Changer l'échéance réarme donc les rappels ; l'index unique empêche les doublons.
+ */
+export const reminderDeliveries = pgTable(
+  "reminder_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    todoId: uuid("todo_id")
+      .notNull()
+      .references(() => todos.id, { onDelete: "cascade" }),
+    /** Décalage, ex. « j10 », « h3 », « m10 ». */
+    offsetKey: text("offset_key").notNull(),
+    /** Échéance au moment du rappel, ex. « 2026-11-20 » ou « 2026-11-20T14:30 ». */
+    dueKey: text("due_key").notNull(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** envoye, saute (rattrapé par un rappel plus récent), aucun_canal, echec */
+    outcome: text("outcome").notNull(),
+    channels: text("channels").array().notNull().default(sql`'{}'::text[]`),
+    error: text("error"),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("reminder_deliveries_uq").on(t.todoId, t.offsetKey, t.dueKey)],
+);
+
+export type ReminderScheme = typeof reminderSchemes.$inferSelect;
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 
 // ---------- Journal des actions ----------
 

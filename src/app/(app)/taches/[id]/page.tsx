@@ -10,6 +10,8 @@ import { SubtaskList } from "@/components/subtask-list";
 import { SubtaskAssist, type AiChoice } from "@/components/task-ai";
 import { AI_PROVIDER_LABEL, AI_PROVIDERS, getAiSettings } from "@/lib/ai";
 import { getCurrentUser } from "@/lib/session";
+import { listReminderSchemes, listTodoDeliveries, upcomingFires } from "@/lib/reminder-repo";
+import { formatOffsets } from "@/lib/reminders";
 import { TaskIcon } from "@/lib/task-icons";
 import { TodoForm } from "@/components/todo-form";
 import { getDb } from "@/db";
@@ -29,7 +31,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
   const db = getDb();
   const todo = await getTodo(db, id);
   if (!todo) notFound();
-  const [objs, users, creator, photos, docs, links, docTypes, subs, history, taskTypes, aiSettings, me] = await Promise.all([
+  const [objs, users, creator, photos, docs, links, docTypes, subs, history, taskTypes, aiSettings, me, schemes, deliveries] = await Promise.all([
     listObjects(db),
     listUsers(db),
     todo.createdById ? getUser(db, todo.createdById) : undefined,
@@ -42,7 +44,13 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
     listTypes(db, "tache"),
     getAiSettings(db),
     getCurrentUser(),
+    listReminderSchemes(db),
+    listTodoDeliveries(db, id, 1),
   ]);
+  const scheme = schemes.find((x) => x.id === todo.reminderSchemeId);
+  const nextFire = upcomingFires(todo, scheme?.offsets)[0];
+  const lastDelivery = deliveries.find((d) => d.outcome !== "saute");
+  const at = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" });
   const aiChoice: AiChoice = {
     providers: AI_PROVIDERS.filter((p) => aiSettings.providers[p].configured).map((p) => ({ id: p, label: AI_PROVIDER_LABEL[p] })),
     defaultProvider: aiSettings.defaultProvider,
@@ -63,6 +71,20 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
           Créée le {created}
           {creator ? ` par ${creator.name}` : ""}
         </p>
+        {scheme && todo.dueDate && todo.status !== "fait" && (
+          <p className="text-sm text-muted">
+            Rappels « {scheme.name} » :{" "}
+            {nextFire ? `prochain (${nextFire.label}) le ${at.format(nextFire.at)}` : "plus aucun à venir"}
+            {lastDelivery &&
+              ` · dernier : ${at.format(lastDelivery.at)}${
+                lastDelivery.outcome === "envoye"
+                  ? ` (${lastDelivery.channels.join(", ")})`
+                  : lastDelivery.outcome === "echec"
+                    ? " (échec)"
+                    : " (aucun canal actif)"
+              }`}
+          </p>
+        )}
       </div>
       <section aria-labelledby="photos" className="grid max-w-2xl gap-3">
         <h2 id="photos" className="text-lg font-bold">
@@ -81,6 +103,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
         objects={objectOptions(objs)}
         users={users.filter((u) => u.active || u.id === todo.assigneeId).map((u) => ({ id: u.id, name: u.name }))}
         types={taskTypes.map((t) => ({ id: t.id, name: t.name, icon: t.icon }))}
+        schemes={schemes.map((x) => ({ id: x.id, name: x.name, offsets: formatOffsets(x.offsets), isDefault: x.isDefault }))}
         returnTo={back}
         submitLabel="Enregistrer"
         subtaskHours={sumSubtaskHours(subs)}

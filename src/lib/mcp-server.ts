@@ -29,6 +29,9 @@ import { registerDeleteTools } from "./mcp-delete-tools";
 import { registerWriteTools } from "./mcp-write-tools";
 import { DOCUMENT_TYPES } from "./document-types";
 import { richTextToPlain } from "./rich-text";
+import { isOverdue } from "./format";
+import { listReminderSchemes } from "./reminder-repo";
+import { formatOffsets } from "./reminders";
 import { read } from "./storage";
 import { buildForest, flatten, pathTo, subtreeIds, type TreeNode } from "./tree";
 
@@ -116,7 +119,8 @@ export function buildMcpServer(
     priorite: t.priority,
     categorie: t.typeName,
     echeance: t.dueDate,
-    en_retard: t.status !== "fait" && !!t.dueDate && t.dueDate < today(),
+    heure_echeance: t.dueTime ? t.dueTime.slice(0, 5) : null,
+    en_retard: isOverdue(t.dueDate, t.dueTime, t.status),
     recurrence: t.recurrence,
     objet: { id: t.objectId, nom: t.objectName, chemin: chemin(objs, t.objectId) },
     responsable: t.assigneeName,
@@ -141,13 +145,14 @@ export function buildMcpServer(
       annotations: READ_ONLY,
     },
     async () => {
-      const [{ nodes }, todos, objTypes, docTypes, people, taskTypes] = await Promise.all([
+      const [{ nodes }, todos, objTypes, docTypes, people, taskTypes, schemes] = await Promise.all([
         forest(),
         listTodos(db, {}),
         listTypes(db, "objet"),
         listTypes(db, "document"),
         listUsers(db),
         listTypes(db, "tache"),
+        listReminderSchemes(db),
       ]);
       const open = todos.filter((t) => t.status !== "fait");
       return result({
@@ -156,7 +161,7 @@ export function buildMcpServer(
         objets: nodes.length,
         taches: {
           ouvertes: open.length,
-          en_retard: open.filter((t) => t.dueDate && t.dueDate < today()).length,
+          en_retard: open.filter((t) => isOverdue(t.dueDate, t.dueTime, t.status)).length,
           faites: todos.length - open.length,
         },
         racines: nodes
@@ -173,6 +178,7 @@ export function buildMcpServer(
         types_objets: objTypes.map((t) => ({ nom: t.name, nombre: t.usage })),
         types_documents: docTypes.map((t) => ({ nom: t.name, nombre: t.usage })),
         types_taches: taskTypes.map((t) => ({ nom: t.name, nombre: t.usage })),
+        schemas_rappel: schemes.map((x) => ({ nom: x.name, rappels: formatOffsets(x.offsets), par_defaut: x.isDefault })),
         utilisateurs: people.filter((u) => u.active).map((u) => ({ nom: u.name, role: u.role })),
         valeurs: { statuts: STATUSES, priorites: PRIORITIES, recurrences: ["aucune", "mensuelle", "saisonniere", "annuelle"] },
         aujourd_hui: today(),
@@ -382,7 +388,9 @@ export function buildMcpServer(
         priorite: t.priority,
         categorie: t.typeId ? ((await listTypes(db, "tache")).find((x) => x.id === t.typeId)?.name ?? null) : null,
         echeance: t.dueDate,
-        en_retard: t.status !== "fait" && !!t.dueDate && t.dueDate < today(),
+        heure_echeance: t.dueTime ? t.dueTime.slice(0, 5) : null,
+        en_retard: isOverdue(t.dueDate, t.dueTime, t.status),
+        rappels: t.reminderSchemeId ? ((await listReminderSchemes(db)).find((x) => x.id === t.reminderSchemeId)?.name ?? null) : null,
         recurrence: t.recurrence,
         objet: { id: t.objectId, nom: obj?.name, chemin: chemin(objs, t.objectId), url: objectUrl(t.objectId) },
         responsable: name(t.assigneeId),
