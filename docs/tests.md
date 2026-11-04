@@ -15,7 +15,7 @@ Ils s'exécutent sur un **Postgres en mémoire** (PGlite), avec les vraies migra
 | `tests/tree.test.ts` | forêt, cumuls par branche, chemins, regroupement par racine, prochaine échéance |
 | `tests/repo.test.ts` | objets, déplacement anti-boucle, suppression, tâches, filtres, tris, récurrence, ajout en lot, recherche d'objets |
 | `tests/photos.test.ts` | vignette automatique, changement de vignette, suppression |
-| `tests/documents.test.ts` | documents et liens des objets et des tâches, normalisation des URL |
+| `tests/documents.test.ts` | documents et liens des objets et des tâches, normalisation des URL, description des liens |
 | `tests/types.test.ts` | création, renommage, doublons insensibles à la casse, suppression bloquée si utilisé |
 | `tests/rich-text.test.ts` | nettoyage du HTML des descriptions, conversion de l'ancien texte brut |
 | `tests/oauth.test.ts` | jetons personnels, adresses de retour, code + PKCE à usage unique, rotation des jetons de rafraîchissement, révocations, droits lecture / écriture |

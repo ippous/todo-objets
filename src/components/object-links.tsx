@@ -1,10 +1,11 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import { addLinkAction, deleteLinkAction } from "@/app/actions";
+import { addLinkAction, deleteLinkAction, setLinkDescriptionAction } from "@/app/actions";
+import { CaptionEditor } from "./caption-editor";
 import { FormError, Submit } from "./submit";
 
-export type LinkItem = { id: string; url: string; title: string };
+export type LinkItem = { id: string; url: string; title: string; description: string | null };
 
 const host = (url: string) => {
   try {
@@ -43,6 +44,7 @@ export function ObjectLinks({ owner, links }: { owner: AttachmentOwnerRef; links
                   {l.title}
                 </a>
                 <p className="truncate text-sm text-muted">{host(l.url)}</p>
+                <CaptionEditor value={l.description} label={`le lien ${l.title}`} onSave={(d) => setLinkDescriptionAction(l.id, d)} />
               </div>
               {confirmId === l.id ? (
                 <span className="flex flex-wrap items-center gap-2">
@@ -91,6 +93,10 @@ export function ObjectLinks({ owner, links }: { owner: AttachmentOwnerRef; links
         <Submit className="btn btn-ghost" pendingLabel="Ajout…">
           Ajouter le lien
         </Submit>
+        <label className="field sm:col-span-3">
+          <span>Description (facultative)</span>
+          <textarea className="input min-h-16" name="description" maxLength={2000} />
+        </label>
       </form>
       <FormError error={state.error ?? error ?? undefined} />
     </div>

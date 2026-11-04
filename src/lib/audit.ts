@@ -31,6 +31,7 @@ export type AuditAction =
   | "description_photo"
   | "ajout_lien"
   | "suppression_lien"
+  | "description_lien"
   | "ajout_sous_tache"
   | "modification_sous_tache"
   | "suppression_sous_tache"
@@ -180,6 +181,7 @@ export const ACTION_LABEL: Record<string, string> = {
   suppression_document: "Suppression de document",
   type_document: "Changement de type de document",
   description_document: "Description de document",
+  description_lien: "Description de lien",
   description_photo: "Description de photo",
   ajout_lien: "Ajout de lien",
   suppression_lien: "Suppression de lien",

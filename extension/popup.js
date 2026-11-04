@@ -1,5 +1,6 @@
 import { callTool, CarnetError, loadSettings } from "./carnet.js";
 import { fetchImage, ImageError, originPattern, prepareImage } from "./image.js";
+import { ACCEPT, DocumentError, documentType, extensionOf, fileNameFromUrl, formatSize, looksLikeDocumentUrl, prepareDocument } from "./document.js";
 
 const $ = (id) => document.getElementById(id);
 const RECENTS_KEY = "recents";
@@ -11,10 +12,12 @@ const IN_WINDOW = new URLSearchParams(location.search).has("fenetre");
 
 const state = {
   settings: null,
-  mode: "lien", // "lien" | "photo"
+  mode: "lien", // "lien" | "photo" | "document"
   page: { url: "", title: "", windowId: undefined },
   linkable: false, // la page est une adresse http(s)
   photo: null, // { dataUrl, width, height, origine }
+  doc: null, // { kind: "fichier", name, type, size, dataUrl } | { kind: "adresse", name, url }
+  docTypes: null, // Promise<string[]> : types de documents de Carnet
   target: null, // { kind: "tache" | "objet", id, nom, chemin }
   busy: false,
   added: false,
@@ -77,7 +80,7 @@ function handleError(err, where) {
     block(err.message, "Crée un jeton personnel « Lecture et écriture » dans Carnet › Connexion IA, puis colle-le dans les réglages.");
     return;
   }
-  const msg = err instanceof CarnetError || err instanceof ImageError ? err.message : String(err?.message || err);
+  const msg = err instanceof CarnetError || err instanceof ImageError || err instanceof DocumentError ? err.message : String(err?.message || err);
   if (where) fill(where, el("div", { class: "error", text: msg }));
   else setStatus(msg, "err");
 }
@@ -140,21 +143,23 @@ function refreshFooter() {
   tg.title = t?.chemin ?? "";
 
   const btn = $("add");
-  const what = state.mode === "photo" ? "la photo" : "le lien";
+  const what = { lien: "le lien", photo: "la photo", document: "le document" }[state.mode];
   if (state.busy) return;
   if (state.added) {
     btn.disabled = true;
-    btn.textContent = state.mode === "photo" ? "Photo ajoutée ✓" : "Lien ajouté ✓";
+    btn.textContent = { lien: "Lien ajouté ✓", photo: "Photo ajoutée ✓", document: "Document ajouté ✓" }[state.mode];
     return;
   }
   const missing =
     state.mode === "photo" && !state.photo
       ? "Ajoute d'abord une image"
-      : state.mode === "lien" && !state.linkable
-        ? "Cette page ne peut pas devenir un lien"
-        : !t
-          ? "Choisir une tâche ou un objet"
-          : "";
+      : state.mode === "document" && !state.doc
+        ? "Choisis d'abord un fichier"
+        : state.mode === "lien" && !state.linkable
+          ? "Cette page ne peut pas devenir un lien"
+          : !t
+            ? "Choisir une tâche ou un objet"
+            : "";
   btn.disabled = !!missing;
   btn.textContent = missing || `Ajouter ${what} à « ${t.nom} »`;
 }
@@ -352,7 +357,63 @@ function setMode(mode) {
   for (const b of document.querySelectorAll("[data-mode]")) b.setAttribute("aria-checked", String(b.dataset.mode === mode));
   $("link-card").hidden = mode !== "lien";
   $("photo-card").hidden = mode !== "photo";
+  $("doc-card").hidden = mode !== "document";
+  if (mode === "document") void loadDocTypes();
   setStatus("");
+  refreshFooter();
+}
+
+// ---------- Document ----------
+/** Types de documents de Carnet, pour le sélecteur (« Autre » par défaut). */
+async function loadDocTypes() {
+  if (state.docTypes) return;
+  state.docTypes = callTool("vue_ensemble", {}, state.settings)
+    .then((r) => (r.types_documents ?? []).map((t) => t.nom))
+    .catch(() => []);
+  const names = await state.docTypes;
+  if (!names.length) return;
+  const select = $("doc-type");
+  const current = select.value;
+  fill(select, names.map((n) => el("option", { value: n, text: n })));
+  select.value = names.includes(current) ? current : (names.find((n) => n.toLowerCase() === "autre") ?? names[0]);
+}
+
+function showDoc() {
+  const d = state.doc;
+  if (!d) {
+    fill($("doc-preview"), el("span", { class: "preview-empty", text: "Glisse un fichier ici" }));
+    fill($("doc-info"));
+    return;
+  }
+  fill($("doc-preview"), (extensionOf(d.name) || "DOC").toUpperCase());
+  fill(
+    $("doc-info"),
+    el("strong", { text: d.name, title: d.name }),
+    el("span", { text: d.kind === "fichier" ? formatSize(d.size) : `Téléchargé par Carnet depuis ${new URL(d.url).host}` }),
+  );
+}
+
+async function loadDocFile(file) {
+  setMode("document");
+  fill($("doc-info"), el("span", { text: "Préparation…" }));
+  try {
+    state.doc = await prepareDocument(file);
+    state.added = false;
+    setStatus("");
+  } catch (e) {
+    handleError(e);
+  }
+  showDoc();
+  refreshFooter();
+}
+
+/** Document désigné par son adresse : Carnet le télécharge lui-même (25 Mo au plus). */
+function loadDocUrl(url) {
+  setMode("document");
+  state.doc = { kind: "adresse", name: fileNameFromUrl(url), url };
+  state.added = false;
+  showDoc();
+  setStatus(/^https:/i.test(url) ? "" : "Seules les adresses https peuvent être téléchargées par Carnet.", /^https:/i.test(url) ? "" : "err");
   refreshFooter();
 }
 
@@ -430,10 +491,17 @@ function askSitePermission(url, origine) {
 }
 
 function onPaste(e) {
-  const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
-  if (!file) return; // texte collé : comportement normal
+  const files = [...(e.clipboardData?.files ?? [])];
+  const image = files.find((f) => f.type.startsWith("image/"));
+  if (image && state.mode !== "document") {
+    e.preventDefault();
+    void loadPhotoBlob(image, "Image collée");
+    return;
+  }
+  const doc = files.find((f) => documentType(f.name, f.type));
+  if (!doc) return; // texte collé : comportement normal
   e.preventDefault();
-  void loadPhotoBlob(file, "Image collée");
+  void loadDocFile(doc);
 }
 
 function setupDrop() {
@@ -460,10 +528,15 @@ function setupDrop() {
     const dt = e.dataTransfer;
     if (!hasImage(dt)) return;
     e.preventDefault();
-    const file = [...dt.files].find((f) => f.type.startsWith("image/"));
-    if (file) return void loadPhotoBlob(file, file.name);
+    const files = [...dt.files];
+    // En mode Document, tout fichier devient un document ; sinon une image devient une photo
+    const image = state.mode === "document" ? null : files.find((f) => f.type.startsWith("image/"));
+    if (image) return void loadPhotoBlob(image, image.name);
+    if (files[0]) return void loadDocFile(files[0]);
     const url = dt.getData("text/uri-list").split("\n").find((l) => l && !l.startsWith("#"));
-    if (url) void loadPhotoUrl(url.trim(), "Image déposée");
+    if (!url) return;
+    if (state.mode === "document" || looksLikeDocumentUrl(url.trim())) loadDocUrl(url.trim());
+    else void loadPhotoUrl(url.trim(), "Image déposée");
   });
 }
 
@@ -480,6 +553,7 @@ async function submit() {
   const t = state.target;
   if (!t || state.busy || state.added) return;
   if (state.mode === "photo" && !state.photo) return;
+  if (state.mode === "document" && !state.doc) return;
   if (state.mode === "lien" && !state.linkable) return;
   const btn = $("add");
   state.busy = true;
@@ -487,20 +561,34 @@ async function submit() {
   btn.textContent = "Envoi…";
   setStatus("");
   const owner = t.kind === "tache" ? "tache" : "objet";
+  const description = $("description").value.trim() || undefined;
   try {
     let page;
     if (state.mode === "lien") {
       const titre = $("link-title").value.trim() || undefined;
-      const r = await callTool("ajouter_lien", { [`${owner}_id`]: t.id, url: state.page.url, titre }, state.settings);
+      const r = await callTool("ajouter_lien", { [`${owner}_id`]: t.id, url: state.page.url, titre, description }, state.settings);
       page = r.page;
-    } else {
-      const r = await callTool("ajouter_photo", { image_base64: state.photo.dataUrl, [`${owner}_ids`]: [t.id] }, state.settings);
+    } else if (state.mode === "photo") {
+      const r = await callTool("ajouter_photo", { image_base64: state.photo.dataUrl, [`${owner}_ids`]: [t.id], description }, state.settings);
       if (!r.ajoutees) throw new CarnetError(r.erreurs?.[0]?.erreur ?? "La photo n'a pas été ajoutée.", "outil");
       page = r.photos?.[0]?.url;
+    } else {
+      const d = state.doc;
+      const r = await callTool(
+        "ajouter_document",
+        {
+          [`${owner}_id`]: t.id,
+          ...(d.kind === "fichier" ? { nom_fichier: d.name, fichier_base64: d.dataUrl, format: d.type } : { url_source: d.url }),
+          type_document: $("doc-type").value || undefined,
+          description,
+        },
+        state.settings,
+      );
+      page = r.page;
     }
     state.added = true;
     setStatus(
-      `${state.mode === "photo" ? "Photo ajoutée" : "Lien ajouté"} ${t.kind === "tache" ? "à la tâche" : "à l'objet"} « ${t.nom} ».`,
+      `${{ lien: "Lien ajouté", photo: "Photo ajoutée", document: "Document ajouté" }[state.mode]} ${t.kind === "tache" ? "à la tâche" : "à l'objet"} « ${t.nom} ».`,
       "ok",
       page ? { href: page, text: "Ouvrir" } : undefined,
     );
@@ -579,6 +667,21 @@ async function init() {
       refreshFooter();
     }
   });
+  // Une autre description : on peut renvoyer le même élément
+  $("description").addEventListener("input", () => {
+    if (state.added) {
+      state.added = false;
+      refreshFooter();
+    }
+  });
+  $("doc-file").accept = ACCEPT;
+  $("doc-file").addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if (f) void loadDocFile(f);
+    e.target.value = "";
+  });
+  $("doc-page").hidden = !state.linkable;
+  $("doc-page").addEventListener("click", () => loadDocUrl(state.page.url));
   $("capture").addEventListener("click", capturePage);
   $("file").addEventListener("change", (e) => {
     const f = e.target.files?.[0];
@@ -588,11 +691,14 @@ async function init() {
   document.addEventListener("paste", onPaste);
   setupDrop();
 
-  setMode(state.linkable ? "lien" : "photo");
+  // Un PDF (ou autre fichier) ouvert dans l'onglet est proposé comme document
+  if (state.linkable && looksLikeDocumentUrl(url)) loadDocUrl(url);
+  else setMode(state.linkable ? "lien" : "photo");
   await showRecents();
   showTab(stored[TAB_KEY] === "tree" ? "tree" : "search");
 
   if (pending?.kind === "image") await loadPhotoUrl(pending.srcUrl, "Image de la page");
+  if (pending?.kind === "document") loadDocUrl(pending.linkUrl);
 }
 
 init().catch((e) => handleError(e));

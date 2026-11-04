@@ -282,7 +282,7 @@ export function buildMcpServer(
         },
         taches: todos.map((t) => todoSummary(objs, t)),
         documents: docs.map(docInfo),
-        liens: links.map((l) => ({ id: l.id, titre: l.title, url: l.url })),
+        liens: links.map((l) => ({ id: l.id, titre: l.title, url: l.url, description: l.description })),
         photos: photos.map(photoInfo),
         url: objectUrl(id),
       });
@@ -405,7 +405,7 @@ export function buildMcpServer(
         tags: t.tags,
         sous_taches: subs.map((st) => ({ id: st.id, texte: st.title, faite: st.done, heures_estimees: st.estHours, heures_realisees: st.actualHours })),
         documents: docs.map(docInfo),
-        liens: links.map((l) => ({ id: l.id, titre: l.title, url: l.url })),
+        liens: links.map((l) => ({ id: l.id, titre: l.title, url: l.url, description: l.description })),
         photos: photos.map(photoInfo),
         url: todoUrl(t.id),
       });
