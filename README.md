@@ -13,6 +13,7 @@ Carnet est une application web personnelle, multi-utilisateurs, pour gérer des 
 |---|---|---|
 | Arbre des objets | plusieurs racines, profondeur illimitée, déplacer (menu ou glisser-déposer), supprimer, cumuls par branche | [docs/arbre-et-objets.md](docs/arbre-et-objets.md) |
 | Tâches | valeur (€) et durée (h) estimées/réalisées, ratio €/h, priorité, statut, échéance, récurrence, responsable, catégorie, tags ; vue arbre et liste filtrable | [docs/taches.md](docs/taches.md) |
+| Échéances et rappels | échéance au jour ou à l'heure ; schémas de rappel (J-10 / J-1 / H-3 / M-10…) gérés par les admins et choisis sur chaque tâche ; envoi par e-mail et notification sur téléphone / PC | [docs/rappels.md](docs/rappels.md) |
 | Ajout en lot | créer n objets ou n tâches d'un coup, avec réglages communs | [docs/ajout-en-lot.md](docs/ajout-en-lot.md) |
 | Photos | photos sur les objets et les tâches, avec une description, une vignette par élément | [docs/photos.md](docs/photos.md) |
 | Documents et liens | factures, garanties, modes d'emploi… classés par type, avec une description et une visionneuse intégrée ; liens web | [docs/documents-et-liens.md](docs/documents-et-liens.md) |

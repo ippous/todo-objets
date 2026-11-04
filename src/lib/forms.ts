@@ -41,7 +41,8 @@ export function readObject(fd: FormData) {
   });
 }
 
-export const todoSchema = z.object({
+export const todoSchema = z
+  .object({
   objectId: z.string().uuid("Choisis un objet"),
   title: z.string().min(1, "Le titre est obligatoire").max(200),
   description: z.string().max(RICH_TEXT_MAX, "Description trop longue").nullable(),
@@ -53,10 +54,13 @@ export const todoSchema = z.object({
   estValueEur: amount,
   actualValueEur: amount,
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date invalide").nullable(),
+  dueTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure invalide").nullable(),
+  reminderSchemeId: uuidOrNull,
   recurrence: z.enum(RECURRENCES),
   assigneeId: uuidOrNull,
   tags: z.array(z.string().max(40)),
-});
+})
+  .refine((t) => !t.dueTime || t.dueDate, { message: "Choisis une date d'échéance avant l'heure", path: ["dueTime"] });
 
 export function readTodo(fd: FormData) {
   return todoSchema.safeParse({
@@ -71,6 +75,8 @@ export function readTodo(fd: FormData) {
     estValueEur: optionalNumber(fd, "estValueEur"),
     actualValueEur: optionalNumber(fd, "actualValueEur"),
     dueDate: optionalText(fd, "dueDate"),
+    dueTime: optionalText(fd, "dueTime")?.slice(0, 5) ?? null,
+    reminderSchemeId: optionalText(fd, "reminderSchemeId"),
     recurrence: str(fd, "recurrence") || "aucune",
     assigneeId: optionalText(fd, "assigneeId"),
     tags: parseTags(str(fd, "tags")),

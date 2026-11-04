@@ -77,6 +77,7 @@ export default async function TachesPage(props: PageProps<"/taches">) {
       status: t.status,
       priority: t.priority,
       dueDate: t.dueDate,
+      dueTime: t.dueTime,
       objectId: t.objectId,
       objectName: t.objectName,
       assigneeName: t.assigneeName,

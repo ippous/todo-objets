@@ -22,6 +22,11 @@ export default async function UtilisateursPage() {
             Assistants IA (Claude, ChatGPT) →
           </Link>
         </p>
+        <p className="mt-1">
+          <Link href="/utilisateurs/rappels" className="text-moss underline-offset-4 hover:underline">
+            Schémas de rappel (J-10, J-1, H-3…) →
+          </Link>
+        </p>
       </div>
       <ul className="grid gap-3">
         {users.map((u) => (

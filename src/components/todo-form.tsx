@@ -24,6 +24,8 @@ type Values = Pick<
   | "estValueEur"
   | "actualValueEur"
   | "dueDate"
+  | "dueTime"
+  | "reminderSchemeId"
   | "recurrence"
   | "assigneeId"
   | "tags"
@@ -36,6 +38,7 @@ export function TodoForm({
   objects,
   users,
   types,
+  schemes,
   returnTo,
   submitLabel,
   afterDescription,
@@ -49,6 +52,8 @@ export function TodoForm({
   objects: ObjectOption[];
   users: { id: string; name: string }[];
   types: { id: string; name: string; icon: string | null }[];
+  /** Schémas de rappel ; `offsets` déjà mis en forme (« J-10 / J-1 / H-3 »). */
+  schemes: { id: string; name: string; offsets: string; isDefault: boolean }[];
   returnTo: string;
   submitLabel: string;
   /** Contenu affiché juste sous la description (les sous-tâches). */
@@ -71,6 +76,11 @@ export function TodoForm({
     values ? (values.typeId ?? "") : (types.find((t) => t.name.toLowerCase() === "entretien")?.id ?? ""),
   );
   const typeIcon = types.find((t) => t.id === typeId)?.icon;
+  const [due, setDue] = useState({ date: values?.dueDate ?? "", time: values?.dueTime?.slice(0, 5) ?? "" });
+  // Nouvelle tâche : le schéma par défaut est proposé
+  const [schemeId, setSchemeId] = useState(values ? (values.reminderSchemeId ?? "") : (schemes.find((x) => x.isDefault)?.id ?? ""));
+  const scheme = schemes.find((x) => x.id === schemeId);
+  const schemeHasHm = !!scheme && /[HM]-/.test(scheme.offsets);
   const [est, setEst] = useState({ h: fmtNum(values?.estHours), v: fmtNum(values?.estValueEur) });
   const h = est.h.trim() === "" && subtaskHours?.estHours != null ? subtaskHours.estHours : Number(est.h.replace(",", "."));
   const v = Number(est.v.replace(",", "."));
@@ -209,8 +219,53 @@ export function TodoForm({
           <legend className="sr-only">Planification</legend>
           <label className="field">
             <span>Échéance</span>
-            <input className="input" type="date" name="dueDate" defaultValue={values?.dueDate ?? ""} />
+            <input
+              className="input"
+              type="date"
+              name="dueDate"
+              value={due.date}
+              onChange={(e) => setDue((d) => ({ date: e.target.value, time: e.target.value ? d.time : "" }))}
+            />
           </label>
+          <label className="field">
+            <span>Heure (facultative)</span>
+            <span className="flex gap-1">
+              <input
+                className="input min-w-0 flex-1"
+                type="time"
+                name="dueTime"
+                value={due.time}
+                disabled={!due.date}
+                onChange={(e) => setDue((d) => ({ ...d, time: e.target.value }))}
+              />
+              {due.time && (
+                <button type="button" className="btn btn-ghost px-3" aria-label="Retirer l'heure" onClick={() => setDue((d) => ({ ...d, time: "" }))}>
+                  ×
+                </button>
+              )}
+            </span>
+          </label>
+          <label className="field">
+            <span>Rappels</span>
+            <select className="input" name="reminderSchemeId" value={schemeId} onChange={(e) => setSchemeId(e.target.value)}>
+              <option value="">Aucun</option>
+              {schemes.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name} · {x.offsets}
+                </option>
+              ))}
+            </select>
+          </label>
+          {scheme && (
+            <p className="text-sm text-muted sm:col-span-3">
+              {!due.date
+                ? "Les rappels partiront dès qu'une échéance sera fixée."
+                : due.time
+                  ? `Rappels ${scheme.offsets}, comptés depuis le ${due.date.split("-").reverse().join("/")} à ${due.time}.`
+                  : `Rappels J à 8 h${schemeHasHm ? " ; les rappels H et M demandent une heure d'échéance" : ""}.`}{" "}
+              Ils vont au responsable, ou à défaut à la personne qui a créé la tâche.
+            </p>
+          )}
           <label className="field">
             <span>Récurrence</span>
             <select className="input" name="recurrence" defaultValue={values?.recurrence ?? "aucune"}>

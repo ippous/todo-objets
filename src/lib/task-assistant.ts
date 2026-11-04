@@ -37,7 +37,7 @@ async function context(db: Db, todoId: string | null, draft: Draft) {
     `Tâche : ${title}`,
     `Objet concerné : ${chemin || obj?.name || "?"}${obj?.description ? ` — ${richTextToPlain(obj.description).slice(0, 600)}` : ""}`,
     typeName ? `Type : ${typeName}` : null,
-    todo?.dueDate ? `Échéance : ${todo.dueDate}` : null,
+    todo?.dueDate ? `Échéance : ${todo.dueDate}${todo.dueTime ? ` à ${todo.dueTime.slice(0, 5)}` : ""}` : null,
     `Description actuelle :\n${description || "(vide)"}`,
     subs.length
       ? `Sous-tâches existantes :\n${subs

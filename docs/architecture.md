@@ -73,6 +73,7 @@ object_types ──< objects ──< objects (parent_id, arbre)
 | `documents` | rattaché à un objet **ou** à une tâche (contrainte `documents_one_owner`), `type_id` → `document_types` (`RESTRICT`), nom d'origine, type MIME, taille, chemin (`<env>/documents/<objet>/…` ou `<env>/documents/taches/<tâche>/…`) |
 | `links` | rattaché à un objet **ou** à une tâche (contrainte `links_one_owner`), URL http(s) normalisée, titre facultatif |
 | `object_types`, `document_types` | `name` unique sans tenir compte de la casse (index sur `lower(name)`) |
+| `reminder_schemes`, `push_subscriptions`, `reminder_deliveries` | rappels : schémas, appareils abonnés aux notifications, rappels déjà traités (voir [rappels.md](rappels.md)) |
 | `audit_log` | journal des actions sur les objets et les tâches : origine (`interface`, `api`, `mcp`, `systeme`), application, auteur, élément (sans clé étrangère : survit à la suppression), objet concerné, action, détails JSON (voir [journal.md](journal.md)) |
 | `users` | e-mail unique, rôle, actif, heures/semaine, compétences |
 | `oauth_clients`, `oauth_codes`, `api_tokens` | accès des assistants IA (MCP) : clients OAuth, codes d'autorisation, jetons personnels / d'accès / de rafraîchissement (empreintes SHA-256 seulement) |
