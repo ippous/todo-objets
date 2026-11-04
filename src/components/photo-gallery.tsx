@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { deletePhotoAction, setCoverPhotoAction } from "@/app/actions";
+import { deletePhotoAction, setCoverPhotoAction, setPhotoDescriptionAction } from "@/app/actions";
+import { CaptionEditor } from "./caption-editor";
 
-export type GalleryPhoto = { id: string; isCover: boolean; width: number | null; height: number | null };
+export type GalleryPhoto = { id: string; isCover: boolean; width: number | null; height: number | null; description?: string | null };
 
 export function PhotoGallery({ photos, label }: { photos: GalleryPhoto[]; label: string }) {
   const [openId, setOpenId] = useState<string | null>(null);
@@ -37,7 +38,8 @@ export function PhotoGallery({ photos, label }: { photos: GalleryPhoto[]; label:
               type="button"
               onClick={() => setOpenId(p.id)}
               className="block aspect-square w-full overflow-hidden rounded-lg bg-moss-soft"
-              aria-label={`Agrandir la photo${p.isCover ? " (vignette)" : ""}`}
+              aria-label={`Agrandir la photo${p.isCover ? " (vignette)" : ""}${p.description ? ` : ${p.description}` : ""}`}
+              title={p.description ?? undefined}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={`/api/photos/${p.id}?v=1`} alt="" loading="lazy" className="size-full object-cover" />
@@ -62,10 +64,16 @@ export function PhotoGallery({ photos, label }: { photos: GalleryPhoto[]; label:
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={`/api/photos/${current.id}`}
-              alt={`Photo de ${label}`}
+              alt={current.description || `Photo de ${label}`}
               width={current.width ?? undefined}
               height={current.height ?? undefined}
               className="max-h-[75vh] w-full rounded-lg bg-moss-soft object-contain"
+            />
+            <CaptionEditor
+              key={current.id}
+              value={current.description ?? null}
+              label="la photo"
+              onSave={(d) => setPhotoDescriptionAction(current.id, d)}
             />
             {error && (
               <p role="alert" className="rounded-lg bg-brick-soft px-3 py-2 text-sm text-brick">

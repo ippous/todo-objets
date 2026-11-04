@@ -42,8 +42,9 @@ export default async function ConnexionIaPage() {
         <p className="text-muted">
           Les assistants compatibles MCP (Claude, ChatGPT, Cursor, Copilot…) peuvent <strong>lire</strong> tes objets et tes
           tâches (arbre, détails, descriptions, documents, liens, recherche de tâches) et, si tu l&apos;autorises pour cet
-          accès, les <strong>modifier</strong> : créer et modifier des tâches et des objets, déplacer des objets, ajouter des
-          liens. Aucune suppression n&apos;est possible par ce biais.
+          accès, les <strong>modifier</strong> : créer et modifier des tâches, des sous-tâches et des objets, déplacer des
+          objets, ajouter des liens, des photos, des documents et des types. Les <strong>suppressions</strong> demandent un
+          droit à part, à accorder seulement si tu en as besoin.
         </p>
       </div>
 
@@ -86,7 +87,7 @@ export default async function ConnexionIaPage() {
               <li key={a.id} className="flex flex-wrap items-center gap-3 border-b border-line py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2 font-bold">
-                    {a.name} <RightsBadge write={a.write} />
+                    {a.name} <RightsBadge write={a.write} del={a.delete} />
                   </p>
                   <p className="text-sm text-muted">
                     Autorisée le {dt.format(a.createdAt)}
@@ -115,7 +116,7 @@ export default async function ConnexionIaPage() {
               <li key={t.id} className="flex flex-wrap items-center gap-3 border-b border-line py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
                   <p className="flex flex-wrap items-center gap-2 font-bold">
-                    {t.name} <RightsBadge write={t.write} />
+                    {t.name} <RightsBadge write={t.write} del={t.delete} />
                   </p>
                   <p className="text-sm text-muted">
                     <code>{t.prefix}…</code> · créé le {dt.format(t.createdAt)}

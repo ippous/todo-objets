@@ -70,7 +70,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
         </h2>
         <PhotoGallery
           label={todo.title}
-          photos={photos.map((p) => ({ id: p.id, isCover: p.isCover, width: p.width, height: p.height }))}
+          photos={photos.map((p) => ({ id: p.id, isCover: p.isCover, width: p.width, height: p.height, description: p.description }))}
         />
         <PhotoUploader kind="taches" ownerId={todo.id} prefix={storagePrefix} mode={storageMode} />
       </section>
@@ -100,6 +100,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
                   id: d.id,
                   typeId: d.typeId,
                   typeName: d.typeName,
+                  description: d.description,
                   filename: d.filename,
                   contentType: d.contentType,
                   size: d.size,

@@ -2,6 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { Submit } from "@/components/submit";
+import type { Rights } from "@/lib/oauth";
 import { createTokenAction, revokeAccessAction, type CreateTokenState } from "./actions";
 
 export function CopyButton({ text, label = "Copier" }: { text: string; label?: string }) {
@@ -42,6 +43,9 @@ export function CreateToken() {
           <label className="flex min-h-11 items-center gap-2">
             <input type="radio" name="droits" value="ecriture" /> Lecture et écriture
           </label>
+          <label className="flex min-h-11 items-center gap-2">
+            <input type="radio" name="droits" value="suppression" /> Lecture, écriture et suppression
+          </label>
         </fieldset>
         <Submit className="btn btn-primary" pendingLabel="Création…">
           Créer un jeton
@@ -55,7 +59,7 @@ export function CreateToken() {
       {state.token && (
         <div role="status" className="grid gap-2 rounded-xl border-2 border-moss bg-moss-soft p-4">
           <p className="font-bold">
-            Jeton « {state.name} » ({state.write ? "lecture et écriture" : "lecture seule"}) créé. Copie-le maintenant : il ne
+            Jeton « {state.name} » ({RIGHTS_LABEL[state.rights ?? "lecture"]}) créé. Copie-le maintenant : il ne
             sera plus jamais affiché.
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -106,10 +110,17 @@ export function RevokeButton({ id, label }: { id: string; label: string }) {
   );
 }
 
-export function RightsBadge({ write }: { write: boolean }) {
+const RIGHTS_LABEL: Record<Rights, string> = {
+  lecture: "lecture seule",
+  ecriture: "lecture et écriture",
+  suppression: "lecture, écriture et suppression",
+};
+
+export function RightsBadge({ write, del = false }: { write: boolean; del?: boolean }) {
+  if (del) return <span className="rounded-full bg-brick-soft px-2 py-0.5 text-xs font-bold text-brick">{RIGHTS_LABEL.suppression}</span>;
   return write ? (
-    <span className="rounded-full bg-ochre-soft px-2 py-0.5 text-xs font-bold text-ochre">lecture et écriture</span>
+    <span className="rounded-full bg-ochre-soft px-2 py-0.5 text-xs font-bold text-ochre">{RIGHTS_LABEL.ecriture}</span>
   ) : (
-    <span className="rounded-full bg-moss-soft px-2 py-0.5 text-xs font-bold text-moss">lecture seule</span>
+    <span className="rounded-full bg-moss-soft px-2 py-0.5 text-xs font-bold text-moss">{RIGHTS_LABEL.lecture}</span>
   );
 }

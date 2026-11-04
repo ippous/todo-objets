@@ -36,7 +36,9 @@ import {
   deleteType,
   renameType,
   setCoverPhoto,
+  setDocumentDescription,
   setDocumentType,
+  setPhotoDescription,
   setObjectDescription,
   setTaskTypeIcon,
   TYPE_KINDS,
@@ -377,6 +379,34 @@ export async function setDocumentTypeAction(id: string, typeId: string): Promise
     assertId(id);
     assertId(typeId);
     await setDocumentType(getDb(), id, typeId, actor);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+/** Description (texte simple) d'un document ; vide pour l'effacer. */
+export async function setDocumentDescriptionAction(id: string, description: string): Promise<ActionState> {
+  const actor = await uiActor();
+  try {
+    assertId(id);
+    await setDocumentDescription(getDb(), id, typeof description === "string" ? description : "", actor);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
+  return { ok: true };
+}
+
+/** Description (légende) d'une photo ; vide pour l'effacer. */
+export async function setPhotoDescriptionAction(id: string, description: string): Promise<ActionState> {
+  const actor = await uiActor();
+  try {
+    assertId(id);
+    await setPhotoDescription(getDb(), id, typeof description === "string" ? description : "", actor);
   } catch (err) {
     return handle(err);
   }
