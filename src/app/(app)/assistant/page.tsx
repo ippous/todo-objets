@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getDb } from "@/db";
 import { getAiSettings, AI_PROVIDER_LABEL, AI_PROVIDERS } from "@/lib/ai";
 import { requireUser } from "@/lib/session";
-import { ChatPanel } from "./chat-panel";
+import { ChatPanel } from "@/components/chat-panel";
 
 export const metadata: Metadata = { title: "Assistant" };
 

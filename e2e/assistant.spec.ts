@@ -32,7 +32,7 @@ test.beforeAll(async () => {
     let raw = "";
     req.on("data", (c) => (raw += c));
     req.on("end", () => {
-      const body = JSON.parse(raw) as { messages: { role: string; content: unknown }[] };
+      const body = JSON.parse(raw) as { system: string; messages: { role: string; content: unknown }[] };
       const last = body.messages.at(-1)!;
       res.writeHead(200, { "content-type": "application/json" });
       // 1er appel : demande l'outil ; 2e appel (résultat reçu) : répond avec le lien trouvé
@@ -49,7 +49,8 @@ test.beforeAll(async () => {
       } else {
         const result = JSON.stringify(last.content);
         const url = /https?:\/\/[^"\\]+\/taches\/[0-9a-f-]{36}/.exec(result)?.[0] ?? "";
-        res.end(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: `Trouvé : [la tâche](${url}).\n- **une seule**` }] }));
+        const where = /regarde la fiche de la tâche/.test(body.system) ? "page : tâche" : "page : autre";
+        res.end(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: `Trouvé : [la tâche](${url}).\n- **une seule**\n\n${where}` }] }));
       }
     });
   });
@@ -77,19 +78,31 @@ test("assistant : outil de Carnet appelé, réponse avec lien, conversation gard
     await page.getByLabel("Titre", { exact: true }).fill(`Graisser ${marker}`);
     await page.getByRole("button", { name: "Créer la tâche" }).click();
 
-    await page.getByRole("link", { name: "Assistant", exact: true }).click();
-    await expect(page.getByRole("heading", { level: 1, name: "Assistant" })).toBeVisible();
-    await page.getByLabel("Message pour l'assistant").fill(`Où en est ${marker} ?`);
+    // Depuis la fiche de la tâche : la bulle ouvre l'assistant, qui sait quelle page est affichée
+    await page.goto(`/taches?q=${encodeURIComponent(marker)}`);
+    await page.getByRole("link", { name: `Graisser ${marker}` }).click();
+    await page.getByRole("button", { name: "Ouvrir l'assistant" }).click();
+    const chat = page.getByRole("dialog", { name: "Assistant" });
+    await chat.getByLabel("Message pour l'assistant").fill(`Où en est ${marker} ?`);
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("list", { name: "Outils utilisés" })).toContainText("Recherche de tâches · 1 tâche");
-    const link = page.getByRole("link", { name: "la tâche" });
-    await expect(link).toBeVisible();
-    await expect(page.locator("strong", { hasText: "une seule" })).toBeVisible();
+    await expect(chat.getByRole("list", { name: "Outils utilisés" })).toContainText("Recherche de tâches · 1 tâche");
+    await expect(chat.getByRole("link", { name: "la tâche" })).toBeVisible();
+    await expect(chat.locator("strong", { hasText: "une seule" })).toBeVisible();
+    await expect(chat.getByText("page : tâche")).toBeVisible();
 
-    // Conversation gardée au rechargement, puis effacée
-    await page.reload();
+    // La conversation suit d'une page à l'autre ; Échap ferme, la bulle rouvre
+    await page.keyboard.press("Escape");
+    await expect(chat).toBeHidden();
+    await page.getByRole("link", { name: "Tâches", exact: true }).first().click();
+    await page.getByRole("button", { name: "Ouvrir l'assistant" }).click();
+    await expect(chat.getByText(`Où en est ${marker} ?`)).toBeVisible();
+
+    // Plein écran : page Assistant, sans bulle
+    await chat.getByRole("link", { name: "Ouvrir en plein écran" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Assistant" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ouvrir l'assistant" })).toHaveCount(0);
     await expect(page.getByText(`Où en est ${marker} ?`)).toBeVisible();
-    await link.click();
+    await page.getByRole("link", { name: "la tâche" }).click();
     await expect(page.getByRole("heading", { level: 1, name: `Graisser ${marker}` })).toBeVisible();
     await page.goto("/assistant");
     await page.getByRole("button", { name: "Nouvelle conversation" }).click();
