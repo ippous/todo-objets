@@ -39,6 +39,7 @@ import {
 } from "./repo";
 import { isTaskIcon } from "./task-icons";
 import { markdownToRichText } from "./rich-text";
+import { findSchemeByName, getDefaultSchemeId, listReminderSchemes } from "./reminder-repo";
 import { remove, save, storagePrefix } from "./storage";
 
 export const CREATE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
@@ -46,6 +47,14 @@ export const UPDATE = { readOnlyHint: false, destructiveHint: true, idempotentHi
 
 export const UUID = z.string().uuid();
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format AAAA-MM-JJ");
+const TIME = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Format HH:MM")
+  .describe("Heure d'échéance (heure de Paris), facultative ; demande une date d'échéance");
+const RAPPELS = z
+  .string()
+  .max(60)
+  .describe("Nom d'un schéma de rappel (voir vue_ensemble, schemas_rappel), ou « aucun »");
 const AMOUNT = z.number().min(0).max(1e9);
 const DESCRIPTION = z
   .string()
@@ -124,6 +133,18 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
     return t.id;
   }
 
+  /** Nom de schéma → identifiant ; « aucun » → null ; undefined → inchangé. */
+  async function resolveScheme(raw: string | null | undefined): Promise<string | null | undefined> {
+    if (raw === undefined) return undefined;
+    if (raw === null || raw.trim() === "" || /^aucuns?$/i.test(raw.trim())) return null;
+    const found = await findSchemeByName(db, raw);
+    if (!found) {
+      const all = await listReminderSchemes(db);
+      throw new DomainError(`Schéma de rappel « ${raw} » inconnu. Schémas existants : ${all.map((x) => x.name).join(", ") || "aucun"}.`);
+    }
+    return found.id;
+  }
+
   // ---------- creer_tache ----------
   server.registerTool(
     "creer_tache",
@@ -138,6 +159,8 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         priorite: z.enum(PRIORITIES).default("moyenne"),
         categorie: z.string().max(60).optional().describe("Type de tâche (voir vue_ensemble, types_taches) ; « Entretien » par défaut"),
         echeance: DATE.optional(),
+        heure_echeance: TIME.optional(),
+        rappels: RAPPELS.optional().describe("Schéma de rappel ; le schéma par défaut s'il y a une échéance et que rien n'est indiqué"),
         recurrence: z.enum(RECURRENCES).default("aucune"),
         responsable: z.string().max(100).optional().describe("Nom ou e-mail d'un utilisateur, « moi » ou « personne »"),
         heures_estimees: AMOUNT.optional(),
@@ -148,6 +171,7 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
     },
     async (a) =>
       guard(async () => {
+        if (a.heure_echeance && !a.echeance) return fail("Une heure d'échéance demande une date d'échéance (echeance)");
         const data: NewTodo = {
           objectId: a.objet_id,
           title: a.titre.trim(),
@@ -156,6 +180,8 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
           priority: a.priorite,
           typeId: a.categorie ? ((await resolveTaskType(a.categorie)) ?? null) : ((await findTaskTypeByName(db, "Entretien"))?.id ?? null),
           dueDate: a.echeance ?? null,
+          dueTime: a.echeance ? (a.heure_echeance ?? null) : null,
+          reminderSchemeId: a.rappels !== undefined ? ((await resolveScheme(a.rappels)) ?? null) : a.echeance ? await getDefaultSchemeId(db) : null,
           recurrence: a.recurrence,
           assigneeId: (await resolveAssignee(a.responsable)) ?? null,
           estHours: a.heures_estimees ?? null,
@@ -188,6 +214,8 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         priorite: z.enum(PRIORITIES).optional(),
         categorie: z.string().max(60).nullable().optional().describe("Type de tâche (voir vue_ensemble), ou null pour aucun"),
         echeance: DATE.nullable().optional(),
+        heure_echeance: TIME.nullable().optional(),
+        rappels: RAPPELS.nullable().optional(),
         recurrence: z.enum(RECURRENCES).optional(),
         responsable: z.string().max(100).nullable().optional().describe("Nom, e-mail, « moi », ou null / « personne » pour retirer"),
         heures_estimees: AMOUNT.nullable().optional(),
@@ -210,6 +238,13 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
         const typeId = await resolveTaskType(a.categorie);
         if (typeId !== undefined) data.typeId = typeId;
         if (a.echeance !== undefined) data.dueDate = a.echeance;
+        if (a.heure_echeance !== undefined) data.dueTime = a.heure_echeance;
+        if (a.echeance === null) data.dueTime = null;
+        if ((data.dueTime ?? null) !== null && (data.dueDate ?? before.dueDate) == null) {
+          return fail("Une heure d'échéance demande une date d'échéance (echeance)");
+        }
+        const schemeId = await resolveScheme(a.rappels);
+        if (schemeId !== undefined) data.reminderSchemeId = schemeId;
         if (a.recurrence !== undefined) data.recurrence = a.recurrence;
         const assignee = await resolveAssignee(a.responsable);
         if (assignee !== undefined) data.assigneeId = assignee;

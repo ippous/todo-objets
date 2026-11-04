@@ -2,7 +2,7 @@
 // Les fonctions d'écriture de repo.ts reçoivent un `Actor` facultatif et appellent `logAction`.
 import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
-import { auditLog, objects, taskTypes, todos, users, type AuditEntry, type AuditSource, type Todo, type User } from "@/db/schema";
+import { auditLog, objects, reminderSchemes, taskTypes, todos, users, type AuditEntry, type AuditSource, type Todo, type User } from "@/db/schema";
 import { CATEGORY_LABEL, fmtDate, PRIORITY_LABEL, RECURRENCE_LABEL, STATUS_LABEL } from "./format";
 
 /** Auteur d'une action et canal utilisé. */
@@ -118,6 +118,10 @@ export async function todoSnapshot(db: Db, t: Todo) {
     priorite: t.priority,
     type_tache: type?.name ?? null,
     echeance: t.dueDate,
+    heure_echeance: t.dueTime ? t.dueTime.slice(0, 5) : null,
+    rappels: t.reminderSchemeId
+      ? ((await db.select({ name: reminderSchemes.name }).from(reminderSchemes).where(eq(reminderSchemes.id, t.reminderSchemeId)))[0]?.name ?? null)
+      : null,
     recurrence: t.recurrence,
     responsable: who?.name ?? null,
     heures_estimees: t.estHours,
@@ -198,6 +202,8 @@ const FIELD_LABEL: Record<string, string> = {
   categorie: "Catégorie",
   type_tache: "Type",
   echeance: "Échéance",
+  heure_echeance: "Heure d'échéance",
+  rappels: "Rappels",
   recurrence: "Récurrence",
   responsable: "Responsable",
   heures_estimees: "Durée estimée",

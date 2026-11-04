@@ -15,7 +15,8 @@ Une **tâche** est toujours rattachée à **un objet**. Elle apparaît sur la fi
 | Valeur estimée / réalisée | euros | coût ou gain, au choix de l'utilisateur |
 | Priorité | haute, moyenne, basse | moyenne par défaut |
 | Statut | à faire, en cours, fait | |
-| Échéance | date | facultative ; une tâche ouverte dont l'échéance est passée est marquée « En retard » |
+| Échéance | date, et heure facultative | une tâche ouverte dont l'échéance est passée est marquée « En retard » |
+| Rappels | un schéma de rappel, ou aucun | voir [rappels.md](rappels.md) |
 | Récurrence | aucune, mensuelle, saisonnière (3 mois), annuelle | voir plus bas |
 | Responsable | un utilisateur autorisé | ou personne |
 | Catégorie | entretien, travaux, administratif | |
@@ -42,7 +43,7 @@ Sur chaque ligne de tâche, un sélecteur change le statut sans ouvrir la fiche.
 
 Quand une tâche récurrente passe à **« fait »**, l'occurrence suivante est créée automatiquement :
 
-- même titre, objet, réglages, tags et sous-tâches (décochées) ;
+- même titre, objet, réglages (dont l'heure d'échéance et le schéma de rappel), tags et sous-tâches (décochées) ;
 - statut « à faire », valeurs réalisées vides ;
 - échéance décalée d'1, 3 ou 12 mois à partir de l'échéance précédente (ou de la date du jour sans échéance).
 

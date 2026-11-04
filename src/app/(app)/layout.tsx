@@ -19,6 +19,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <Link href="/journal" className="ml-auto whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline sm:ml-0">
           Journal
         </Link>
+        <Link href="/rappels" className="whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline">
+          Rappels
+        </Link>
         <Link href="/connexion-ia" className="whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline" aria-label="Connexion IA">
           <span className="sm:hidden">IA</span>
           <span className="hidden sm:inline">Connexion IA</span>

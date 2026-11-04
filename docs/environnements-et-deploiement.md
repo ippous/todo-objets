@@ -41,6 +41,9 @@ Pour créer une migration : modifier `src/db/schema.ts`, puis lancer `npm run db
 | `ADMIN_EMAILS` | ✓ | ✓ | administrateurs créés à la première connexion |
 | `DEV_LOGIN_SECRET` | ✗ | ✓ (branche `develop`) | connexion de test et route de purge |
 | `BLOB_READ_WRITE_TOKEN` | ✓ | ✓ | store Blob privé `carnet-photos` |
+| `CRON_SECRET` | ✓ | ✓ (valeur différente) | protège la route d'envoi des rappels (voir [rappels.md](rappels.md)) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | ✓ | ✓ | envoi des rappels par e-mail |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | ✓ | ✓ (mêmes ou autres clés) | notifications des rappels (`npx web-push generate-vapid-keys`) |
 | `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL` | ✗ | ✗ | facultatives : autre adresse d'API (relais, ou faux serveur des e2e) |
 
 Les clés d'API de Claude et ChatGPT ne sont **pas** des variables d'environnement : un administrateur les saisit dans l'appli (Accès › Assistants IA), elles sont chiffrées en base (table `app_settings`).

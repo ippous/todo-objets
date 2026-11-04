@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { dueState, fmtDate, fmtEur, fmtHours, PRIORITY_LABEL } from "@/lib/format";
+import { Bell } from "lucide-react";
+import { dueState, fmtDue, fmtEur, fmtHours, PRIORITY_LABEL } from "@/lib/format";
 import type { TodoListItem } from "@/lib/repo";
 import { QuickStatus } from "./quick-status";
 import { TaskThumb } from "./thumb";
 
 export function TodoRow({ todo, returnTo, showObject = true }: { todo: TodoListItem; returnTo: string; showObject?: boolean }) {
-  const due = dueState(todo.dueDate, todo.status);
+  const due = dueState(todo.dueDate, todo.status, todo.dueTime);
   const done = todo.status === "fait";
   return (
     <li className="grid gap-2 border-b border-line py-3 last:border-b-0 sm:grid-cols-[1fr_auto] sm:items-start sm:gap-4">
@@ -43,10 +44,11 @@ export function TodoRow({ todo, returnTo, showObject = true }: { todo: TodoListI
               }
             >
               {due === "retard" ? "En retard · " : ""}
-              {fmtDate(todo.dueDate)}
+              {fmtDue(todo.dueDate, todo.dueTime)}
             </span>
           )}
           {todo.recurrence !== "aucune" && <span>Récurrente</span>}
+          {todo.reminderSchemeId && todo.dueDate && !done && <span className="inline-flex items-center" title="Rappels programmés"><Bell size={14} aria-label="Rappels programmés" /></span>}
           {todo.tags.map((t) => (
             <span key={t}>#{t}</span>
           ))}

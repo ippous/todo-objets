@@ -14,6 +14,7 @@ import {
   objectTypes,
   objects,
   photos,
+  reminderSchemes,
   subtasks,
   taskTypes,
   todos,
@@ -339,8 +340,8 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
   const orderBy: SQL[] = [];
   // Les tâches terminées en dernier, quel que soit le tri
   orderBy.push(sql`CASE WHEN ${todos.status} = 'fait' THEN 1 ELSE 0 END`);
-  if (sort === "echeance") orderBy.push(sql`${todos.dueDate} ASC NULLS LAST`, priorityRank);
-  if (sort === "priorite") orderBy.push(priorityRank, sql`${todos.dueDate} ASC NULLS LAST`);
+  if (sort === "echeance") orderBy.push(sql`${todos.dueDate} ASC NULLS LAST`, sql`${todos.dueTime} ASC NULLS LAST`, priorityRank);
+  if (sort === "priorite") orderBy.push(priorityRank, sql`${todos.dueDate} ASC NULLS LAST`, sql`${todos.dueTime} ASC NULLS LAST`);
   if (sort === "ratio") orderBy.push(sql`${ratioExpr} DESC NULLS LAST`, priorityRank);
   if (sort === "recent") orderBy.push(desc(todos.createdAt));
   orderBy.push(asc(todos.title));
@@ -492,6 +493,8 @@ export async function setTodoStatus(
         estHours: todo.estHours,
         estValueEur: todo.estValueEur,
         dueDate: due,
+        dueTime: due ? todo.dueTime : null,
+        reminderSchemeId: todo.reminderSchemeId,
         recurrence: todo.recurrence,
         assigneeId: todo.assigneeId,
         tags: todo.tags,
@@ -1249,6 +1252,8 @@ export async function purgeTestData(db: Db, marker: string, opts: { dryRun?: boo
     await tx.delete(apiTokens).where(sql`${apiTokens.kind} = 'personnel' AND ${apiTokens.name} ILIKE ${like}`);
     await tx.delete(oauthClients).where(sql`${oauthClients.name} ILIKE ${like}`);
     await tx.delete(commands).where(sql`${commands.name} ILIKE ${like}`);
+    // Schémas de rappel créés par les tests (les tâches restantes perdent seulement leur rappel)
+    await tx.delete(reminderSchemes).where(sql`${reminderSchemes.name} ILIKE ${like}`);
 
     let types = 0;
     for (const [table, col] of [

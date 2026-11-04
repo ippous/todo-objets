@@ -73,7 +73,7 @@ Ils n'apparaissent que si l'accès a le droit d'écriture. Seuls les champs four
 
 | Outil | Paramètres | Effet |
 |---|---|---|
-| `creer_tache` | `objet_id`, `titre` (obligatoires), `description`, `statut`, `priorite`, `categorie`, `echeance`, `recurrence`, `responsable` (nom, e-mail, « moi », « personne »), `heures_estimees`, `valeur_estimee_eur`, `tags` | crée la tâche ; créateur = l'utilisateur du jeton |
+| `creer_tache` | `objet_id`, `titre` (obligatoires), `description`, `statut`, `priorite`, `categorie`, `echeance`, `heure_echeance` (HH:MM), `rappels` (schéma, ou « aucun »), `recurrence`, `responsable` (nom, e-mail, « moi », « personne »), `heures_estimees`, `valeur_estimee_eur`, `tags` | crée la tâche ; créateur = l'utilisateur du jeton |
 | `modifier_tache` | `id` + n'importe quel champ ci-dessus, `objet_id` (changer d'objet), `heures_realisees`, `valeur_realisee_eur` | modifie ; `statut: "fait"` enregistre la fin et, si la tâche est récurrente, crée l'occurrence suivante (renvoyée dans `occurrence_suivante`) |
 | `creer_objet` | `nom`, `parent_id` (absent = nouvel arbre), `type` (type existant), `description`, `emplacement`, `tags` | crée l'objet |
 | `modifier_objet` | `id`, `nom`, `type`, `description`, `emplacement`, `tags` | modifie (le parent ne change pas) |

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import { setStatusInlineAction } from "@/app/actions";
-import { dueState, fmtDate, fmtHours, STATUS_LABEL } from "@/lib/format";
+import { dueState, fmtDue, fmtHours, STATUS_LABEL } from "@/lib/format";
 import { TaskThumb } from "./thumb";
 
 type Status = keyof typeof STATUS_LABEL;
@@ -15,6 +15,7 @@ export type KanbanCard = {
   status: Status;
   priority: "haute" | "moyenne" | "basse";
   dueDate: string | null;
+  dueTime: string | null;
   objectId: string;
   objectName: string;
   assigneeName: string | null;
@@ -170,7 +171,7 @@ function Card({
   onMove: (to: Status) => void;
 }) {
   const done = status === "fait";
-  const due = dueState(card.dueDate, status);
+  const due = dueState(card.dueDate, status, card.dueTime);
   const i = COLUMNS.indexOf(status);
   const prev = COLUMNS[i - 1];
   const next = COLUMNS[i + 1];
@@ -219,7 +220,7 @@ function Card({
             }
           >
             {due === "retard" ? "En retard · " : ""}
-            {fmtDate(card.dueDate)}
+            {fmtDue(card.dueDate, card.dueTime)}
           </span>
         )}
         {card.recurring && <span>Récurrente</span>}
