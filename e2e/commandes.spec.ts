@@ -97,7 +97,7 @@ test("commandes : création, test, IA, $$ et @@ dans les descriptions", async ({
   // Objet avec @@ dans sa description : recalculé à l'affichage
   await page.goto("/objets/nouveau");
   await page.getByLabel("Nom").fill(objet);
-  const objEditor = page.getByRole("textbox", { name: "Description" });
+  const objEditor = page.getByRole("textbox", { name: "Description", exact: true });
   await objEditor.click();
   await page.keyboard.type(`Accueil : @@${name}`);
   await expect(page.getByRole("listbox", { name: /recalculées/ }).getByRole("option", { name: new RegExp(name) })).toBeVisible();
@@ -113,7 +113,7 @@ test("commandes : création, test, IA, $$ et @@ dans les descriptions", async ({
   await page.getByRole("button", { name: "Créer la tâche" }).click();
   await page.getByRole("link", { name: tache }).click();
   await expect(page.getByRole("heading", { level: 1, name: tache })).toBeVisible();
-  const editor = page.getByRole("textbox", { name: "Description" });
+  const editor = page.getByRole("textbox", { name: "Description", exact: true });
   await editor.click();
   await page.keyboard.type(`$$${name.slice(0, 5)}`);
   const list = page.getByRole("listbox", { name: /résultat inséré/ });
@@ -129,7 +129,7 @@ test("commandes : création, test, IA, $$ et @@ dans les descriptions", async ({
   await page.getByRole("button", { name: "Enregistrer", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: objet })).toBeVisible();
   await page.getByRole("link", { name: tache }).click();
-  await expect(page.getByRole("textbox", { name: "Description" })).toContainText(`Bonjour ${tache}`);
+  await expect(page.getByRole("textbox", { name: "Description", exact: true })).toContainText(`Bonjour ${tache}`);
 
   // Suppression de la commande : les @@ restants signalent l'erreur
   await page.goto(commandUrl);

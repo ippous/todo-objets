@@ -31,6 +31,7 @@ import { DOCUMENT_TYPES } from "./document-types";
 import { richTextToPlain } from "./rich-text";
 import { isOverdue } from "./format";
 import { listReminderSchemes } from "./reminder-repo";
+import { getDependencies, isBlocked } from "./dependencies";
 import { formatOffsets } from "./reminders";
 import { read } from "./storage";
 import { buildForest, flatten, pathTo, subtreeIds, type TreeNode } from "./tree";
@@ -118,9 +119,11 @@ export function buildMcpServer(
     statut: STATUS_LABEL[t.status],
     priorite: t.priority,
     categorie: t.typeName,
+    date_debut: t.startDate,
     echeance: t.dueDate,
     heure_echeance: t.dueTime ? t.dueTime.slice(0, 5) : null,
     en_retard: isOverdue(t.dueDate, t.dueTime, t.status),
+    bloquee: t.status !== "fait" && t.blockedBy > 0,
     recurrence: t.recurrence,
     objet: { id: t.objectId, nom: t.objectName, chemin: chemin(objs, t.objectId) },
     responsable: t.assigneeName,
@@ -366,6 +369,7 @@ export function buildMcpServer(
     async ({ id }) => {
       const t = await getTodo(db, id);
       if (!t) return error(`Tâche ${id} introuvable`);
+      const deps = await getDependencies(db, id);
       const [objs, people, docs, links, photos, subs] = await Promise.all([
         listObjects(db),
         listUsers(db),
@@ -387,9 +391,13 @@ export function buildMcpServer(
         statut: STATUS_LABEL[t.status],
         priorite: t.priority,
         categorie: t.typeId ? ((await listTypes(db, "tache")).find((x) => x.id === t.typeId)?.name ?? null) : null,
+        date_debut: t.startDate,
         echeance: t.dueDate,
         heure_echeance: t.dueTime ? t.dueTime.slice(0, 5) : null,
         en_retard: isOverdue(t.dueDate, t.dueTime, t.status),
+        bloquee: t.status !== "fait" && isBlocked(deps.attend),
+        attend: deps.attend.map((d) => ({ id: d.id, titre: d.title, statut: STATUS_LABEL[d.status], echeance: d.dueDate, url: todoUrl(d.id) })),
+        debloque: deps.debloque.map((d) => ({ id: d.id, titre: d.title, statut: STATUS_LABEL[d.status], echeance: d.dueDate, url: todoUrl(d.id) })),
         rappels: t.reminderSchemeId ? ((await listReminderSchemes(db)).find((x) => x.id === t.reminderSchemeId)?.name ?? null) : null,
         recurrence: t.recurrence,
         objet: { id: t.objectId, nom: obj?.name, chemin: chemin(objs, t.objectId), url: objectUrl(t.objectId) },

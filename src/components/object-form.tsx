@@ -33,7 +33,7 @@ export function ObjectForm({
       {parentId !== undefined && <input type="hidden" name="parentId" value={parentId ?? ""} />}
       <label className="field">
         <span>Nom</span>
-        <input className="input" name="name" required maxLength={120} defaultValue={values?.name} autoFocus />
+        <input className="input" name="name" required maxLength={120} defaultValue={values?.name} autoFocus={!values} />
       </label>
       <label className="field">
         <span>Type</span>

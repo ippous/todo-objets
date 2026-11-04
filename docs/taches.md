@@ -15,8 +15,10 @@ Une **tâche** est toujours rattachée à **un objet**. Elle apparaît sur la fi
 | Valeur estimée / réalisée | euros | coût ou gain, au choix de l'utilisateur |
 | Priorité | haute, moyenne, basse | moyenne par défaut |
 | Statut | à faire, en cours, fait | |
+| Début | date | facultatif, au plus tard l'échéance ; voir [gestion-de-projet.md](gestion-de-projet.md) |
 | Échéance | date, et heure facultative | une tâche ouverte dont l'échéance est passée est marquée « En retard » |
 | Rappels | un schéma de rappel, ou aucun | voir [rappels.md](rappels.md) |
+| Attend | tâches à terminer avant | la tâche est « Bloquée » tant que l'une n'est pas faite ; voir [gestion-de-projet.md](gestion-de-projet.md) |
 | Récurrence | aucune, mensuelle, saisonnière (3 mois), annuelle | voir plus bas |
 | Responsable | un utilisateur autorisé | ou personne |
 | Catégorie | entretien, travaux, administratif | |
@@ -63,6 +65,10 @@ C'est la vue « à plat » de toutes les tâches, avec leur vignette quand elles
 | Échéance avant le | date limite |
 
 Tris possibles : **échéance**, **priorité**, **ratio €/h**, **plus récentes**. Les filtres sont dans l'URL, qu'on peut donc mettre en favori ou partager.
+
+## Gantt (`/taches?vue=gantt`)
+
+Frise des tâches filtrées (début → échéance), flèches d'enchaînement et conflits signalés : voir [gestion-de-projet.md](gestion-de-projet.md).
 
 ## Tableau (`/taches?vue=tableau`)
 

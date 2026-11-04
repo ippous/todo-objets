@@ -53,6 +53,7 @@ export const todoSchema = z
   actualHours: amount,
   estValueEur: amount,
   actualValueEur: amount,
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date de début invalide").nullable(),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date invalide").nullable(),
   dueTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Heure invalide").nullable(),
   reminderSchemeId: uuidOrNull,
@@ -60,7 +61,8 @@ export const todoSchema = z
   assigneeId: uuidOrNull,
   tags: z.array(z.string().max(40)),
 })
-  .refine((t) => !t.dueTime || t.dueDate, { message: "Choisis une date d'échéance avant l'heure", path: ["dueTime"] });
+  .refine((t) => !t.dueTime || t.dueDate, { message: "Choisis une date d'échéance avant l'heure", path: ["dueTime"] })
+  .refine((t) => !t.startDate || !t.dueDate || t.startDate <= t.dueDate, { message: "Le début doit précéder l'échéance", path: ["startDate"] });
 
 export function readTodo(fd: FormData) {
   return todoSchema.safeParse({
@@ -74,6 +76,7 @@ export function readTodo(fd: FormData) {
     actualHours: optionalNumber(fd, "actualHours"),
     estValueEur: optionalNumber(fd, "estValueEur"),
     actualValueEur: optionalNumber(fd, "actualValueEur"),
+    startDate: optionalText(fd, "startDate"),
     dueDate: optionalText(fd, "dueDate"),
     dueTime: optionalText(fd, "dueTime")?.slice(0, 5) ?? null,
     reminderSchemeId: optionalText(fd, "reminderSchemeId"),
@@ -103,3 +106,10 @@ export function readUser(fd: FormData) {
 
 export const firstError = (e: z.ZodError) => e.issues[0]?.message ?? "Données invalides";
 export { str };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Tâches attendues saisies dans le formulaire (champs « dependsOn » répétés) ; null si le champ est absent. */
+export function readDependsOn(fd: FormData): string[] | null {
+  if (!fd.has("dependsOnPresent")) return null;
+  return fd.getAll("dependsOn").filter((v): v is string => typeof v === "string" && UUID_RE.test(v));
+}

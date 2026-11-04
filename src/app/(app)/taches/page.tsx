@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { FilterBar, type FilterValues } from "@/components/filter-bar";
 import { KanbanBoard, type KanbanLane } from "@/components/kanban-board";
+import { GanttView } from "@/components/gantt-view";
+import { dependencyEdges } from "@/lib/dependencies";
+import { todayIso } from "@/lib/format";
 import { TodoRow } from "@/components/todo-row";
 import { getDb } from "@/db";
 import { PRIORITIES, type Todo } from "@/db/schema";
@@ -21,8 +24,9 @@ export default async function TachesPage(props: PageProps<"/taches">) {
   const sp = await props.searchParams;
   // Vue liste (par défaut) ou tableau, avec ou sans couloirs par objet racine
   const board = one(sp.vue) === "tableau";
+  const gantt = one(sp.vue) === "gantt";
   const byRoot = board && one(sp.groupe) === "racine";
-  const keep: Record<string, string> = board ? { vue: "tableau", ...(byRoot ? { groupe: "racine" } : {}) } : {};
+  const keep: Record<string, string> = board ? { vue: "tableau", ...(byRoot ? { groupe: "racine" } : {}) } : gantt ? { vue: "gantt" } : {};
   const values: FilterValues = {
     // Le tableau montre toujours les trois statuts
     statut: board ? "" : one(sp.statut),
@@ -62,6 +66,7 @@ export default async function TachesPage(props: PageProps<"/taches">) {
     listTypes(db, "tache"),
   ]);
   const totals = computeTotals(todos);
+  const edges = gantt ? await dependencyEdges(db, todos.map((t) => t.id)) : [];
   const filterParams = Object.entries(values).filter(([, v]) => v) as [string, string][];
   const urlFor = (extra: Record<string, string>) => {
     const qs = new URLSearchParams([...filterParams, ...Object.entries(extra)]).toString();
@@ -85,6 +90,7 @@ export default async function TachesPage(props: PageProps<"/taches">) {
       recurring: t.recurrence !== "aucune",
       coverPhotoId: t.coverPhotoId,
       typeIcon: t.typeIcon,
+      blocked: t.blockedBy > 0,
     }));
     lanes = byRoot
       ? groupByRoot(objs, cards).map((l) => ({ id: l.root.id, name: l.root.name, cards: l.items }))
@@ -105,8 +111,9 @@ export default async function TachesPage(props: PageProps<"/taches">) {
         <Toggle
           label="Affichage"
           options={[
-            { label: "Liste", href: urlFor({}), active: !board },
+            { label: "Liste", href: urlFor({}), active: !board && !gantt },
             { label: "Tableau", href: urlFor({ vue: "tableau", ...(byRoot ? { groupe: "racine" } : {}) }), active: board },
+            { label: "Gantt", href: urlFor({ vue: "gantt" }), active: gantt },
           ]}
         />
         {board && (
@@ -133,6 +140,22 @@ export default async function TachesPage(props: PageProps<"/taches">) {
         <p className="rounded-xl border border-dashed border-line p-5 text-muted">Aucune tâche ne correspond à ces filtres.</p>
       ) : board ? (
         <KanbanBoard lanes={lanes} grouped={byRoot} returnTo={here} />
+      ) : gantt ? (
+        <GanttView
+          tasks={todos.map((t) => ({
+            id: t.id,
+            title: t.title,
+            status: t.status,
+            startDate: t.startDate,
+            dueDate: t.dueDate,
+            objectId: t.objectId,
+            objectName: t.objectName,
+            blocked: t.blockedBy > 0,
+          }))}
+          edges={edges}
+          today={todayIso()}
+          returnTo={here}
+        />
       ) : (
         <ul className="rounded-xl bg-surface px-4">
           {todos.map((t) => (

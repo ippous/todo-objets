@@ -245,3 +245,12 @@ textarea.input {
 .rich a[href^="https://wa.me/"]::before { content: "💬 "; text-decoration: none; display: inline-block; }
 .rich a[href^="/api/vcard"]::before { content: "👤 "; text-decoration: none; display: inline-block; }
 .rich-editor a[href^="tel:"], .rich-editor a[href^="mailto:"], .rich-editor a[href^="https://wa.me/"], .rich-editor a[href^="/api/vcard"] { cursor: pointer; }
+
+/* Gantt */
+.gantt-bar-a_faire { background: var(--ochre-soft); color: var(--ink); box-shadow: inset 0 0 0 1px var(--ochre); }
+.gantt-bar-en_cours { background: var(--moss); color: var(--surface); }
+.gantt-bar-fait { background: var(--moss-soft); color: var(--muted); box-shadow: inset 0 0 0 1px var(--branch); }
+.gantt-bar-late { background: var(--brick-soft); color: var(--brick); box-shadow: inset 0 0 0 1.5px var(--brick); }
+.gantt-blocked {
+  background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--ochre) 35%, transparent) 5px 8px);
+}

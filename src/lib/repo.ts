@@ -44,6 +44,13 @@ import { emptyStats, nextDueDate, pathTo, round2, type Recurrence, type Stats } 
 
 export class DomainError extends Error {}
 
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
+function shiftDate(d: string, days: number): string {
+  const x = new Date(`${d}T12:00:00Z`);
+  x.setUTCDate(x.getUTCDate() + days);
+  return x.toISOString().slice(0, 10);
+}
+
 // ---------- Objets ----------
 
 const objectWithType = () => ({
@@ -307,6 +314,8 @@ export type TodoListItem = Todo & {
   createdByName: string | null;
   valuePerHour: number | null;
   coverPhotoId: string | null;
+  /** Nombre de tâches attendues encore ouvertes (0 : pas bloquée). */
+  blockedBy: number;
 };
 
 const priorityRank = sql`CASE ${todos.priority} WHEN 'haute' THEN 0 WHEN 'moyenne' THEN 1 ELSE 2 END`;
@@ -360,6 +369,8 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
       effEst: effEstHours,
       effActual: effActualHours,
       coverPhotoId: sql<string | null>`(SELECT p.id FROM photos p WHERE p.todo_id = ${todos.id} AND p.is_cover LIMIT 1)`,
+      blockedBy: sql<number>`(SELECT count(*)::int FROM todo_dependencies dep JOIN todos pre ON pre.id = dep.depends_on_id
+        WHERE dep.todo_id = "todos"."id" AND pre.status <> 'fait')`,
     })
     .from(todos)
     .innerJoin(objects, eq(objects.id, todos.objectId))
@@ -380,6 +391,7 @@ export async function listTodos(db: Db, filters: TodoFilters = {}, sort: TodoSor
     createdByName: r.createdByName,
     valuePerHour: r.ratio == null ? null : round2(Number(r.ratio)),
     coverPhotoId: r.coverPhotoId ?? null,
+    blockedBy: Number(r.blockedBy ?? 0),
   }));
 }
 
@@ -493,6 +505,8 @@ export async function setTodoStatus(
         estHours: todo.estHours,
         estValueEur: todo.estValueEur,
         dueDate: due,
+        // Le début garde le même écart avec l'échéance
+        startDate: due && todo.startDate && todo.dueDate ? shiftDate(todo.startDate, daysBetween(todo.dueDate, due)) : null,
         dueTime: due ? todo.dueTime : null,
         reminderSchemeId: todo.reminderSchemeId,
         recurrence: todo.recurrence,

@@ -50,7 +50,7 @@ const parse = (r: Awaited<ReturnType<Client["callTool"]>>) =>
 async function seed(page: Page, m: string) {
   await page.goto("/objets/nouveau");
   await page.getByLabel("Nom").fill(`Pompe ${m}`);
-  const ed = page.getByRole("textbox", { name: "Description" });
+  const ed = page.getByRole("textbox", { name: "Description", exact: true });
   await ed.click();
   await page.getByRole("button", { name: "Gras (Ctrl+B)" }).click();
   await page.keyboard.type("Débit 6 m3/h");

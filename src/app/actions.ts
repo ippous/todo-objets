@@ -2,11 +2,15 @@
 
 import { refresh, revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
+import { after } from "next/server";
 import { AuthError } from "next-auth";
 import { signIn, signOut } from "@/auth";
 import { getDb } from "@/db";
 import { STATUSES, type Todo } from "@/db/schema";
-import { type ActionState, firstError, optionalNumber, readObject, readTodo, readUser, str } from "@/lib/forms";
+import { type ActionState, firstError, optionalNumber, readDependsOn, readObject, readTodo, readUser, str } from "@/lib/forms";
+import { setDependencies } from "@/lib/dependencies";
+import { notifyReady } from "@/lib/notify-ready";
 import { DOCUMENT_MAX_BYTES, DOCUMENT_TYPES } from "@/lib/document-types";
 import {
   addDocument,
@@ -64,6 +68,16 @@ const assertId = (id: string) => {
 /** Auteur des actions faites depuis l'interface (pour le journal). */
 async function uiActor() {
   return actorOf(await requireUser(), "interface");
+}
+
+/** Tâche passée à « fait » : prévient, après la réponse, les tâches qui l'attendaient et sont prêtes. */
+async function onDone(id: string) {
+  const db = getDb();
+  const todo = await getTodo(db, id);
+  if (!todo || todo.status !== "fait") return;
+  const h = await headers();
+  const origin = process.env.APP_URL?.replace(/\/$/, "") || `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`;
+  after(() => notifyReady(db, id, todo.title, origin).catch((err) => console.error("notifyReady", err)));
 }
 
 function handle(err: unknown): ActionState {
@@ -656,6 +670,8 @@ export async function createTodoAction(_: ActionState, fd: FormData): Promise<Ac
       doneAt: data.status === "fait" ? new Date() : null,
       createdById: user.id,
     }, actor);
+    const dependsOn = readDependsOn(fd);
+    if (dependsOn?.length) await setDependencies(getDb(), created.id, dependsOn, actor);
     const draftId = str(fd, "draftId");
     if (UUID.test(draftId)) await claimDraftPhotos(getDb(), draftId, { todoId: created.id });
   } catch (err) {
@@ -675,9 +691,13 @@ export async function updateTodoAction(id: string, _: ActionState, fd: FormData)
     const before = await getTodo(db, id);
     if (!before) throw new DomainError("Tâche introuvable");
     const { status, ...rest } = parsed.data;
+    // L'enchaînement d'abord : une boucle refusée n'enregistre rien d'autre
+    const dependsOn = readDependsOn(fd);
+    if (dependsOn) await setDependencies(db, id, dependsOn, actor);
     await updateTodo(db, id, rest, actor);
     if (status !== before.status) {
       await setTodoStatus(db, id, status, { actualHours: rest.actualHours, actualValueEur: rest.actualValueEur, actor });
+      if (status === "fait") await onDone(id);
     }
   } catch (err) {
     return handle(err);
@@ -699,6 +719,7 @@ export async function setStatusAction(id: string, _: ActionState, fd: FormData):
   try {
     assertId(id);
     await setTodoStatus(getDb(), id, status, { actualHours, actualValueEur, actor });
+    if (status === "fait") await onDone(id);
   } catch (err) {
     return handle(err);
   }
@@ -723,6 +744,7 @@ export async function setStatusInlineAction(id: string, status: Todo["status"]):
       actualValueEur: todo.actualValueEur ?? todo.estValueEur,
       actor,
     });
+    if (status === "fait" && todo.status !== "fait") await onDone(id);
   } catch (err) {
     return handle(err);
   }

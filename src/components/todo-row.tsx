@@ -48,6 +48,11 @@ export function TodoRow({ todo, returnTo, showObject = true }: { todo: TodoListI
             </span>
           )}
           {todo.recurrence !== "aucune" && <span>Récurrente</span>}
+          {todo.blockedBy > 0 && !done && (
+            <span className="rounded bg-ochre-soft px-1 font-bold text-ochre" title="Attend des tâches qui ne sont pas faites">
+              Bloquée
+            </span>
+          )}
           {todo.reminderSchemeId && todo.dueDate && !done && <span className="inline-flex items-center" title="Rappels programmés"><Bell size={14} aria-label="Rappels programmés" /></span>}
           {todo.tags.map((t) => (
             <span key={t}>#{t}</span>
