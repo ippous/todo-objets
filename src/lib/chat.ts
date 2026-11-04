@@ -23,6 +23,8 @@ export type ChatEvent =
   | { type: "tool"; id: string; name: string; args: Record<string, unknown> }
   | { type: "tool_result"; id: string; name: string; ok: boolean; summary: string }
   | { type: "text"; text: string }
+  /** Page de Carnet à afficher (outil ouvrir_page), chemin relatif */
+  | { type: "navigate"; path: string }
   | { type: "error"; message: string }
   | { type: "done"; steps: number };
 
@@ -58,6 +60,43 @@ const JOIN_TOOL: Tool = {
   },
 };
 
+const OPEN_TOOL: Tool = {
+  name: "ouvrir_page",
+  description:
+    "Affiche une page de Carnet à l'utilisateur, à la fin de ta réponse (une seule page par réponse ; la dernière demandée l'emporte). " +
+    "Utilise-le quand on te demande d'ouvrir, d'afficher, de montrer ou d'aller sur une page. Pages : " +
+    "/taches/<id> (fiche de tâche, `url` renvoyée par les outils), /objets/<id> (fiche d'objet), / (arbre des objets), " +
+    "/taches (liste ; paramètres vue=tableau|gantt, objet=<id> pour le sous-arbre, q=texte, statut=a_faire|en_cours|fait|toutes, " +
+    "priorite, responsable=<id>|none, tag, avant=AAAA-MM-JJ, tri=priorite|ratio|recent), " +
+    "/taches/nouvelle?objet=<id> (nouvelle tâche), /objets/nouveau?parent=<id> (nouvel objet), /journal, /rappels, /types, /commandes.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      page: { type: "string", description: "Chemin (/taches?vue=gantt&objet=…) ou adresse complète de Carnet" },
+    },
+    required: ["page"],
+  },
+};
+
+/** Chemin interne sûr à partir d'une adresse donnée par le modèle (même site, pas d'API). */
+export function pagePath(page: unknown, origin: string): string | null {
+  if (typeof page !== "string") return null;
+  let p = page.trim();
+  if (p.startsWith(origin)) p = p.slice(origin.length) || "/";
+  else if (/^https?:\/\//i.test(p)) {
+    try {
+      const u = new URL(p);
+      if (u.host !== new URL(origin).host) return null;
+      p = u.pathname + u.search;
+    } catch {
+      return null;
+    }
+  }
+  if (!/^\/(?!\/)[\w\-/]*(\?[\w\-=&%.,+:]*)?(#[\w-]*)?$/.test(p)) return null;
+  if (/^\/api(\/|\?|$)/.test(p) || /^\/(connexion|deconnexion)\b/.test(p)) return null;
+  return p;
+}
+
 function baseUrl(p: AiProvider) {
   const env = p === "anthropic" ? process.env.ANTHROPIC_BASE_URL : process.env.OPENAI_BASE_URL;
   return (env || (p === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com")).replace(/\/+$/, "").replace(/\/v1$/, "");
@@ -92,6 +131,8 @@ function systemPrompt(user: User, instructions: string, allowDelete: boolean, pa
       "avec l'adresse `url` renvoyée par l'outil, par exemple [Réparer la clôture](https://…/taches/…).",
     "L'utilisateur peut joindre des images et des documents à ses messages : tu les vois (images, PDF, texte extrait). " +
       "Pour en ajouter un à une tâche ou à un objet, utilise joindre_piece avec son piece_id (jamais ajouter_photo ou ajouter_document avec un contenu recopié).",
+    "Pour afficher une page de Carnet (« ouvre la tâche… », « montre le Gantt de la grange »), trouve-la avec les outils puis appelle ouvrir_page ; " +
+      "la page s'ouvre à la fin de ta réponse, que tu gardes alors très courte.",
     "Avant une modification importante ou en lot (plusieurs tâches, déplacement d'objet), résume ce que tu vas faire et demande confirmation, " +
       "sauf si l'utilisateur l'a déjà clairement demandé.",
     ...(page ? [page] : []),
@@ -114,6 +155,7 @@ function summarize(name: string, out: ToolOutput): string {
   } catch {
     /* texte libre */
   }
+  if (name === "ouvrir_page") return out.text.replace(/^La page (\S+).*$/, "$1");
   if (out.images.length) return `${out.images.length} image${out.images.length > 1 ? "s" : ""}`;
   return name === "vue_ensemble" ? "résumé de Carnet" : out.text.slice(0, 120);
 }
@@ -177,7 +219,7 @@ export async function runChat(
       inputSchema: Object.fromEntries(Object.entries(t.inputSchema as Record<string, unknown>).filter(([k]) => k !== "$schema")),
     }));
     const system = systemPrompt(user, client.getInstructions() ?? "", !!opts.allowDelete, describePage(opts.page, opts.origin));
-    tools.push(JOIN_TOOL);
+    tools.push(JOIN_TOOL, OPEN_TOOL);
     const history = opts.history.filter((m) => m.text.trim() || m.pieces?.length).slice(-HISTORY_MAX);
     if (!history.length || history.at(-1)!.role !== "user") throw new AiError("Pose une question");
 
@@ -252,6 +294,12 @@ export async function runChat(
     };
 
     const runTool = async (name: string, args: Record<string, unknown>): Promise<ToolOutput> => {
+      if (name === OPEN_TOOL.name) {
+        const path = pagePath(args.page, opts.origin);
+        if (!path) return { text: "Adresse refusée : donne un chemin de Carnet (ex. /taches/<id>)", images: [], pdfs: [], isError: true };
+        emit({ type: "navigate", path });
+        return { text: `La page ${path} s'affichera à la fin de ta réponse.`, images: [], pdfs: [], isError: false };
+      }
       try {
         const r = name === JOIN_TOOL.name ? await joinPiece(args) : await client.callTool({ name, arguments: args });
         const content = (r.content ?? []) as {

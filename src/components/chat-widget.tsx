@@ -4,9 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Maximize2, MessageCircle, X } from "lucide-react";
-import { ChatPanel } from "./chat-panel";
-
-const OPEN_KEY = "carnet-chat-ouvert";
+import { CHAT_OPEN_KEY as OPEN_KEY, ChatPanel } from "./chat-panel";
 
 /**
  * Assistant ouvrable depuis toutes les pages : bulle en bas à droite, puis fenêtre flottante
@@ -26,16 +24,15 @@ export function ChatWidget({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const isPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
+  // État mémorisé pour l'onglet, relu à chaque page (ex. retour de la page Assistant après « ouvrir_page ») ;
+  // sur téléphone la fenêtre couvre la page : elle se ferme quand on change de page (lien suivi depuis le chat)
   useEffect(() => {
+    let keep = false;
     try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- état mémorisé, lu après le premier rendu
-      if (sessionStorage.getItem(OPEN_KEY) === "1" && !isPhone()) setOpen(true);
+      keep = sessionStorage.getItem(OPEN_KEY) === "1";
     } catch {}
-  }, []);
-  // Sur téléphone la fenêtre couvre la page : on la ferme quand on change de page (lien suivi depuis le chat)
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fermeture au changement de page
-    if (isPhone()) setOpen(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- état mémorisé, lu après le rendu
+    setOpen(keep && !isPhone());
   }, [pathname]);
   const toggle = (v: boolean) => {
     setOpen(v);
