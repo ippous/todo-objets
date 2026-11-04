@@ -78,7 +78,8 @@ Ils n'apparaissent que si l'accès a le droit d'écriture. Seuls les champs four
 | `creer_objet` | `nom`, `parent_id` (absent = nouvel arbre), `type` (type existant), `description`, `emplacement`, `tags` | crée l'objet |
 | `modifier_objet` | `id`, `nom`, `type`, `description`, `emplacement`, `tags` | modifie (le parent ne change pas) |
 | `deplacer_objet` | `id`, `nouveau_parent_id` (ou `null` = racine) | déplace l'objet avec son sous-arbre ; les boucles sont refusées |
-| `ajouter_lien` | `objet_id` **ou** `tache_id`, `url`, `titre` | ajoute un lien `http(s)` |
+| `ajouter_lien` | `objet_id` **ou** `tache_id`, `url`, `titre`, `description` | ajoute un lien `http(s)` |
+| `modifier_lien` | `id`, `description` (`null` = effacer) | change la description d'un lien |
 | `ajouter_photo` | `image_base64` (ou `data:image/…;base64,…`, 10 Mo max), `tache_ids` et/ou `objet_ids` (50 au plus), `description` | ajoute la **même photo** (et la même légende) à chaque élément : redimensionnée côté serveur (1600 px, JPEG) avec vignette 400 px, comme depuis l'appli ; la première photo d'un élément devient sa vignette ; les identifiants introuvables sont listés dans `erreurs` |
 | `modifier_photo` | `id`, `description` (`null` = effacer) | change la légende d'une photo |
 | `ajouter_document` | `objet_id` **ou** `tache_id` ; `fichier_base64` + `nom_fichier` **ou** `url_source` (adresse `https` téléchargée par Carnet) ; `format` (type MIME, sinon déduit de l'extension), `type_document` (« Autre » par défaut), `description` | ajoute un document (formats acceptés dans l'appli, 25 Mo au plus) ; en base64, l'hébergeur limite la requête à environ 4 Mo : `url_source` pour les gros fichiers |

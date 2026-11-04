@@ -12,6 +12,7 @@
       <div id="modes" class="modes" role="radiogroup" aria-label="Que faut-il ajouter ?" hidden>
         <button type="button" role="radio" data-mode="lien" aria-checked="true">Lien</button>
         <button type="button" role="radio" data-mode="photo" aria-checked="false">Photo</button>
+        <button type="button" role="radio" data-mode="document" aria-checked="false">Document</button>
       </div>
       <button id="open-options" class="icon-btn" type="button" title="Réglages" aria-label="Réglages">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
@@ -44,6 +45,30 @@
             <label class="secondary small file-btn">Fichier…<input id="file" type="file" accept="image/*" hidden /></label>
           </div>
         </div>
+      </section>
+
+      <!-- Mode document -->
+      <section id="doc-card" class="photo-card" aria-label="Document à ajouter" hidden>
+        <div id="doc-preview" class="preview doc-preview" aria-live="polite">
+          <span class="preview-empty">Glisse un fichier ici</span>
+        </div>
+        <div class="photo-side">
+          <div id="doc-info" class="photo-info"></div>
+          <label class="doc-type">
+            <span>Type</span>
+            <select id="doc-type"><option value="">Autre</option></select>
+          </label>
+          <div class="photo-actions">
+            <button id="doc-page" class="secondary small" type="button">Page courante</button>
+            <label class="secondary small file-btn">Fichier…<input id="doc-file" type="file" hidden /></label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Description, pour un lien, une photo ou un document -->
+      <section class="desc-card">
+        <label class="sr" for="description">Description</label>
+        <textarea id="description" rows="2" maxlength="2000" placeholder="Description (facultative)"></textarea>
       </section>
 
       <nav class="tabs" role="tablist">

@@ -136,7 +136,7 @@ export default async function TachePage(props: PageProps<"/taches/[id]">) {
               <h3 id="liens" className="text-lg font-bold">
                 Liens {links.length > 0 && <span className="font-normal text-muted">({links.length})</span>}
               </h3>
-              <ObjectLinks owner={{ kind: "taches", id: todo.id }} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title }))} />
+              <ObjectLinks owner={{ kind: "taches", id: todo.id }} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title, description: l.description }))} />
             </section>
           </>
         }

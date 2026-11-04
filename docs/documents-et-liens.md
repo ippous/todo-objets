@@ -72,6 +72,7 @@ On peut ajouter des **liens web** à un objet : fiche produit, notice en ligne, 
 
 - Saisir l'adresse ; `https://` est ajouté si on l'omet.
 - Le titre est facultatif. Sans titre, c'est l'adresse qui s'affiche.
+- La **description** (texte simple, 2 000 caractères au plus) est facultative : saisie à l'ajout, puis *Ajouter / Modifier la description* sous le lien, comme pour les photos et les documents.
 - Seules les adresses **http et https** sont acceptées (`javascript:` et les autres schémas sont refusés).
 - Les liens s'ouvrent dans un nouvel onglet.
 - **Supprimer** demande une confirmation.

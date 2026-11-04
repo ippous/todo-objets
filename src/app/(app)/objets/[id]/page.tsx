@@ -305,7 +305,7 @@ export default async function ObjetPage(props: PageProps<"/objets/[id]">) {
           <h2 id="liens" className="text-lg font-bold">
             Liens {links.length > 0 && <span className="font-normal text-muted">({links.length})</span>}
           </h2>
-          <ObjectLinks owner={{ kind: "objets", id: obj.id }} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title }))} />
+          <ObjectLinks owner={{ kind: "objets", id: obj.id }} links={links.map((l) => ({ id: l.id, url: l.url, title: l.title, description: l.description }))} />
         </section>
       </div>
 

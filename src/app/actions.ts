@@ -38,6 +38,7 @@ import {
   setCoverPhoto,
   setDocumentDescription,
   setDocumentType,
+  setLinkDescription,
   setPhotoDescription,
   setObjectDescription,
   setTaskTypeIcon,
@@ -441,12 +442,27 @@ export async function addLinkAction(
       owner: owner.kind === "taches" ? { todoId: owner.id } : { objectId: owner.id },
       url: str(fd, "url"),
       title: str(fd, "title"),
+      description: str(fd, "description") || null,
       createdById: user.id,
     }, actor);
   } catch (err) {
     return handle(err);
   }
   revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Description d'un lien ; vide pour l'effacer. */
+export async function setLinkDescriptionAction(id: string, description: string): Promise<ActionState> {
+  const actor = await uiActor();
+  try {
+    assertId(id);
+    await setLinkDescription(getDb(), id, typeof description === "string" ? description : "", actor);
+  } catch (err) {
+    return handle(err);
+  }
+  revalidatePath("/", "layout");
+  refresh();
   return { ok: true };
 }
 
