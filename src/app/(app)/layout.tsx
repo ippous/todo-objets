@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MessageCircle } from "lucide-react";
 import { signOutAction } from "@/app/actions";
 import { NavLinks } from "@/components/nav-links";
 import { requireUser } from "@/lib/session";
@@ -7,7 +8,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const user = await requireUser();
   return (
     <div className="mx-auto flex min-h-dvh max-w-5xl flex-col">
-      <header className="flex items-center gap-4 px-4 pt-4 pb-2 sm:px-6">
+      <header className="flex items-center gap-3 px-4 sm:gap-4 pt-4 pb-2 sm:px-6">
         <Link href="/" className="flex items-center gap-2 font-bold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/icon.svg" alt="" width={28} height={28} />
@@ -16,7 +17,16 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <nav aria-label="Navigation principale" className="hidden flex-1 sm:block">
           <NavLinks isAdmin={user.role === "admin"} variant="top" />
         </nav>
-        <Link href="/journal" className="ml-auto whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline sm:ml-0">
+        <Link
+          href="/assistant"
+          aria-label="Assistant"
+          title="Assistant"
+          className="ml-auto flex items-center gap-1 whitespace-nowrap text-sm font-bold text-moss underline-offset-4 hover:underline sm:ml-0"
+        >
+          <MessageCircle size={18} aria-hidden className="sm:hidden" />
+          <span className="hidden sm:inline">Assistant</span>
+        </Link>
+        <Link href="/journal" className="whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline">
           Journal
         </Link>
         <Link href="/rappels" className="whitespace-nowrap text-sm text-muted underline-offset-4 hover:underline">
