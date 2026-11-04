@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
-import { addDocumentAction, deleteDocumentAction, setDocumentTypeAction } from "@/app/actions";
+import { addDocumentAction, deleteDocumentAction, setDocumentDescriptionAction, setDocumentTypeAction } from "@/app/actions";
+import { CaptionEditor } from "./caption-editor";
 import type { AttachmentOwnerRef } from "./object-links";
 import { ACCEPT_ATTR, DOCUMENT_MAX_BYTES, DOCUMENT_TYPES, documentType, formatSize, safeFileName } from "@/lib/document-types";
 
@@ -11,6 +12,7 @@ export type DocItem = {
   typeId: string;
   typeName: string;
   filename: string;
+  description?: string | null;
   contentType: string;
   size: number;
   createdAt: string;
@@ -119,6 +121,7 @@ export function ObjectDocuments({
                     {formatSize(d.size)} · {day.format(new Date(d.createdAt))}
                     {d.createdBy ? ` · ${d.createdBy}` : ""}
                   </p>
+                  <CaptionEditor value={d.description ?? null} label={d.filename} onSave={(v) => setDocumentDescriptionAction(d.id, v)} />
                 </div>
                 {confirmId === d.id ? (
                   <span className="flex flex-wrap items-center gap-2">

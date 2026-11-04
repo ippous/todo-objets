@@ -1,54 +1,76 @@
 import "server-only";
-// Outils MCP d'ÉCRITURE (accès « lecture ecriture » uniquement).
-// Aucune suppression : créer / modifier des tâches, créer / modifier / déplacer des objets, ajouter des liens et des photos.
+// Outils MCP d'ÉCRITURE (accès « lecture ecriture » ou plus).
+// Créer / modifier des tâches et des sous-tâches, créer / modifier / déplacer des objets, ajouter des liens,
+// des photos et des documents, créer des types. Les suppressions sont dans mcp-delete-tools.ts (droit à part).
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { Db } from "@/db";
 import { PRIORITIES, RECURRENCES, STATUSES, type NewTodo, type User } from "@/db/schema";
 import { actorOf, type Actor } from "./audit";
+import { DOCUMENT_MAX_BYTES, DOCUMENT_TYPES, documentType, formatSize, safeFileName } from "./document-types";
 import { decodeBase64Image, ImageError, processImage } from "./photo-processing";
 import {
+  addDocument,
   addLink,
   addPhoto,
+  addSubtask,
   createObject,
   createTodo,
+  createType,
   DomainError,
+  getDocument,
+  getPhoto,
   findTaskTypeByName,
   getObject,
   getTodo,
   listTypes,
   listUsers,
   moveObject,
+  setDocumentDescription,
+  setDocumentType,
+  setPhotoDescription,
   setTodoStatus,
+  SUBTASK_MAX_LENGTH,
   updateObject,
+  updateSubtask,
   updateTodo,
+  type TypeKind,
 } from "./repo";
+import { isTaskIcon } from "./task-icons";
 import { markdownToRichText } from "./rich-text";
 import { remove, save, storagePrefix } from "./storage";
 
-const CREATE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
-const UPDATE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } as const;
+export const CREATE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
+export const UPDATE = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } as const;
 
-const UUID = z.string().uuid();
+export const UUID = z.string().uuid();
 const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format AAAA-MM-JJ");
 const AMOUNT = z.number().min(0).max(1e9);
 const DESCRIPTION = z
   .string()
   .max(40_000)
   .describe("Texte en Markdown simple : ## titres, - listes, 1. listes, **gras**, *italique*, [lien](https://…), > citation");
+const CAPTION = z.string().max(2000);
 const TAGS = z.array(z.string().min(1).max(40)).max(20);
 
-type Ctx = { db: Db; user: User; client?: string | null; objectUrl: (id: string) => string; todoUrl: (id: string) => string };
+export type Ctx = {
+  db: Db;
+  user: User;
+  client?: string | null;
+  objectUrl: (id: string) => string;
+  todoUrl: (id: string) => string;
+  docUrl?: (id: string) => string;
+};
 
-function ok(data: Record<string, unknown>) {
+export function ok(data: Record<string, unknown>) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }], structuredContent: data };
 }
-function fail(message: string) {
+export function fail(message: string) {
   return { content: [{ type: "text" as const, text: message }], isError: true };
 }
 /** Erreurs métier renvoyées à l'assistant (lisibles), les autres remontent. */
-async function guard<T>(fn: () => Promise<T>) {
+export async function guard<T>(fn: () => Promise<T>) {
   try {
     return await fn();
   } catch (err) {
@@ -62,7 +84,7 @@ const parisToday = () => new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Pa
 
 const cleanTags = (tags: string[]) => [...new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean))].slice(0, 20);
 
-export function registerWriteTools(server: McpServer, { db, user, client, objectUrl, todoUrl }: Ctx) {
+export function registerWriteTools(server: McpServer, { db, user, client, objectUrl, todoUrl, docUrl = (id) => id }: Ctx) {
   // Chaque écriture est inscrite au journal comme venant du MCP, avec le nom du jeton ou de l'application
   const actor: Actor = actorOf(user, "mcp", client);
 
@@ -83,7 +105,7 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
     const t = types.find((x) => x.name.toLowerCase() === raw.trim().toLowerCase());
     if (!t) {
       throw new DomainError(
-        `Type de tâche « ${raw} » inconnu. Types existants : ${types.map((x) => x.name).join(", ")}. (Un nouveau type se crée dans Carnet, page Types.)`,
+        `Type de tâche « ${raw} » inconnu. Types existants : ${types.map((x) => x.name).join(", ")}. (Un nouveau type se crée avec creer_type.)`,
       );
     }
     return t.id;
@@ -96,7 +118,7 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
     const t = types.find((x) => x.name.toLowerCase() === raw.trim().toLowerCase());
     if (!t) {
       throw new DomainError(
-        `Type d'objet « ${raw} » inconnu. Types existants : ${types.map((x) => x.name).join(", ")}. (Un nouveau type se crée dans Carnet, page Types.)`,
+        `Type d'objet « ${raw} » inconnu. Types existants : ${types.map((x) => x.name).join(", ")}. (Un nouveau type se crée avec creer_type.)`,
       );
     }
     return t.id;
@@ -328,11 +350,13 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
       title: "Ajouter une photo",
       description:
         "Ajoute une même photo à une ou plusieurs tâches et/ou objets (50 au plus). L'image (JPEG, PNG, WebP, GIF, HEIC…, 10 Mo max) " +
-        "est envoyée en base64 ; elle est redimensionnée (1600 px) et une vignette est créée. La première photo d'un élément devient sa vignette.",
+        "est envoyée en base64 ; elle est redimensionnée (1600 px) et une vignette est créée. La première photo d'un élément devient sa vignette. " +
+        "description : légende facultative.",
       inputSchema: {
         image_base64: z.string().min(16).max(14_000_000).describe("Contenu de l'image en base64 (ou adresse data:image/…;base64,…)"),
         tache_ids: z.array(UUID).max(50).optional(),
         objet_ids: z.array(UUID).max(50).optional(),
+        description: CAPTION.optional().describe("Légende de la photo (texte simple), la même pour chaque élément"),
       },
       annotations: CREATE,
     },
@@ -371,6 +395,7 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
               width: img.width,
               height: img.height,
               createdById: user.id,
+              description: a.description,
             }, actor);
             ajoutees.push({
               photo_id: p.id,
@@ -385,6 +410,267 @@ export function registerWriteTools(server: McpServer, { db, user, client, object
           }
         }
         return ok({ ajoutees: ajoutees.length, dimensions: `${img.width}×${img.height}`, photos: ajoutees, erreurs });
+      }),
+  );
+  async function resolveDocumentType(raw: string | undefined): Promise<{ id: string; name: string }> {
+    const types = await listTypes(db, "document");
+    if (!types.length) throw new DomainError("Aucun type de document : crée-en un avec creer_type (categorie « document »).");
+    if (raw === undefined || raw.trim() === "") {
+      return types.find((t) => t.name.toLowerCase() === "autre") ?? types[0];
+    }
+    const t = types.find((x) => x.name.toLowerCase() === raw.trim().toLowerCase());
+    if (!t) {
+      throw new DomainError(
+        `Type de document « ${raw} » inconnu. Types existants : ${types.map((x) => x.name).join(", ")}. (Un nouveau type se crée avec creer_type.)`,
+      );
+    }
+    return t;
+  }
+
+  /** Contenu d'un document : base64, ou téléchargement d'une adresse https publique. */
+  async function documentBytes(a: { fichier_base64?: string; url_source?: string }): Promise<{ bytes: Uint8Array; remoteType: string | null; remoteName: string | null }> {
+    if (a.fichier_base64) {
+      const b64 = a.fichier_base64.trim().replace(/^data:[^;,]+;base64,/, "").replace(/\s+/g, "");
+      if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(b64)) throw new DomainError("Base64 invalide");
+      return { bytes: Buffer.from(b64, "base64"), remoteType: null, remoteName: null };
+    }
+    let url: URL;
+    try {
+      url = new URL(a.url_source!);
+    } catch {
+      throw new DomainError("Adresse url_source invalide");
+    }
+    if (url.protocol !== "https:") throw new DomainError("url_source doit être une adresse https");
+    let res: Response;
+    try {
+      res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(30_000) });
+    } catch {
+      throw new DomainError(`Téléchargement impossible : ${url.host}`);
+    }
+    if (!res.ok || !res.body) throw new DomainError(`Téléchargement refusé (${res.status}) : ${url.host}`);
+    const announced = Number(res.headers.get("content-length") ?? 0);
+    if (announced > DOCUMENT_MAX_BYTES) throw new DomainError(`Fichier trop gros (${formatSize(announced)}, 25 Mo au plus)`);
+    // Lecture limitée : on s'arrête dès que le maximum est dépassé
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > DOCUMENT_MAX_BYTES) {
+        await reader.cancel();
+        throw new DomainError("Fichier trop gros (25 Mo au plus)");
+      }
+      chunks.push(value);
+    }
+    const remoteType = res.headers.get("content-type")?.split(";")[0].trim().toLowerCase() || null;
+    const disposition = res.headers.get("content-disposition") ?? "";
+    const fromHeader = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1] ?? /filename="?([^";]+)"?/i.exec(disposition)?.[1];
+    const fromPath = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+    let remoteName: string | null = null;
+    try {
+      remoteName = (fromHeader ? decodeURIComponent(fromHeader) : fromPath) || null;
+    } catch {
+      remoteName = fromPath || null;
+    }
+    return { bytes: Buffer.concat(chunks), remoteType, remoteName };
+  }
+
+  // ---------- ajouter_document ----------
+  server.registerTool(
+    "ajouter_document",
+    {
+      title: "Ajouter un document",
+      description:
+        "Ajoute un document (facture, garantie, mode d'emploi…) à un objet OU à une tâche (fournir exactement l'un des deux). " +
+        "Contenu : fichier_base64 OU url_source (adresse https publique, téléchargée par Carnet). " +
+        `Formats : ${[...new Set(Object.values(DOCUMENT_TYPES))].join(", ")} ; 25 Mo au plus ` +
+        "(en base64, la requête est limitée à environ 4 Mo par l'hébergeur : préfère url_source pour les gros fichiers). " +
+        "type_document : nom d'un type de document existant (voir vue_ensemble) ; « Autre » par défaut.",
+      inputSchema: {
+        objet_id: UUID.optional(),
+        tache_id: UUID.optional(),
+        nom_fichier: z.string().min(1).max(200).optional().describe("Nom avec extension (ex. facture-2026.pdf) ; obligatoire avec fichier_base64"),
+        fichier_base64: z.string().min(4).max(35_000_000).optional().describe("Contenu en base64 (ou data:…;base64,…)"),
+        url_source: z.string().min(8).max(2000).optional().describe("Adresse https du fichier à télécharger"),
+        format: z.string().max(120).optional().describe("Type MIME (ex. application/pdf) ; déduit de l'extension sinon"),
+        type_document: z.string().max(60).optional(),
+        description: CAPTION.optional().describe("Description du document (texte simple)"),
+      },
+      annotations: CREATE,
+    },
+    async (a) =>
+      guard(async () => {
+        if (!!a.objet_id === !!a.tache_id) return fail("Fournis soit objet_id, soit tache_id (un seul des deux).");
+        if (!!a.fichier_base64 === !!a.url_source) return fail("Fournis soit fichier_base64, soit url_source (un seul des deux).");
+        if (a.fichier_base64 && !a.nom_fichier) return fail("nom_fichier est obligatoire avec fichier_base64 (pour connaître le format).");
+        const owner = a.objet_id ? { objectId: a.objet_id } : { todoId: a.tache_id! };
+        if (a.objet_id ? !(await getObject(db, a.objet_id)) : !(await getTodo(db, a.tache_id!))) {
+          return fail(a.objet_id ? `Objet ${a.objet_id} introuvable` : `Tâche ${a.tache_id} introuvable`);
+        }
+        const docType = await resolveDocumentType(a.type_document);
+        const { bytes, remoteType, remoteName } = await documentBytes(a);
+        if (bytes.byteLength === 0) return fail("Le fichier est vide.");
+        if (bytes.byteLength > DOCUMENT_MAX_BYTES) return fail(`Fichier trop gros (${formatSize(bytes.byteLength)}, 25 Mo au plus)`);
+        const filename = (a.nom_fichier ?? remoteName ?? "document").trim().slice(0, 200);
+        const contentType =
+          (a.format && DOCUMENT_TYPES[a.format.toLowerCase()] ? a.format.toLowerCase() : null) ??
+          documentType(filename, remoteType ?? "");
+        if (!contentType) {
+          return fail(`Format non accepté pour « ${filename} ». Formats possibles : ${[...new Set(Object.values(DOCUMENT_TYPES))].join(", ")}.`);
+        }
+        const base = a.objet_id ? `${storagePrefix}/documents/${a.objet_id}` : `${storagePrefix}/documents/taches/${a.tache_id}`;
+        const pathname = `${base}/${randomUUID()}/${safeFileName(filename)}`;
+        await save(pathname, bytes, contentType);
+        try {
+          const d = await addDocument(db, { owner, typeId: docType.id, pathname, filename, contentType, size: bytes.byteLength, createdById: user.id, description: a.description }, actor);
+          return ok({
+            ajoute: true,
+            id: d.id,
+            nom: d.filename,
+            type: docType.name,
+            format: DOCUMENT_TYPES[contentType],
+            taille: formatSize(d.size),
+            description: d.description,
+            url: docUrl(d.id),
+            page: a.objet_id ? objectUrl(a.objet_id) : todoUrl(a.tache_id!),
+          });
+        } catch (err) {
+          await remove([pathname]);
+          throw err;
+        }
+      }),
+  );
+
+  // ---------- modifier_document ----------
+  server.registerTool(
+    "modifier_document",
+    {
+      title: "Modifier un document",
+      description: "Change le type et / ou la description d'un document (identifiant donné par obtenir_objet / obtenir_tache) ; description null l'efface.",
+      inputSchema: {
+        id: UUID.describe("Identifiant du document"),
+        type_document: z.string().min(1).max(60).optional().describe("Nom d'un type de document existant"),
+        description: CAPTION.nullable().optional(),
+      },
+      annotations: UPDATE,
+    },
+    async (a) =>
+      guard(async () => {
+        const d = await getDocument(db, a.id);
+        if (!d) return fail(`Document ${a.id} introuvable`);
+        if (a.type_document === undefined && a.description === undefined) return fail("Indique type_document et / ou description.");
+        let typeName: string | undefined;
+        if (a.type_document !== undefined) {
+          const t = await resolveDocumentType(a.type_document);
+          if (t.id !== d.typeId) await setDocumentType(db, a.id, t.id, actor);
+          typeName = t.name;
+        }
+        const after = a.description !== undefined ? await setDocumentDescription(db, a.id, a.description, actor) : d;
+        return ok({ modifie: true, id: a.id, nom: d.filename, type: typeName, description: after.description, url: docUrl(a.id) });
+      }),
+  );
+
+  // ---------- ajouter_sous_taches ----------
+  const SUB_HOURS = z.number().min(0).max(999_999);
+  server.registerTool(
+    "ajouter_sous_taches",
+    {
+      title: "Ajouter des sous-tâches",
+      description: "Ajoute une ou plusieurs sous-tâches (étapes à cocher) à la fin de la liste d'une tâche, avec leur durée estimée ou réalisée si besoin.",
+      inputSchema: {
+        tache_id: UUID,
+        sous_taches: z
+          .array(
+            z.object({
+              texte: z.string().min(1).max(SUBTASK_MAX_LENGTH),
+              heures_estimees: SUB_HOURS.optional(),
+              heures_realisees: SUB_HOURS.optional(),
+              faite: z.boolean().optional(),
+            }),
+          )
+          .min(1)
+          .max(50),
+      },
+      annotations: CREATE,
+    },
+    async (a) =>
+      guard(async () => {
+        if (!(await getTodo(db, a.tache_id))) return fail(`Tâche ${a.tache_id} introuvable`);
+        const ajoutees: Record<string, unknown>[] = [];
+        for (const st of a.sous_taches) {
+          const row = await addSubtask(db, a.tache_id, st.texte, actor, { estHours: st.heures_estimees, actualHours: st.heures_realisees });
+          if (st.faite) await updateSubtask(db, row.id, { done: true }, actor);
+          ajoutees.push({ id: row.id, texte: row.title, faite: !!st.faite });
+        }
+        return ok({ ajoutees: ajoutees.length, sous_taches: ajoutees, url: todoUrl(a.tache_id) });
+      }),
+  );
+
+  // ---------- modifier_sous_tache ----------
+  server.registerTool(
+    "modifier_sous_tache",
+    {
+      title: "Modifier une sous-tâche",
+      description: "Modifie le texte, l'état (cochée ou non) ou les durées d'une sous-tâche ; null efface une durée.",
+      inputSchema: {
+        id: UUID.describe("Identifiant de la sous-tâche (voir obtenir_tache)"),
+        texte: z.string().min(1).max(SUBTASK_MAX_LENGTH).optional(),
+        faite: z.boolean().optional(),
+        heures_estimees: SUB_HOURS.nullable().optional(),
+        heures_realisees: SUB_HOURS.nullable().optional(),
+      },
+      annotations: UPDATE,
+    },
+    async (a) =>
+      guard(async () => {
+        await updateSubtask(db, a.id, { title: a.texte, done: a.faite, estHours: a.heures_estimees, actualHours: a.heures_realisees }, actor);
+        return ok({ modifie: true, id: a.id, champs_modifies: Object.keys(a).filter((k) => k !== "id") });
+      }),
+  );
+
+  // ---------- creer_type ----------
+  const KIND: Record<string, TypeKind> = { objet: "objet", document: "document", tache: "tache" };
+  server.registerTool(
+    "creer_type",
+    {
+      title: "Créer un type",
+      description:
+        "Crée un type d'objet (bâtiment, véhicule…), de document (facture, garantie…) ou de tâche (catégorie : entretien, réparation…). " +
+        "Le nom doit être nouveau (sans tenir compte des majuscules). icone : uniquement pour un type de tâche (clé d'icône Carnet, facultative).",
+      inputSchema: {
+        categorie: z.enum(["objet", "document", "tache"]),
+        nom: z.string().min(1).max(60),
+        icone: z.string().max(40).optional(),
+      },
+      annotations: CREATE,
+    },
+    async (a) =>
+      guard(async () => {
+        if (a.icone && a.categorie !== "tache") return fail("icone n'existe que pour les types de tâche.");
+        if (a.icone && !isTaskIcon(a.icone)) return fail(`Icône « ${a.icone} » inconnue.`);
+        const t = await createType(db, KIND[a.categorie], a.nom, a.icone ?? null);
+        return ok({ cree: true, categorie: a.categorie, id: t.id, nom: t.name });
+      }),
+  );
+  // ---------- modifier_photo ----------
+  server.registerTool(
+    "modifier_photo",
+    {
+      title: "Modifier une photo",
+      description: "Change la description (légende) d'une photo (identifiant donné par obtenir_objet / obtenir_tache) ; null l'efface.",
+      inputSchema: {
+        id: UUID.describe("Identifiant de la photo"),
+        description: CAPTION.nullable(),
+      },
+      annotations: UPDATE,
+    },
+    async (a) =>
+      guard(async () => {
+        if (!(await getPhoto(db, a.id))) return fail(`Photo ${a.id} introuvable`);
+        const p = await setPhotoDescription(db, a.id, a.description, actor);
+        return ok({ modifie: true, id: p.id, description: p.description, page: p.objectId ? objectUrl(p.objectId) : todoUrl(p.todoId!) });
       }),
   );
 }

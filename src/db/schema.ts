@@ -160,6 +160,8 @@ export const photos = pgTable(
      * rattachée à son propriétaire à la création (voir claimDraftPhotos).
      */
     draftOwner: uuid("draft_owner"),
+    /** Légende libre (texte simple). */
+    description: text("description"),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -190,6 +192,8 @@ export const documents = pgTable(
       .notNull()
       .references(() => documentTypes.id, { onDelete: "restrict" }),
     size: integer("size").notNull(),
+    /** Description libre (texte simple). */
+    description: text("description"),
     createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getDb } from "@/db";
-import { OAuthError, requestsWrite, validateAuthorize } from "@/lib/oauth";
+import { OAuthError, requestsDelete, requestsWrite, validateAuthorize } from "@/lib/oauth";
 import { getCurrentUser } from "@/lib/session";
 import { approveAction, denyAction } from "./actions";
 
@@ -68,6 +68,7 @@ export default async function AutoriserPage(props: PageProps<"/oauth/autoriser">
     );
   }
   const wantsWrite = requestsWrite(get("scope"));
+  const wantsDelete = requestsDelete(get("scope"));
   const redirectHost = (() => {
     try {
       const u = new URL(get("redirect_uri"));
@@ -99,8 +100,19 @@ export default async function AutoriserPage(props: PageProps<"/oauth/autoriser">
         <span className="grid gap-1">
           <span className="font-bold">Autoriser aussi les modifications</span>
           <span className="text-sm">
-            Créer et modifier des tâches (statut, échéance, durée, valeur…), créer, modifier et déplacer des objets, ajouter
-            des liens et des photos. Aucune suppression n&apos;est possible par ce biais. Sans cette case, l&apos;accès reste en lecture seule.
+            Créer et modifier des tâches (statut, échéance, durée, valeur…) et leurs sous-tâches, créer, modifier et
+            déplacer des objets, ajouter des liens, des photos et des documents, créer des types. Sans cette case,
+            l&apos;accès reste en lecture seule.
+          </span>
+        </span>
+      </label>
+      <label className="flex gap-3 rounded-xl border-2 border-brick bg-brick-soft p-4">
+        <input type="checkbox" name="suppression" form="autoriser" defaultChecked={wantsDelete} className="mt-1 size-5 shrink-0" />
+        <span className="grid gap-1">
+          <span className="font-bold">Autoriser aussi les suppressions</span>
+          <span className="text-sm">
+            Supprimer des tâches, des sous-tâches, des objets (vides), des photos, des documents et des liens. Une
+            suppression est définitive. Cette case inclut les modifications.
           </span>
         </span>
       </label>

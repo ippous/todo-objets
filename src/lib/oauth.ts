@@ -9,11 +9,23 @@ import { apiTokens, oauthClients, oauthCodes, users, type ApiToken, type OAuthCl
 
 export const SCOPE = "lecture";
 export const WRITE_SCOPE = "ecriture";
-export const SCOPES = [SCOPE, WRITE_SCOPE] as const;
-/** Portée enregistrée : « lecture » ou « lecture ecriture » (l'écriture inclut la lecture). */
-export const scopeFor = (write: boolean) => (write ? `${SCOPE} ${WRITE_SCOPE}` : SCOPE);
-export const canWrite = (scope: string | null | undefined) => (scope ?? "").split(/\s+/).includes(WRITE_SCOPE);
-export const requestsWrite = (raw: string) => raw.split(/\s+/).includes(WRITE_SCOPE);
+export const DELETE_SCOPE = "suppression";
+export const SCOPES = [SCOPE, WRITE_SCOPE, DELETE_SCOPE] as const;
+/**
+ * Portée enregistrée : « lecture », « lecture ecriture » ou « lecture ecriture suppression »
+ * (chaque niveau inclut le précédent ; la suppression n'existe pas sans l'écriture).
+ */
+export const scopeFor = (write: boolean, del = false) =>
+  del ? `${SCOPE} ${WRITE_SCOPE} ${DELETE_SCOPE}` : write ? `${SCOPE} ${WRITE_SCOPE}` : SCOPE;
+const has = (scope: string | null | undefined, s: string) => (scope ?? "").split(/\s+/).includes(s);
+export const canWrite = (scope: string | null | undefined) => has(scope, WRITE_SCOPE) || has(scope, DELETE_SCOPE);
+export const canDelete = (scope: string | null | undefined) => has(scope, DELETE_SCOPE);
+export const requestsWrite = (raw: string) => has(raw, WRITE_SCOPE) || has(raw, DELETE_SCOPE);
+export const requestsDelete = (raw: string) => has(raw, DELETE_SCOPE);
+/** Droits d'un accès, du plus faible au plus fort. */
+export type Rights = "lecture" | "ecriture" | "suppression";
+export const rightsOf = (scope: string | null | undefined): Rights =>
+  canDelete(scope) ? "suppression" : canWrite(scope) ? "ecriture" : "lecture";
 export const ACCESS_TTL_S = 60 * 60; // 1 h
 export const REFRESH_TTL_S = 60 * 60 * 24 * 30; // 30 jours
 export const CODE_TTL_S = 10 * 60; // 10 min
@@ -41,12 +53,12 @@ function newToken(kind: Kind) {
 
 // ---------- Jetons personnels ----------
 
-export async function createPersonalToken(db: Db, userId: string, rawName: string, write = false) {
+export async function createPersonalToken(db: Db, userId: string, rawName: string, write = false, del = false) {
   const name = rawName.trim().slice(0, 80) || "Jeton personnel";
   const t = newToken("personnel");
   const [row] = await db
     .insert(apiTokens)
-    .values({ kind: "personnel", tokenHash: t.hash, prefix: t.prefix, name, userId, scope: scopeFor(write) })
+    .values({ kind: "personnel", tokenHash: t.hash, prefix: t.prefix, name, userId, scope: scopeFor(write, del) })
     .returning();
   return { token: t.token, row };
 }
@@ -59,6 +71,8 @@ export type AccessEntry = {
   createdAt: Date;
   lastUsedAt: Date | null;
   write: boolean;
+  /** Droit de suppression (implique l'écriture). */
+  delete: boolean;
 };
 
 /** Jetons personnels actifs et applications OAuth autorisées (une ligne par autorisation). */
@@ -73,14 +87,14 @@ export async function listAccess(db: Db, userId: string): Promise<AccessEntry[]>
   const grants = new Map<string, AccessEntry>();
   for (const r of rows) {
     if (r.kind === "personnel") {
-      out.push({ id: r.id, kind: "personnel", name: r.name, prefix: r.prefix, createdAt: r.createdAt, lastUsedAt: r.lastUsedAt, write: canWrite(r.scope) });
+      out.push({ id: r.id, kind: "personnel", name: r.name, prefix: r.prefix, createdAt: r.createdAt, lastUsedAt: r.lastUsedAt, write: canWrite(r.scope), delete: canDelete(r.scope) });
       continue;
     }
     if (!r.grantId || (r.expiresAt && r.expiresAt < now)) continue;
     const g = grants.get(r.grantId);
     const last = r.lastUsedAt;
     if (!g) {
-      grants.set(r.grantId, { id: r.grantId, kind: "application", name: r.name, prefix: null, createdAt: r.createdAt, lastUsedAt: last, write: canWrite(r.scope) });
+      grants.set(r.grantId, { id: r.grantId, kind: "application", name: r.name, prefix: null, createdAt: r.createdAt, lastUsedAt: last, write: canWrite(r.scope), delete: canDelete(r.scope) });
     } else if (last && (!g.lastUsedAt || last > g.lastUsedAt)) g.lastUsedAt = last;
   }
   // Date de première autorisation : le plus ancien jeton encore valide de l'autorisation
@@ -107,14 +121,14 @@ export async function revokeAccess(db: Db, userId: string, id: string): Promise<
 // ---------- Vérification d'un jeton présenté au MCP ----------
 
 /** client : nom du jeton personnel ou de l'application OAuth (pour le journal). */
-export type BearerAccess = { user: User; write: boolean; client: string };
+export type BearerAccess = { user: User; write: boolean; delete: boolean; client: string };
 
 /** Utilisateur actif correspondant à un jeton d'accès ou personnel valide, sinon null. */
 export async function verifyBearer(db: Db, token: string): Promise<User | null> {
   return (await verifyBearerAccess(db, token))?.user ?? null;
 }
 
-/** Comme verifyBearer, avec les droits du jeton (écriture ou non). */
+/** Comme verifyBearer, avec les droits du jeton (écriture, suppression). */
 export async function verifyBearerAccess(db: Db, token: string): Promise<BearerAccess | null> {
   if (!/^carnet_(pat|at)_[A-Za-z0-9_-]{20,}$/.test(token)) return null;
   const now = new Date();
@@ -135,7 +149,7 @@ export async function verifyBearerAccess(db: Db, token: string): Promise<BearerA
   if (!row.t.lastUsedAt || now.getTime() - row.t.lastUsedAt.getTime() > 5 * 60_000) {
     await db.update(apiTokens).set({ lastUsedAt: now }).where(eq(apiTokens.id, row.t.id));
   }
-  return { user: row.u, write: canWrite(row.t.scope), client: row.t.name };
+  return { user: row.u, write: canWrite(row.t.scope), delete: canDelete(row.t.scope), client: row.t.name };
 }
 
 // ---------- Clients OAuth ----------
@@ -206,8 +220,11 @@ export async function validateAuthorize(db: Db, req: AuthorizeRequest & { respon
   return client;
 }
 
-/** Code d'autorisation ; `write` = l'utilisateur a accepté l'écriture sur l'écran de consentement. */
-export async function createAuthCode(db: Db, userId: string, req: AuthorizeRequest, write = false): Promise<string> {
+/**
+ * Code d'autorisation ; `write` / `del` = l'utilisateur a accepté l'écriture / la suppression
+ * sur l'écran de consentement.
+ */
+export async function createAuthCode(db: Db, userId: string, req: AuthorizeRequest, write = false, del = false): Promise<string> {
   const code = random(32);
   await db.insert(oauthCodes).values({
     codeHash: sha256(code),
@@ -215,7 +232,7 @@ export async function createAuthCode(db: Db, userId: string, req: AuthorizeReque
     userId,
     redirectUri: req.redirectUri,
     codeChallenge: req.codeChallenge,
-    scope: scopeFor(write),
+    scope: scopeFor(write, del),
     resource: req.resource,
     expiresAt: new Date(Date.now() + CODE_TTL_S * 1000),
   });

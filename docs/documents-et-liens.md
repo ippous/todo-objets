@@ -30,6 +30,7 @@ Les autres formats sont refusés avec un message, notamment les pages HTML et le
 
 Les documents sont **regroupés par type**. Chaque ligne affiche le nom, la taille, la date et l'auteur, et propose :
 
+- sa **description** (texte simple, 2 000 caractères au plus), avec **Ajouter une description** / **Modifier la description** ;
 - un **sélecteur de type**, pour reclasser le document ;
 - **Télécharger** ;
 - **Supprimer**, avec confirmation ; le fichier est effacé du stockage.
