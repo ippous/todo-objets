@@ -72,6 +72,7 @@ src/
       types/               gestion des types
       journal/             journal des actions
       rappels/             mes rappels : canaux, appareils, essai
+      assistant/           chat avec Claude / ChatGPT utilisant les outils MCP
       utilisateurs/        accès, assistants IA, schémas de rappel (admin)
     connexion/             page de connexion
     actions.ts             Server Actions (contrôle de session + validation)
@@ -83,6 +84,7 @@ src/
       test/purge/          purge des données de test (hors prod)
       mcp/                 serveur MCP (lecture, écriture, suppression selon les droits ; voir docs/mcp.md)
       oauth/               OAuth 2.1 : register, token, revoke
+      assistant/           réponse du chat en flux NDJSON (session obligatoire)
       rappels/envoyer/     envoi des rappels (Bearer CRON_SECRET, idempotent)
       rappels/abonnement/  abonnement Web Push de l'appareil courant
     .well-known/           métadonnées OAuth (RFC 9728, RFC 8414)
@@ -95,6 +97,7 @@ src/
     audit.ts               journal des actions (auteur, origine, différences, libellés)
     storage.ts             Blob / local, chemins, suppression
     document-types.ts      formats acceptés, visionneuses
+    chat.ts                chat : boucle modèle ↔ outils MCP (serveur MCP en mémoire)
     dependencies.ts        enchaînement des tâches : attend / débloque, anti-boucle, tâches prêtes
     gantt.ts               calcul pur du Gantt (échelle, barres, flèches, conflits) et de l'avancement
     notify-ready.ts        notification « Prête » quand une tâche attendue est faite

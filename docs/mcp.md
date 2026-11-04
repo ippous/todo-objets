@@ -17,6 +17,8 @@ Chaque accès a l'un de ces trois niveaux de droits (chacun inclut le précéden
 | Authentification | OAuth 2.1 (connecteurs) **ou** jeton personnel (`Authorization: Bearer …`) |
 | Page de gestion | **Connexion IA** (`/connexion-ia`, lien en haut de chaque page) |
 
+Le même jeu d'outils sert aussi à la page **Assistant** de Carnet (chat intégré) : voir [assistant.md](assistant.md).
+
 ## Se connecter
 
 ### 1. Connecteur avec connexion OAuth (claude.ai, ChatGPT…)
