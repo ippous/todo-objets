@@ -25,12 +25,18 @@ export function ChatWidget({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const isPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches;
   useEffect(() => {
     try {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- état mémorisé, lu après le premier rendu
-      if (sessionStorage.getItem(OPEN_KEY) === "1") setOpen(true);
+      if (sessionStorage.getItem(OPEN_KEY) === "1" && !isPhone()) setOpen(true);
     } catch {}
   }, []);
+  // Sur téléphone la fenêtre couvre la page : on la ferme quand on change de page (lien suivi depuis le chat)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fermeture au changement de page
+    if (isPhone()) setOpen(false);
+  }, [pathname]);
   const toggle = (v: boolean) => {
     setOpen(v);
     try {

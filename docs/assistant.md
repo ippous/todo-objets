@@ -18,6 +18,15 @@ L'assistant sait **quelle page est affichée** : sur la fiche d'une tâche ou d'
 - **Arrêter** interrompt une réponse en cours. **Nouvelle conversation** efface l'historique.
 - La conversation est gardée **dans ce navigateur** (60 derniers messages), pas sur le serveur ; elle suit d'une page à l'autre. Dans la fenêtre flottante, *Réglages* affiche le choix du modèle, l'autorisation des suppressions et *Nouvelle conversation*.
 
+## Images et documents
+
+- **Joindre** (trombone 📎) : parcourir les fichiers de l'appareil (sur téléphone : photothèque, appareil photo ou fichiers), plusieurs à la fois ; **coller** (`Ctrl+V`) une capture d'écran ou un fichier copié ; ou **glisser-déposer** sur la zone de saisie.
+- 6 pièces au plus par message, **4 Mo** chacune ; les photos sont réduites à 1600 px avant l'envoi. Formats : ceux des documents de Carnet (images, PDF, Word, Excel, PowerPoint, ODT, ODS, texte, CSV, JSON, ZIP).
+- L'assistant **voit** les images et les PDF, et lit le texte des fichiers texte, CSV, Word et Excel ; pour les autres formats, il n'a que le nom.
+- Il peut les **ranger dans Carnet** : « ajoute cette facture à la tâche Chaudière » → l'outil `joindre_piece` en fait une **photo** (image) ou un **document** (autre fichier, ou image demandée en document), avec description et type de document.
+- Les pièces sont gardées **7 jours** (ménage lors du passage de la tâche planifiée des rappels), visibles seulement par la personne qui les a envoyées ; leur contenu n'est renvoyé au modèle que pour les 2 derniers messages qui en ont (coût), les plus anciennes restant rangeables par leur identifiant.
+- Sur téléphone, suivre un lien depuis le chat ferme la fenêtre pour afficher la page.
+
 ## Droits
 
 - L'assistant agit **avec les droits de l'utilisateur connecté** : lecture et écriture (tâches, sous-tâches, objets, liens, photos, documents, types).
@@ -36,4 +45,5 @@ Il faut au moins une clé d'API (Claude ou ChatGPT) dans *Accès › Assistants 
 - `src/lib/chat.ts` construit le serveur MCP de Carnet **en mémoire** (`buildMcpServer` + `InMemoryTransport`, client « Chat Carnet »), passe la liste de ses outils au modèle (outils Anthropic ou fonctions OpenAI), exécute les appels demandés et renvoie les résultats, jusqu'à la réponse finale.
 - Les images renvoyées par `voir_photo` sont transmises au modèle (bloc image pour Claude ; message utilisateur `image_url` pour ChatGPT, dont les messages d'outil n'acceptent que du texte). Le texte d'un résultat est limité à 40 000 caractères.
 - Les adresses d'API suivent `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL` (faux serveur des tests e2e).
+- Pièces jointes : `POST /api/assistant/pieces` (fichier, 4 Mo au plus), lecture `GET /api/assistant/pieces/[id]` (propriétaire seulement), table `chat_attachments`, fichiers sous `<env>/assistant/<utilisateur>/…` ; `src/lib/chat-pieces.ts` prépare le contenu pour le modèle (bloc image / document PDF pour Claude, `image_url` / `file` pour ChatGPT, texte extrait sinon).
 - Durée maximale de la route : 300 s.

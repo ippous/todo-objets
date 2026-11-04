@@ -126,3 +126,67 @@ describe("contexte de page", () => {
     expect(describePage(null, "https://c.test")).toBeNull();
   });
 });
+
+describe("pièces jointes", () => {
+  it("transmet image, PDF et texte au modèle, et joindre_piece les range dans Carnet", async () => {
+    const { savePiece, deleteExpiredPieces, getPieces } = await import("@/lib/chat-pieces");
+    const sharp = (await import("sharp")).default;
+    const png = new Uint8Array(await sharp({ create: { width: 40, height: 30, channels: 3, background: "#2f5d3a" } }).png().toBuffer());
+    const img = await savePiece(db, user.id, { name: "facture.png", type: "image/png", bytes: png });
+    const pdf = await savePiece(db, user.id, { name: "notice.pdf", type: "application/pdf", bytes: new TextEncoder().encode("%PDF-1.4 test") });
+    const txt = await savePiece(db, user.id, { name: "releve.csv", type: "text/csv", bytes: new TextEncoder().encode("date;litres\n2026-11-01;12") });
+    await expect(savePiece(db, user.id, { name: "virus.exe", type: "application/x-msdownload", bytes: new Uint8Array([1]) })).rejects.toThrow("Format");
+    const t = await createTodo(db, { objectId, title: "Entretien chaudière" });
+
+    const events: ChatEvent[] = [];
+    const f = fakeFetch([
+      {
+        stop_reason: "tool_use",
+        content: [
+          { type: "tool_use", id: "j1", name: "joindre_piece", input: { piece_id: img.id, tache_id: t.id, description: "Facture" } },
+          { type: "tool_use", id: "j2", name: "joindre_piece", input: { piece_id: pdf.id, tache_id: t.id, type_document: "Autre" } },
+        ],
+      },
+      { stop_reason: "end_turn", content: [{ type: "text", text: "Rangées." }] },
+    ]);
+    await runChat(db, {
+      user,
+      origin: "https://carnet.test",
+      target: { provider: "anthropic", model: "m", apiKey: "k" },
+      history: [{ role: "user", text: "Range ça dans la tâche", pieces: [img.id, pdf.id, txt.id] }],
+      emit: (e) => events.push(e),
+      fetchImpl: f.impl,
+    });
+    const first = (f.calls[0].body.messages as { content: { type: string; text?: string }[] }[])[0].content;
+    expect(first.map((c) => c.type)).toEqual(["text", "text", "image", "text", "document", "text", "text"]);
+    expect(first.find((c) => c.text?.startsWith("Contenu de « releve.csv »"))?.text).toContain("2026-11-01;12");
+    expect((f.calls[0].body.tools as { name: string }[]).map((x) => x.name)).toContain("joindre_piece");
+    expect(events.filter((e) => e.type === "tool_result").map((e) => (e as { ok: boolean }).ok)).toEqual([true, true]);
+    const { listPhotos, listDocuments } = await import("@/lib/repo");
+    expect((await listPhotos(db, { todoId: t.id }))[0].description).toBe("Facture");
+    expect((await listDocuments(db, { todoId: t.id })).map((d) => d.filename)).toEqual(["notice.pdf"]);
+
+    // Une pièce d'un autre utilisateur n'est pas visible
+    const other = await createUser(db, { email: "autre@x.fr", name: "Autre" });
+    expect(await getPieces(db, other.id, [img.id])).toHaveLength(0);
+    // Ménage après 7 jours
+    expect(await deleteExpiredPieces(db, new Date(Date.now() + 8 * 86_400_000))).toBe(3);
+  });
+
+  it("ChatGPT : image et PDF en parties image_url et file", async () => {
+    const { savePiece } = await import("@/lib/chat-pieces");
+    const pdf = await savePiece(db, user.id, { name: "plan.pdf", type: "application/pdf", bytes: new TextEncoder().encode("%PDF-1.4 x") });
+    const f = fakeFetch([{ choices: [{ message: { content: "Vu." } }] }]);
+    await runChat(db, {
+      user,
+      origin: "https://carnet.test",
+      target: { provider: "openai", model: "m", apiKey: "k" },
+      history: [{ role: "user", text: "", pieces: [pdf.id] }],
+      emit: () => {},
+      fetchImpl: f.impl,
+    });
+    const content = (f.calls[0].body.messages as { content: { type: string }[] | string }[])[1].content as { type: string; file?: { filename: string } }[];
+    expect(content.map((c) => c.type)).toEqual(["text", "text", "file"]);
+    expect(content[2].file?.filename).toBe("plan.pdf");
+  });
+});
