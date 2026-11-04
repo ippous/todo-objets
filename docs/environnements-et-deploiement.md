@@ -16,6 +16,8 @@
 
 ## Cycle de travail
 
+Seules `develop` et `main` sont déployées. Les branches de travail `claude/…` ne le sont pas (`git.deploymentEnabled` dans `vercel.json`) : l'intégration Neon tentait de créer une base pour chacune et le déploiement échouait (« Resource provisioning failed »).
+
 1. Développer et tester en local (voir [tests.md](tests.md)).
 2. Pousser sur `develop` : Vercel construit et déploie le dev (migrations appliquées sur la base de dev).
 3. Lancer les e2e sur le dev.
