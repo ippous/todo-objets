@@ -2,6 +2,7 @@
 import { getDb } from "@/db";
 import { AiError, resolveProvider } from "@/lib/ai";
 import { runChat, type ChatEvent, type ChatTurn } from "@/lib/chat";
+import { PIECES_PER_MESSAGE } from "@/lib/chat-pieces";
 import { originOf } from "@/lib/oauth-http";
 import { getCurrentUser } from "@/lib/session";
 
@@ -14,7 +15,11 @@ export async function POST(request: Request) {
   const history: ChatTurn[] = Array.isArray(body?.history)
     ? (body.history as unknown[])
         .filter((m): m is ChatTurn => !!m && typeof m === "object" && ((m as ChatTurn).role === "user" || (m as ChatTurn).role === "assistant") && typeof (m as ChatTurn).text === "string")
-        .map((m) => ({ role: m.role, text: m.text.slice(0, 20_000) }))
+        .map((m) => ({
+          role: m.role,
+          text: m.text.slice(0, 20_000),
+          pieces: Array.isArray(m.pieces) ? m.pieces.filter((x): x is string => typeof x === "string").slice(0, PIECES_PER_MESSAGE) : undefined,
+        }))
     : [];
   const db = getDb();
   let target;

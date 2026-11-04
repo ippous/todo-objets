@@ -332,6 +332,27 @@ export const reminderDeliveries = pgTable(
 export type ReminderScheme = typeof reminderSchemes.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 
+// ---------- Assistant ----------
+
+/** Pièces jointes au chat de l'assistant (images, documents), gardées 7 jours. */
+export const chatAttachments = pgTable(
+  "chat_attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    pathname: text("pathname").notNull(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("chat_attachments_user_idx").on(t.userId, t.createdAt)],
+);
+
+export type ChatAttachment = typeof chatAttachments.$inferSelect;
+
 // ---------- Journal des actions ----------
 
 export const auditSourceEnum = pgEnum("audit_source", ["interface", "api", "mcp", "systeme"]);

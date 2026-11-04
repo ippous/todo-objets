@@ -1,10 +1,46 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { Paperclip, X as Close } from "lucide-react";
+import { ACCEPT_ATTR } from "@/lib/document-types";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type ToolCall = { id: string; name: string; args: Record<string, unknown>; ok?: boolean; summary?: string };
-type Message = { role: "user" | "assistant"; text: string; tools?: ToolCall[]; error?: string };
+type Piece = { id: string; name: string; type: string; size: number };
+type Message = { role: "user" | "assistant"; text: string; pieces?: Piece[]; tools?: ToolCall[]; error?: string };
+/** Pièce en cours d'ajout au prochain message */
+type Pending = { key: string; name: string; preview?: string; piece?: Piece; error?: string };
+
+const PIECE_MAX = 4 * 1024 * 1024;
+const PIECES_MAX = 6;
+
+/** Image réduite à 1600 px (JPEG) avant envoi : plus rapide, et suffisant pour l'assistant comme pour une photo. */
+async function shrinkImage(file: File): Promise<File> {
+  if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/heic") return file;
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    if (scale === 1 && file.size < 1_500_000) {
+      bmp.close();
+      return file;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, "image/jpeg", 0.85));
+    if (!blob) return file;
+    return new File([blob], file.name.replace(/\.[a-z0-9]+$/i, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
+const fmtSize = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} Ko` : `${(n / 1024 / 1024).toFixed(1).replace(".", ",")} Mo`);
 
 const STORE = (userId: string) => `carnet-chat-${userId}`;
 const MAX_KEPT = 60;
@@ -35,8 +71,9 @@ const TOOL_LABEL: Record<string, string> = {
   ajouter_document: "Ajout de document",
   ajouter_sous_taches: "Ajout de sous-tâches",
   modifier_sous_tache: "Sous-tâche",
+  joindre_piece: "Pièce jointe ajoutée",
 };
-const WRITES = /^(creer|modifier|deplacer|ajouter|supprimer)_/;
+const WRITES = /^(creer|modifier|deplacer|ajouter|supprimer|joindre)_/;
 
 // ---------- Markdown minimal (sans HTML injecté) ----------
 
@@ -160,12 +197,52 @@ export function ChatPanel({
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [messages]);
 
+  // ---------- Pièces jointes ----------
+  const [pending, setPending] = useState<Pending[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const uploading = pending.some((p) => !p.piece && !p.error);
+
+  const addFiles = (files: File[]) => {
+    const room = PIECES_MAX - pending.length;
+    for (const raw of files.slice(0, Math.max(0, room))) {
+      const key = crypto.randomUUID();
+      const preview = raw.type.startsWith("image/") && raw.type !== "image/heic" ? URL.createObjectURL(raw) : undefined;
+      setPending((all) => [...all, { key, name: raw.name || "image.png", preview }]);
+      void (async () => {
+        const set = (patch: Partial<Pending>) => setPending((all) => all.map((p) => (p.key === key ? { ...p, ...patch } : p)));
+        const file = await shrinkImage(raw);
+        if (file.size > PIECE_MAX) return set({ error: `${fmtSize(file.size)} : 4 Mo au plus` });
+        const fd = new FormData();
+        fd.append("file", file, raw.name || file.name || "image.png");
+        try {
+          const res = await fetch("/api/assistant/pieces", { method: "POST", body: fd });
+          const j = (await res.json().catch(() => ({}))) as Piece & { error?: string };
+          if (!res.ok) set({ error: j.error ?? `Erreur ${res.status}` });
+          else set({ piece: { id: j.id, name: j.name, type: j.type, size: j.size } });
+        } catch {
+          set({ error: "Envoi impossible" });
+        }
+      })();
+    }
+  };
+  const removePending = (key: string) =>
+    setPending((all) => {
+      const p = all.find((x) => x.key === key);
+      if (p?.preview) URL.revokeObjectURL(p.preview);
+      return all.filter((x) => x.key !== key);
+    });
+
   const send = async (text: string) => {
     const q = text.trim();
-    if (!q || busy) return;
-    const history = [...messages.filter((m) => !m.error), { role: "user" as const, text: q }];
-    setMessages([...messages, { role: "user", text: q }, { role: "assistant", text: "", tools: [] }]);
+    const pieces = pending.flatMap((p) => (p.piece ? [p.piece] : []));
+    if ((!q && !pieces.length) || busy || uploading) return;
+    const userMsg: Message = { role: "user", text: q, ...(pieces.length ? { pieces } : {}) };
+    const history = [...messages.filter((m) => !m.error), userMsg];
+    setMessages([...messages, userMsg, { role: "assistant", text: "", tools: [] }]);
     setInput("");
+    for (const p of pending) if (p.preview) URL.revokeObjectURL(p.preview);
+    setPending([]);
     setBusy(true);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -177,7 +254,12 @@ export function ChatPanel({
         method: "POST",
         headers: { "content-type": "application/json" },
         // La page affichée sert de contexte (« cette tâche », « cet objet »)
-        body: JSON.stringify({ provider, allowDelete, page: pathname, history: history.map((m) => ({ role: m.role, text: m.text })) }),
+        body: JSON.stringify({
+          provider,
+          allowDelete,
+          page: pathname,
+          history: history.map((m) => ({ role: m.role, text: m.text, pieces: m.pieces?.map((p) => p.id) })),
+        }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) {
@@ -283,8 +365,26 @@ export function ChatPanel({
         )}
         {messages.map((m, i) =>
           m.role === "user" ? (
-            <div key={i} className="max-w-[85%] justify-self-end rounded-2xl rounded-br-sm bg-moss px-4 py-2 whitespace-pre-wrap text-surface">
-              {m.text}
+            <div key={i} className="grid max-w-[85%] justify-items-end gap-1.5 justify-self-end">
+              {(m.pieces?.length ?? 0) > 0 && (
+                <ul className="flex flex-wrap justify-end gap-1.5" aria-label="Pièces jointes">
+                  {m.pieces!.map((p) => (
+                    <li key={p.id}>
+                      <a href={`/api/assistant/pieces/${p.id}`} target="_blank" rel="noopener noreferrer" title={p.name}>
+                        {p.type.startsWith("image/") && p.type !== "image/heic" ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={`/api/assistant/pieces/${p.id}`} alt={p.name} className="size-20 rounded-lg border border-line object-cover" />
+                        ) : (
+                          <span className="block max-w-48 truncate rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-bold">
+                            📄 {p.name}
+                          </span>
+                        )}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {m.text && <div className="rounded-2xl rounded-br-sm bg-moss px-4 py-2 whitespace-pre-wrap text-surface">{m.text}</div>}
             </div>
           ) : (
             <div key={i} className="grid max-w-[95%] gap-2 justify-self-start">
@@ -328,14 +428,56 @@ export function ChatPanel({
       <form
         className={
           compact
-            ? "grid gap-2 border-t border-line bg-surface p-2"
-            : "sticky bottom-20 grid gap-2 rounded-xl border border-line bg-surface p-2 shadow-sm sm:bottom-4"
+            ? "grid gap-2 border-t border-line bg-surface p-2 data-[drop]:ring-2 data-[drop]:ring-moss data-[drop]:ring-inset"
+            : "sticky bottom-20 grid gap-2 rounded-xl border border-line bg-surface p-2 shadow-sm sm:bottom-4 data-[drop]:ring-2 data-[drop]:ring-moss"
         }
         onSubmit={(e) => {
           e.preventDefault();
           void send(input);
         }}
+        onDragOver={(e) => {
+          if (![...e.dataTransfer.types].includes("Files")) return;
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          if (!e.dataTransfer.files.length) return;
+          e.preventDefault();
+          setDragOver(false);
+          addFiles([...e.dataTransfer.files]);
+        }}
+        data-drop={dragOver ? "1" : undefined}
       >
+        {pending.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5 px-1" aria-label="Pièces à envoyer">
+            {pending.map((p) => (
+              <li
+                key={p.key}
+                className={`flex max-w-full items-center gap-1.5 rounded-lg border py-1 pr-1 pl-1.5 text-xs ${p.error ? "border-brick bg-brick-soft text-brick" : "border-line bg-paper"}`}
+              >
+                {p.preview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.preview} alt="" className="size-8 rounded object-cover" />
+                ) : (
+                  <span aria-hidden>📄</span>
+                )}
+                <span className="max-w-40 truncate" title={p.name}>
+                  {p.name}
+                </span>
+                <span className="text-muted">{p.error ?? (p.piece ? fmtSize(p.piece.size) : "envoi…")}</span>
+                <button
+                  type="button"
+                  className="grid size-6 place-items-center rounded hover:bg-surface"
+                  aria-label={`Retirer ${p.name}`}
+                  onClick={() => removePending(p.key)}
+                >
+                  <Close size={14} aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <label htmlFor="chat-input" className="sr-only">
           Message pour l&apos;assistant
         </label>
@@ -345,9 +487,16 @@ export function ChatPanel({
           className="min-h-12 resize-none bg-transparent px-2 py-1 outline-none"
           rows={2}
           maxLength={4000}
-          placeholder="Écris ta demande… (Entrée pour envoyer, Maj+Entrée pour aller à la ligne)"
+          placeholder="Écris ta demande, colle ou joins une image ou un document… (Entrée pour envoyer)"
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onPaste={(e) => {
+            // Image ou fichier collé (capture d'écran, fichier copié dans l'explorateur)
+            const files = [...e.clipboardData.files];
+            if (!files.length) return;
+            e.preventDefault();
+            addFiles(files);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -355,14 +504,40 @@ export function ChatPanel({
             }
           }}
         />
-        <div className="flex justify-end gap-2">
+        <div className="flex items-center justify-end gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            accept={`image/*,${ACCEPT_ATTR}`}
+            className="hidden"
+            aria-label="Joindre des fichiers"
+            onChange={(e) => {
+              addFiles([...(e.target.files ?? [])]);
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            className="mr-auto grid size-9 place-items-center rounded-md text-muted hover:bg-moss-soft hover:text-ink disabled:opacity-40"
+            aria-label="Joindre une image ou un document"
+            title="Joindre une image ou un document (ou coller, ou glisser ici)"
+            disabled={pending.length >= PIECES_MAX}
+            onClick={() => fileRef.current?.click()}
+          >
+            <Paperclip size={18} aria-hidden />
+          </button>
           {busy ? (
             <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={() => abortRef.current?.abort()}>
               Arrêter
             </button>
           ) : null}
-          <button type="submit" className="btn btn-primary min-h-9 px-4 text-sm" disabled={busy || !input.trim()}>
-            {busy ? "…" : "Envoyer"}
+          <button
+            type="submit"
+            className="btn btn-primary min-h-9 px-4 text-sm"
+            disabled={busy || uploading || (!input.trim() && !pending.some((p) => p.piece))}
+          >
+            {busy ? "…" : uploading ? "Envoi des fichiers…" : "Envoyer"}
           </button>
         </div>
       </form>

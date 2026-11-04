@@ -35,6 +35,12 @@ test.beforeAll(async () => {
       const body = JSON.parse(raw) as { system: string; messages: { role: string; content: unknown }[] };
       const last = body.messages.at(-1)!;
       res.writeHead(200, { "content-type": "application/json" });
+      // Message avec pièces jointes : on répond avec ce qui a été reçu
+      if (Array.isArray(last.content) && (last.content as { type: string }[]).some((c) => c.type === "image" || c.type === "document")) {
+        const kinds = (last.content as { type: string }[]).map((c) => c.type).filter((k) => k !== "text");
+        res.end(JSON.stringify({ stop_reason: "end_turn", content: [{ type: "text", text: `Reçu : ${kinds.join(", ")}` }] }));
+        return;
+      }
       // 1er appel : demande l'outil ; 2e appel (résultat reçu) : répond avec le lien trouvé
       if (typeof last.content === "string") {
         res.end(
@@ -81,6 +87,7 @@ test("assistant : outil de Carnet appelé, réponse avec lien, conversation gard
     // Depuis la fiche de la tâche : la bulle ouvre l'assistant, qui sait quelle page est affichée
     await page.goto(`/taches?q=${encodeURIComponent(marker)}`);
     await page.getByRole("link", { name: `Graisser ${marker}` }).click();
+    await expect(page.getByRole("heading", { level: 1, name: `Graisser ${marker}` })).toBeVisible();
     await page.getByRole("button", { name: "Ouvrir l'assistant" }).click();
     const chat = page.getByRole("dialog", { name: "Assistant" });
     await chat.getByLabel("Message pour l'assistant").fill(`Où en est ${marker} ?`);
@@ -120,4 +127,51 @@ test("assistant sans clé : invitation à configurer", async ({ page }) => {
   const empty = page.getByText("Aucun assistant IA n'est configuré.");
   const panel = page.getByLabel("Message pour l'assistant");
   await expect(empty.or(panel)).toBeVisible();
+});
+
+test("assistant : joindre une image et un PDF, coller une capture", async ({ page }) => {
+  test.skip(!FAKE_AI, "faux serveur IA requis (E2E_FAKE_AI=1)");
+  marker = testMarker(test.info());
+  await login(page);
+  await page.goto("/utilisateurs/ia");
+  const claude = page.getByRole("region", { name: "Claude (Anthropic)" });
+  await claude.getByLabel("Clé d'API").fill("sk-ant-test-0123456789abcdefWXYZ");
+  await claude.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(claude.getByText("Clé enregistrée …WXYZ")).toBeVisible();
+  try {
+    await page.goto("/taches");
+    await page.getByRole("button", { name: "Ouvrir l'assistant" }).click();
+    const chat = page.getByRole("dialog", { name: "Assistant" });
+    await chat.getByLabel("Joindre des fichiers").setInputFiles("e2e/fixtures/notice.pdf");
+    const pending = chat.getByRole("list", { name: "Pièces à envoyer" });
+    await expect(pending).toContainText("notice.pdf");
+    await expect(pending).not.toContainText("envoi…");
+
+    // Coller une image (capture d'écran)
+    const input = chat.getByLabel("Message pour l'assistant");
+    await input.click();
+    await input.evaluate(async (el) => {
+      const c = document.createElement("canvas");
+      c.width = 30;
+      c.height = 20;
+      c.getContext("2d")!.fillRect(0, 0, 30, 20);
+      const blob = await new Promise<Blob>((ok) => c.toBlob((b) => ok(b!), "image/png"));
+      const dt = new DataTransfer();
+      dt.items.add(new File([blob], "capture.png", { type: "image/png" }));
+      el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+    await expect(pending).toContainText("capture");
+    await expect(pending).not.toContainText("envoi…");
+
+    await page.keyboard.press("Enter");
+    await expect(chat.getByText("Reçu : document, image")).toBeVisible();
+    const sent = chat.getByRole("list", { name: "Pièces jointes" });
+    await expect(sent.getByText("notice.pdf")).toBeVisible();
+    await expect(sent.locator("img")).toHaveCount(1);
+    await chat.getByRole("button", { name: /Réglages/ }).click();
+    await chat.getByRole("button", { name: "Nouvelle conversation" }).click();
+  } finally {
+    await page.goto("/utilisateurs/ia");
+    await page.getByRole("region", { name: "Claude (Anthropic)" }).getByRole("button", { name: "Retirer la clé" }).click();
+  }
 });
