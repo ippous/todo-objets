@@ -130,7 +130,7 @@ main { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 
 /* Bascule Lien / Photo */
 .modes { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 2px; margin-right: 4px; }
-.modes button { border: 0; background: none; padding: 3px 9px; border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: 700; font-size: 13px; }
+.modes button { white-space: nowrap; border: 0; background: none; padding: 3px 9px; border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: 700; font-size: 13px; }
 .modes button[aria-checked="true"] { background: var(--moss); color: var(--on-moss); }
 
 /* Carte photo */
@@ -215,3 +215,6 @@ body.options { max-width: 640px; margin: 0 auto; padding: 28px 20px 40px; font-s
 .options h2 { font-size: 16px; margin: 24px 0 6px; }
 .options kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: 13px; background: var(--surface); }
 .doc-preview:not(:has(.preview-empty)) { border-style: solid; border-color: var(--line); }
+
+/* Mode tâche : seuls les objets peuvent recevoir la nouvelle tâche */
+body.mode-tache .node-tasks { display: none !important; }
