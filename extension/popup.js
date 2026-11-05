@@ -9,16 +9,21 @@ const TAB_KEY = "ongletPopup";
 const MAX_RECENTS = 8;
 const PENDING_MAX_AGE = 2 * 60 * 1000;
 const IN_WINDOW = new URLSearchParams(location.search).has("fenetre");
+/** Modes qui créent un élément dans un objet (et non qui ajoutent à une cible). */
+const CREATE_MODES = new Set(["tache", "objet"]);
+const isCreateMode = (mode = state.mode) => CREATE_MODES.has(mode);
 
 const state = {
   settings: null,
-  mode: "lien", // "lien" | "photo" | "document" | "tache" (création d'une tâche)
+  mode: "lien", // "lien" | "photo" | "document" | "tache" | "objet" (création d'une tâche, d'un objet)
+  attachMode: "lien", // dernier mode d'ajout (lien, photo, document), pour basculer sur un élément créé
   page: { url: "", title: "", windowId: undefined },
   linkable: false, // la page est une adresse http(s)
   photo: null, // { dataUrl, width, height, origine }
   doc: null, // { kind: "fichier", name, type, size, dataUrl } | { kind: "adresse", name, url }
   docTypes: null, // Promise<string[]> : types de documents de Carnet
   target: null, // { kind: "tache" | "objet", id, nom, chemin }
+  created: null, // dernière tâche ou dernier objet créé : { kind, id, nom, chemin, url }
   busy: false,
   added: false,
   treeLoaded: false,
@@ -129,6 +134,7 @@ function objectButton(o) {
 function select(target) {
   state.target = target;
   state.added = false;
+  if (target.kind === "objet") $("object-root").checked = false; // un parent choisi : plus de nouvel arbre
   const k = keyOf(target);
   for (const b of document.querySelectorAll("[data-target]")) b.setAttribute("aria-pressed", b.dataset.target === k ? "true" : "false");
   setStatus("");
@@ -147,7 +153,14 @@ function refreshFooter() {
   if (state.busy) return;
   if (state.added) {
     btn.disabled = true;
-    btn.textContent = { lien: "Lien ajouté ✓", photo: "Photo ajoutée ✓", document: "Document ajouté ✓", tache: "Tâche créée ✓" }[state.mode];
+    btn.textContent = { lien: "Lien ajouté ✓", photo: "Photo ajoutée ✓", document: "Document ajouté ✓", tache: "Tâche créée ✓", objet: "Objet créé ✓" }[state.mode];
+    return;
+  }
+  if (state.mode === "objet") {
+    const root = $("object-root").checked;
+    const missingObj = !$("object-name").value.trim() ? "Donne un nom à l'objet" : !root && t?.kind !== "objet" ? "Choisir l'objet parent" : "";
+    btn.disabled = !!missingObj;
+    btn.textContent = missingObj || (root ? "Créer l'objet (nouvel arbre)" : `Créer l'objet dans « ${t.nom} »`);
     return;
   }
   if (state.mode === "tache") {
@@ -181,8 +194,8 @@ async function runSearch() {
   if (!q) return showRecents();
   fill(out, el("div", { class: "loading", text: "Recherche…" }));
   try {
-    // En mode Tâche, seule la cible « objet » a un sens : on ne cherche pas les tâches
-    const onlyObjects = state.mode === "tache";
+    // En mode Tâche ou Objet, seule la cible « objet » a un sens : on ne cherche pas les tâches
+    const onlyObjects = isCreateMode();
     const [objs, tasks] = await Promise.all([
       callTool("lister_objets", { recherche: q, limite: onlyObjects ? 30 : 8 }, state.settings),
       onlyObjects
@@ -216,7 +229,7 @@ async function loadRecents() {
 
 async function showRecents() {
   const out = $("search-results");
-  const onlyObjects = state.mode === "tache";
+  const onlyObjects = isCreateMode();
   const recents = (await loadRecents()).filter((r) => !onlyObjects || r.kind === "objet");
   if (!recents.length) {
     const hint = onlyObjects ? "Tape une partie du nom d'un objet, ou parcours l'arborescence." : "Tape une partie du nom d'une tâche ou d'un objet, ou parcours l'arborescence.";
@@ -367,26 +380,70 @@ function showTab(name) {
 function setMode(mode) {
   state.mode = mode;
   state.added = false;
+  const creating = isCreateMode(mode);
+  if (!creating) state.attachMode = mode;
   for (const b of document.querySelectorAll("[data-mode]")) b.setAttribute("aria-checked", String(b.dataset.mode === mode));
   $("link-card").hidden = mode !== "lien";
   $("photo-card").hidden = mode !== "photo";
   $("doc-card").hidden = mode !== "document";
   $("task-card").hidden = mode !== "tache";
-  const wasTask = document.body.classList.contains("mode-tache");
-  document.body.classList.toggle("mode-tache", mode === "tache");
-  $("include-done").closest("label").hidden = mode === "tache";
-  $("description").placeholder = mode === "tache" ? "Description de la tâche (facultative)" : "Description (facultative)";
-  $("search").placeholder = mode === "tache" ? "Nom de l'objet où créer la tâche…" : "Nom d'une tâche ou d'un objet…";
-  if (mode === "tache" && state.target?.kind === "tache") {
-    // Une tâche ne peut pas recevoir une tâche : il faut choisir un objet
+  $("object-card").hidden = mode !== "objet";
+  const wasCreating = document.body.classList.contains("mode-creation");
+  document.body.classList.toggle("mode-creation", creating);
+  $("include-done").closest("label").hidden = creating;
+  $("description").placeholder =
+    mode === "tache" ? "Description de la tâche (facultative)" : mode === "objet" ? "Description de l'objet (facultative)" : "Description (facultative)";
+  $("search").placeholder =
+    mode === "tache" ? "Nom de l'objet où créer la tâche…" : mode === "objet" ? "Nom de l'objet parent…" : "Nom d'une tâche ou d'un objet…";
+  if (creating && state.target?.kind === "tache") {
+    // Une tâche ne peut recevoir ni tâche ni objet : il faut choisir un objet
     state.target = null;
     for (const b of document.querySelectorAll("[data-target]")) b.setAttribute("aria-pressed", "false");
   }
   if (mode === "document") void loadDocTypes();
-  if (wasTask !== (mode === "tache")) void runSearch(); // résultats avec ou sans les tâches
+  if (wasCreating !== creating) void runSearch(); // résultats avec ou sans les tâches
   if (mode === "tache") $("task-title").focus();
+  if (mode === "objet") $("object-name").focus();
   setStatus("");
   refreshFooter();
+}
+
+// ---------- Élément créé : basculer dessus ----------
+/** Choisit l'élément créé comme cible, dans le mode indiqué (par défaut le dernier mode d'ajout). */
+function switchTo(created, mode = state.attachMode) {
+  setMode(mode);
+  if (mode === "objet") $("object-root").checked = false;
+  select(created);
+  void rememberRecent(created);
+  if (!isCreateMode(mode)) $("description").focus();
+}
+
+function showCreated(created) {
+  const s = $("status");
+  s.className = "status ok";
+  const what = { lien: "un lien", photo: "une photo", document: "un document" }[state.attachMode];
+  const btn = (text, title, onclick) => el("button", { type: "button", class: "secondary small", text, title, onclick });
+  fill(
+    s,
+    `${created.kind === "tache" ? "Tâche" : "Objet"} « ${created.nom} » créé${created.kind === "tache" ? "e" : ""}`,
+    created.parent ? ` dans « ${created.parent} »` : created.kind === "objet" ? " (nouvel arbre)" : "",
+    ". ",
+    created.url ? el("a", { href: created.url, target: "_blank", text: "Ouvrir" }) : null,
+    el(
+      "div",
+      { class: "created-actions" },
+      btn("Basculer dessus", `Choisir « ${created.nom} » comme cible pour y ajouter ${what}`, () => switchTo(created)),
+      created.kind === "objet" ? btn("+ Tâche", `Créer une tâche dans « ${created.nom} »`, () => switchTo(created, "tache")) : null,
+      created.kind === "objet" ? btn("+ Sous-objet", `Créer un objet sous « ${created.nom} »`, () => switchTo(created, "objet")) : null,
+    ),
+  );
+}
+
+/** L'arbre et les tâches en cache ne sont plus à jour : on les recharge (tout de suite si l'arbre est affiché). */
+function invalidateTree(objectId) {
+  if (objectId) state.tasksByObject.delete(objectId);
+  state.treeLoaded = false;
+  if (!$("panel-tree").hidden) void loadTree();
 }
 
 // ---------- Document ----------
@@ -577,29 +634,53 @@ async function takePending() {
 // ---------- Envoi ----------
 async function submit() {
   const t = state.target;
-  if (!t || state.busy || state.added) return;
+  if (state.busy || state.added) return;
+  const objectAtRoot = state.mode === "objet" && $("object-root").checked;
+  if (!t && !objectAtRoot) return;
   if (state.mode === "photo" && !state.photo) return;
   if (state.mode === "document" && !state.doc) return;
   if (state.mode === "lien" && !state.linkable) return;
   if (state.mode === "tache" && (t.kind !== "objet" || !$("task-title").value.trim())) return;
+  if (state.mode === "objet" && ((!objectAtRoot && t.kind !== "objet") || !$("object-name").value.trim())) return;
   const btn = $("add");
   state.busy = true;
   btn.disabled = true;
   btn.textContent = "Envoi…";
   setStatus("");
-  const owner = t.kind === "tache" ? "tache" : "objet";
+  const owner = t?.kind === "tache" ? "tache" : "objet";
   const description = $("description").value.trim() || undefined;
   try {
     let page;
     if (state.mode === "tache") {
       const r = await callTool("creer_tache", { objet_id: t.id, titre: $("task-title").value.trim(), description }, state.settings);
       state.added = true;
-      setStatus(`Tâche « ${r.titre} » créée dans « ${t.nom} ».`, "ok", r.url ? { href: r.url, text: "Ouvrir" } : undefined);
+      state.created = { kind: "tache", id: r.id, nom: r.titre, chemin: t.chemin, url: r.url, parent: t.nom };
+      showCreated(state.created);
       // Prêt pour la suivante : on vide les champs (même objet par défaut)
       $("task-title").value = "";
       $("description").value = "";
       $("task-title").focus();
+      invalidateTree(t.id);
       await rememberRecent(t);
+      return;
+    }
+    if (state.mode === "objet") {
+      const nom = $("object-name").value.trim();
+      const parent = objectAtRoot ? null : t;
+      const r = await callTool("creer_objet", { nom, parent_id: parent?.id, description }, state.settings);
+      state.added = true;
+      state.created = { kind: "objet", id: r.id, nom: r.nom, chemin: parent ? `${parent.chemin} › ${r.nom}` : r.nom, url: r.url, parent: parent?.nom };
+      showCreated(state.created);
+      $("object-name").value = "";
+      $("description").value = "";
+      $("object-name").focus();
+      // Le parent est déplié pour montrer le nouvel objet dans l'arbre
+      if (parent) {
+        state.expanded.add(parent.id);
+        void chrome.storage.local.set({ [EXPANDED_KEY]: [...state.expanded] });
+        await rememberRecent(parent);
+      }
+      invalidateTree();
       return;
     }
     if (state.mode === "lien") {
@@ -700,6 +781,20 @@ async function init() {
   $("include-done").addEventListener("change", runSearch);
   $("add").addEventListener("click", submit);
   $("task-title").addEventListener("input", () => {
+    state.added = false;
+    refreshFooter();
+  });
+  $("object-name").addEventListener("input", () => {
+    state.added = false;
+    refreshFooter();
+  });
+  $("object-name").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (state.target?.kind === "objet" || $("object-root").checked) void submit();
+    else $("search").focus();
+  });
+  $("object-root").addEventListener("change", () => {
     state.added = false;
     refreshFooter();
   });
