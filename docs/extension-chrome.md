@@ -8,7 +8,7 @@ L'extension **Carnet** ajoute, depuis le navigateur, à une **tâche** ou à un 
 - **une photo** : capture de la page, image d'une page (clic droit), image collée ou glissée, ou fichier ;
 - **un document** : fichier (PDF, Word, Excel…), page ouverte dans l'onglet (un PDF, par exemple) ou lien d'une page (clic droit).
 
-Elle **crée aussi une tâche** en trois champs : titre, description, objet de l'arborescence (mode **Tâche**).
+Elle **crée aussi une tâche** en trois champs : titre, description, objet de l'arborescence (mode **Tâche**), et **un objet** : nom, description, parent dans l'arborescence (mode **Objet**). Un bouton **Basculer dessus** choisit ensuite l'élément créé comme cible, pour y ajouter un lien, une photo ou un document.
 
 Les trois premiers peuvent recevoir une **description** (champ *Description (facultative)* sous la carte).
 
@@ -34,6 +34,25 @@ Mode **Tâche** : création simplifiée d'une tâche.
 3. **Objet** où la ranger : par la recherche (seuls les objets sont proposés, avec les objets récents) ou l'**Arborescence** (les tâches des objets y sont masquées). Une tâche choisie dans un autre mode est désélectionnée : une tâche se range dans un objet.
 
 **Créer la tâche dans « … »**, ou `Entrée` dans le titre une fois l'objet choisi, la crée avec les valeurs par défaut de Carnet (à faire, priorité moyenne, type « Entretien », sans échéance) ; le reste se complète ensuite sur la fiche (lien *Ouvrir*). Après la création, le titre et la description se vident et l'objet reste choisi : on peut enchaîner plusieurs tâches au même endroit.
+
+### Objet
+
+Mode **Objet** : création simplifiée d'un objet.
+
+1. **Nom** (obligatoire, 120 caractères au plus) ;
+2. **Description** (facultative, même champ, en Markdown simple) ;
+3. **Parent** : un objet choisi par la recherche ou l'**Arborescence** (comme pour une tâche), ou **Nouvel arbre (sans parent)** pour créer une racine.
+
+**Créer l'objet dans « … »**, ou `Entrée` dans le nom une fois le parent choisi, le crée sans type ; le type, l'emplacement et les tags se complètent sur la fiche (lien *Ouvrir*). Le parent est déplié dans l'arbre pour montrer le nouvel objet ; le nom et la description se vident, le parent reste choisi.
+
+### Basculer sur l'élément créé
+
+Après la création d'une tâche ou d'un objet, le message de confirmation propose :
+
+- **Basculer dessus** : l'élément créé devient la cible, dans le dernier mode d'ajout utilisé (Lien, Photo ou Document) ; il rejoint les cibles récentes ;
+- pour un objet, **+ Tâche** (mode Tâche, l'objet choisi) et **+ Sous-objet** (mode Objet, l'objet comme parent).
+
+Liens, photos et documents s'ajoutent indifféremment à une tâche ou à un objet.
 
 ### Lien
 
@@ -85,7 +104,7 @@ L'extension n'est pas publiée sur le Chrome Web Store : elle se charge depuis l
 4. Dans Carnet, *Connexion IA › Jeton personnel* : créer un jeton **Lecture et écriture** (ex. « Extension Chrome — PC bureau »).
 5. Clic droit sur l'icône → **Options** : coller le jeton, puis **Enregistrer et tester**. Le message indique l'utilisateur connecté et les droits du jeton.
 
-Après une mise à jour du dossier (`git pull`), cliquer sur ↻ dans `chrome://extensions` (version actuelle : **0.4.0**, avec le mode Tâche ; le nouveau menu « Ajouter ce document à Carnet » n'apparaît qu'après ce rechargement). Fonctionne aussi dans Edge, Brave et les autres navigateurs Chromium.
+Après une mise à jour du dossier (`git pull`), cliquer sur ↻ dans `chrome://extensions` (version actuelle : **0.5.0**, avec les modes Tâche et Objet ; le nouveau menu « Ajouter ce document à Carnet » n'apparaît qu'après ce rechargement). Fonctionne aussi dans Edge, Brave et les autres navigateurs Chromium.
 
 ## Fonctionnement technique
 
@@ -95,7 +114,7 @@ Après une mise à jour du dossier (`git pull`), cliquer sur ↻ dans `chrome://
   |---|---|
   | `manifest.json` | déclaration, permissions, raccourci |
   | `background.js` | menus contextuels des images et des liens ; ouvre la fenêtre (`action.openPopup`, ou une petite fenêtre `popup.html?fenetre=1` si Chrome le refuse) en passant l'image ou le lien par `chrome.storage.session` |
-  | `popup.html/js` | fenêtre : mode Lien/Photo/Document/Tâche, description, recherche, arbre, envoi |
+  | `popup.html/js` | fenêtre : mode Lien/Photo/Document/Tâche/Objet, description, recherche, arbre, envoi |
   | `image.js` | téléchargement et réduction des images (`createImageBitmap` + `OffscreenCanvas`, JPEG 0,9, fond blanc pour la transparence) |
   | `document.js` | formats acceptés (les mêmes que `src/lib/document-types.ts`), limite de 3 Mo, lecture en base64 |
   | `carnet.js` | client MCP |
@@ -107,6 +126,7 @@ Après une mise à jour du dossier (`git pull`), cliquer sur ↻ dans `chrome://
   - arborescence : `lister_objets` (`limite: 1000`), puis `rechercher_taches` avec `objet_id` à l'ouverture d'un objet, filtré sur ses tâches directes ;
   - ajout : `ajouter_lien` (`tache_id` ou `objet_id`, `url`, `titre`, `description`), `ajouter_photo` (`image_base64` en `data:image/jpeg;base64,…`, `tache_ids` ou `objet_ids`, `description`) et `ajouter_document` (`tache_id` ou `objet_id`, `nom_fichier` + `fichier_base64` + `format`, ou `url_source` ; `type_document`, `description`) ;
   - création de tâche : `creer_tache` (`objet_id`, `titre`, `description`) ;
+  - création d'objet : `creer_objet` (`nom`, `parent_id` absent pour une racine, `description`) ;
   - types de documents et test des réglages : `vue_ensemble` (types, utilisateur et droits).
 - **Permissions** :
   - `activeTab` : adresse, titre et capture de l'onglet, seulement au moment où l'on ouvre l'extension (ou après le clic droit) ; pas d'accès à l'historique ni aux autres onglets ;
