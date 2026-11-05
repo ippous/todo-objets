@@ -45,7 +45,7 @@ a { color: var(--moss); }
 /* ---------- Popup ---------- */
 body.popup { width: 400px; min-height: 300px; max-height: 590px; display: flex; flex-direction: column; }
 
-.bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+.bar { display: flex; align-items: center; gap: 6px; padding: 10px 10px 6px; }
 .bar > strong { font-size: 15px; flex: 1; }
 .icon-btn {
   border: 0; background: none; color: var(--muted); padding: 4px; border-radius: 6px; cursor: pointer; display: grid; place-items: center;
@@ -130,7 +130,7 @@ main { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 
 /* Bascule Lien / Photo */
 .modes { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 2px; margin-right: 4px; }
-.modes button { white-space: nowrap; border: 0; background: none; padding: 3px 9px; border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: 700; font-size: 13px; }
+.modes button { white-space: nowrap; border: 0; background: none; padding: 3px 6px; border-radius: 6px; cursor: pointer; color: var(--muted); font-weight: 700; font-size: 13px; }
 .modes button[aria-checked="true"] { background: var(--moss); color: var(--on-moss); }
 
 /* Carte photo */
@@ -217,4 +217,6 @@ body.options { max-width: 640px; margin: 0 auto; padding: 28px 20px 40px; font-s
 .doc-preview:not(:has(.preview-empty)) { border-style: solid; border-color: var(--line); }
 
 /* Mode tâche : seuls les objets peuvent recevoir la nouvelle tâche */
-body.mode-tache .node-tasks { display: none !important; }
+body.mode-creation .node-tasks { display: none !important; }
+.created-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+#object-card .check { margin-top: 4px; }

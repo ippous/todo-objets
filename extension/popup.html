@@ -14,6 +14,7 @@
         <button type="button" role="radio" data-mode="photo" aria-checked="false">Photo</button>
         <button type="button" role="radio" data-mode="document" aria-checked="false">Document</button>
         <button type="button" role="radio" data-mode="tache" aria-checked="false" title="Créer une tâche">Tâche</button>
+        <button type="button" role="radio" data-mode="objet" aria-checked="false" title="Créer un objet">Objet</button>
       </div>
       <button id="open-options" class="icon-btn" type="button" title="Réglages" aria-label="Réglages">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
@@ -75,7 +76,17 @@
         </div>
       </section>
 
-      <!-- Description : de la tâche créée, ou du lien, de la photo, du document -->
+      <!-- Mode objet : création simplifiée (nom, description, parent) -->
+      <section id="object-card" class="page-card" aria-label="Objet à créer" hidden>
+        <div class="page-fields">
+          <label class="sr" for="object-name">Nom de l'objet</label>
+          <input id="object-name" class="title-input" type="text" maxlength="120" placeholder="Nom du nouvel objet" autocomplete="off" />
+          <div class="page-url">Choisis ci-dessous l'objet parent.</div>
+          <label class="check"><input id="object-root" type="checkbox" /> Nouvel arbre (sans parent)</label>
+        </div>
+      </section>
+
+      <!-- Description : de la tâche ou de l'objet créé, ou du lien, de la photo, du document -->
       <section class="desc-card">
         <label class="sr" for="description">Description</label>
         <textarea id="description" rows="2" maxlength="2000" placeholder="Description (facultative)"></textarea>
