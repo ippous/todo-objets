@@ -8,7 +8,9 @@ L'extension **Carnet** ajoute, depuis le navigateur, à une **tâche** ou à un 
 - **une photo** : capture de la page, image d'une page (clic droit), image collée ou glissée, ou fichier ;
 - **un document** : fichier (PDF, Word, Excel…), page ouverte dans l'onglet (un PDF, par exemple) ou lien d'une page (clic droit).
 
-Les trois peuvent recevoir une **description** (champ *Description (facultative)* sous la carte).
+Elle **crée aussi une tâche** en trois champs : titre, description, objet de l'arborescence (mode **Tâche**).
+
+Les trois premiers peuvent recevoir une **description** (champ *Description (facultative)* sous la carte).
 
 ## Utilisation
 
@@ -22,6 +24,16 @@ La cible choisie est rappelée en bas (« Tâche … » ou « Objet … » avec 
 ### Description
 
 Le champ **Description (facultative)**, sous la carte du lien, de la photo ou du document, est envoyé avec l'élément : description du lien, légende de la photo, description du document. Texte simple, 2 000 caractères au plus ; il reste rempli d'un ajout à l'autre. Elle se modifie ensuite sur la fiche, dans Carnet.
+
+### Tâche
+
+Mode **Tâche** : création simplifiée d'une tâche.
+
+1. **Titre** (obligatoire, 200 caractères au plus) ;
+2. **Description** (facultative, le même champ que pour les autres modes, en Markdown simple) ;
+3. **Objet** où la ranger : par la recherche (seuls les objets sont proposés, avec les objets récents) ou l'**Arborescence** (les tâches des objets y sont masquées). Une tâche choisie dans un autre mode est désélectionnée : une tâche se range dans un objet.
+
+**Créer la tâche dans « … »**, ou `Entrée` dans le titre une fois l'objet choisi, la crée avec les valeurs par défaut de Carnet (à faire, priorité moyenne, type « Entretien », sans échéance) ; le reste se complète ensuite sur la fiche (lien *Ouvrir*). Après la création, le titre et la description se vident et l'objet reste choisi : on peut enchaîner plusieurs tâches au même endroit.
 
 ### Lien
 
@@ -73,7 +85,7 @@ L'extension n'est pas publiée sur le Chrome Web Store : elle se charge depuis l
 4. Dans Carnet, *Connexion IA › Jeton personnel* : créer un jeton **Lecture et écriture** (ex. « Extension Chrome — PC bureau »).
 5. Clic droit sur l'icône → **Options** : coller le jeton, puis **Enregistrer et tester**. Le message indique l'utilisateur connecté et les droits du jeton.
 
-Après une mise à jour du dossier (`git pull`), cliquer sur ↻ dans `chrome://extensions` (version actuelle : **0.3.0**, avec le mode Document et les descriptions ; le nouveau menu « Ajouter ce document à Carnet » n'apparaît qu'après ce rechargement). Fonctionne aussi dans Edge, Brave et les autres navigateurs Chromium.
+Après une mise à jour du dossier (`git pull`), cliquer sur ↻ dans `chrome://extensions` (version actuelle : **0.4.0**, avec le mode Tâche ; le nouveau menu « Ajouter ce document à Carnet » n'apparaît qu'après ce rechargement). Fonctionne aussi dans Edge, Brave et les autres navigateurs Chromium.
 
 ## Fonctionnement technique
 
@@ -83,7 +95,7 @@ Après une mise à jour du dossier (`git pull`), cliquer sur ↻ dans `chrome://
   |---|---|
   | `manifest.json` | déclaration, permissions, raccourci |
   | `background.js` | menus contextuels des images et des liens ; ouvre la fenêtre (`action.openPopup`, ou une petite fenêtre `popup.html?fenetre=1` si Chrome le refuse) en passant l'image ou le lien par `chrome.storage.session` |
-  | `popup.html/js` | fenêtre : mode Lien/Photo/Document, description, recherche, arbre, envoi |
+  | `popup.html/js` | fenêtre : mode Lien/Photo/Document/Tâche, description, recherche, arbre, envoi |
   | `image.js` | téléchargement et réduction des images (`createImageBitmap` + `OffscreenCanvas`, JPEG 0,9, fond blanc pour la transparence) |
   | `document.js` | formats acceptés (les mêmes que `src/lib/document-types.ts`), limite de 3 Mo, lecture en base64 |
   | `carnet.js` | client MCP |
@@ -94,6 +106,7 @@ Après une mise à jour du dossier (`git pull`), cliquer sur ↻ dans `chrome://
   - recherche : `rechercher_taches` (`recherche`) et `lister_objets` (`recherche`, 8 au plus), en parallèle ;
   - arborescence : `lister_objets` (`limite: 1000`), puis `rechercher_taches` avec `objet_id` à l'ouverture d'un objet, filtré sur ses tâches directes ;
   - ajout : `ajouter_lien` (`tache_id` ou `objet_id`, `url`, `titre`, `description`), `ajouter_photo` (`image_base64` en `data:image/jpeg;base64,…`, `tache_ids` ou `objet_ids`, `description`) et `ajouter_document` (`tache_id` ou `objet_id`, `nom_fichier` + `fichier_base64` + `format`, ou `url_source` ; `type_document`, `description`) ;
+  - création de tâche : `creer_tache` (`objet_id`, `titre`, `description`) ;
   - types de documents et test des réglages : `vue_ensemble` (types, utilisateur et droits).
 - **Permissions** :
   - `activeTab` : adresse, titre et capture de l'onglet, seulement au moment où l'on ouvre l'extension (ou après le clic droit) ; pas d'accès à l'historique ni aux autres onglets ;

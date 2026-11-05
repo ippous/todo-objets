@@ -12,7 +12,7 @@ const IN_WINDOW = new URLSearchParams(location.search).has("fenetre");
 
 const state = {
   settings: null,
-  mode: "lien", // "lien" | "photo" | "document"
+  mode: "lien", // "lien" | "photo" | "document" | "tache" (création d'une tâche)
   page: { url: "", title: "", windowId: undefined },
   linkable: false, // la page est une adresse http(s)
   photo: null, // { dataUrl, width, height, origine }
@@ -147,7 +147,13 @@ function refreshFooter() {
   if (state.busy) return;
   if (state.added) {
     btn.disabled = true;
-    btn.textContent = { lien: "Lien ajouté ✓", photo: "Photo ajoutée ✓", document: "Document ajouté ✓" }[state.mode];
+    btn.textContent = { lien: "Lien ajouté ✓", photo: "Photo ajoutée ✓", document: "Document ajouté ✓", tache: "Tâche créée ✓" }[state.mode];
+    return;
+  }
+  if (state.mode === "tache") {
+    const missingTask = !$("task-title").value.trim() ? "Donne un titre à la tâche" : t?.kind !== "objet" ? "Choisir l'objet de la tâche" : "";
+    btn.disabled = !!missingTask;
+    btn.textContent = missingTask || `Créer la tâche dans « ${t.nom} »`;
     return;
   }
   const missing =
@@ -175,14 +181,19 @@ async function runSearch() {
   if (!q) return showRecents();
   fill(out, el("div", { class: "loading", text: "Recherche…" }));
   try {
+    // En mode Tâche, seule la cible « objet » a un sens : on ne cherche pas les tâches
+    const onlyObjects = state.mode === "tache";
     const [objs, tasks] = await Promise.all([
-      callTool("lister_objets", { recherche: q, limite: 8 }, state.settings),
-      callTool("rechercher_taches", { recherche: q, statut: $("include-done").checked ? "toutes" : "ouvertes", tri: "echeance", limite: 40 }, state.settings),
+      callTool("lister_objets", { recherche: q, limite: onlyObjects ? 30 : 8 }, state.settings),
+      onlyObjects
+        ? { taches: [] }
+        : callTool("rechercher_taches", { recherche: q, statut: $("include-done").checked ? "toutes" : "ouvertes", tri: "echeance", limite: 40 }, state.settings),
     ]);
     if (seq !== searchSeq) return;
     const o = objs.objets ?? [];
     const t = tasks.taches ?? [];
-    if (!o.length && !t.length) return fill(out, el("div", { class: "empty", text: "Aucune tâche ni aucun objet ne correspond." }));
+    if (!o.length && !t.length)
+      return fill(out, el("div", { class: "empty", text: onlyObjects ? "Aucun objet ne correspond." : "Aucune tâche ni aucun objet ne correspond." }));
     fill(
       out,
       t.length ? el("div", { class: "list-head", text: "Tâches" }) : null,
@@ -205,9 +216,11 @@ async function loadRecents() {
 
 async function showRecents() {
   const out = $("search-results");
-  const recents = await loadRecents();
+  const onlyObjects = state.mode === "tache";
+  const recents = (await loadRecents()).filter((r) => !onlyObjects || r.kind === "objet");
   if (!recents.length) {
-    fill(out, el("div", { class: "empty", text: "Tape une partie du nom d'une tâche ou d'un objet, ou parcours l'arborescence." }));
+    const hint = onlyObjects ? "Tape une partie du nom d'un objet, ou parcours l'arborescence." : "Tape une partie du nom d'une tâche ou d'un objet, ou parcours l'arborescence.";
+    fill(out, el("div", { class: "empty", text: hint }));
     return;
   }
   fill(
@@ -358,7 +371,20 @@ function setMode(mode) {
   $("link-card").hidden = mode !== "lien";
   $("photo-card").hidden = mode !== "photo";
   $("doc-card").hidden = mode !== "document";
+  $("task-card").hidden = mode !== "tache";
+  const wasTask = document.body.classList.contains("mode-tache");
+  document.body.classList.toggle("mode-tache", mode === "tache");
+  $("include-done").closest("label").hidden = mode === "tache";
+  $("description").placeholder = mode === "tache" ? "Description de la tâche (facultative)" : "Description (facultative)";
+  $("search").placeholder = mode === "tache" ? "Nom de l'objet où créer la tâche…" : "Nom d'une tâche ou d'un objet…";
+  if (mode === "tache" && state.target?.kind === "tache") {
+    // Une tâche ne peut pas recevoir une tâche : il faut choisir un objet
+    state.target = null;
+    for (const b of document.querySelectorAll("[data-target]")) b.setAttribute("aria-pressed", "false");
+  }
   if (mode === "document") void loadDocTypes();
+  if (wasTask !== (mode === "tache")) void runSearch(); // résultats avec ou sans les tâches
+  if (mode === "tache") $("task-title").focus();
   setStatus("");
   refreshFooter();
 }
@@ -555,6 +581,7 @@ async function submit() {
   if (state.mode === "photo" && !state.photo) return;
   if (state.mode === "document" && !state.doc) return;
   if (state.mode === "lien" && !state.linkable) return;
+  if (state.mode === "tache" && (t.kind !== "objet" || !$("task-title").value.trim())) return;
   const btn = $("add");
   state.busy = true;
   btn.disabled = true;
@@ -564,6 +591,17 @@ async function submit() {
   const description = $("description").value.trim() || undefined;
   try {
     let page;
+    if (state.mode === "tache") {
+      const r = await callTool("creer_tache", { objet_id: t.id, titre: $("task-title").value.trim(), description }, state.settings);
+      state.added = true;
+      setStatus(`Tâche « ${r.titre} » créée dans « ${t.nom} ».`, "ok", r.url ? { href: r.url, text: "Ouvrir" } : undefined);
+      // Prêt pour la suivante : on vide les champs (même objet par défaut)
+      $("task-title").value = "";
+      $("description").value = "";
+      $("task-title").focus();
+      await rememberRecent(t);
+      return;
+    }
     if (state.mode === "lien") {
       const titre = $("link-title").value.trim() || undefined;
       const r = await callTool("ajouter_lien", { [`${owner}_id`]: t.id, url: state.page.url, titre, description }, state.settings);
@@ -661,6 +699,16 @@ async function init() {
   });
   $("include-done").addEventListener("change", runSearch);
   $("add").addEventListener("click", submit);
+  $("task-title").addEventListener("input", () => {
+    state.added = false;
+    refreshFooter();
+  });
+  $("task-title").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (state.target?.kind === "objet") void submit();
+    else $("search").focus();
+  });
   $("link-title").addEventListener("input", () => {
     if (state.added && state.mode === "lien") {
       state.added = false;

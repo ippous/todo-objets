@@ -18,6 +18,7 @@ import {
 } from "@/lib/reminder-repo";
 import { dueReminders, fireTimes, formatOffsets, parisToUtc, parseOffsets } from "@/lib/reminders";
 import { createTodo, createUser, DomainError, getTodo, listObjects, setTodoStatus } from "@/lib/repo";
+import { describeDetails, listAudit } from "@/lib/audit";
 import { seedInitialTree } from "@/lib/seed";
 import { createTestDb } from "./helpers";
 
@@ -173,11 +174,19 @@ describe("schémas et envois", () => {
   });
 
   it("ne rattrape que le dernier rappel manqué et ignore ceux d'avant la création", async () => {
-    await task("2026-11-20", "14:30");
+    const first = await task("2026-11-20", "14:30");
     const r = await run("2026-11-20T10:31:00Z"); // J-2, J-1 et H-3 sont passés
     expect(r.envoyes).toBe(1);
     expect(r.sautes).toBe(2);
     expect(sent.map((s) => s.msg.title)).toEqual(["Rappel H-3 · Contrôle technique"]);
+
+    // Historique de la tâche : un rappel envoyé, deux remplacés par le plus récent
+    const hist = (await listAudit(db, { todoId: first.id })).filter((e) => e.action === "rappel");
+    expect(hist).toHaveLength(3);
+    expect(hist.every((e) => e.source === "systeme" && e.userName === "Rappels")).toBe(true);
+    const texts = hist.map((e) => describeDetails(e).join(" | "));
+    expect(texts).toContainEqual(expect.stringMatching(/^H-3 envoyé \| e-mail à Marie \| Prévu le .+ \| Échéance du 20 nov\. 2026 à 14:30$/));
+    expect(texts.filter((t) => t.startsWith("J-1 non envoyé (remplacé par un rappel plus récent)") || t.startsWith("J-2 non envoyé (remplacé par un rappel plus récent)"))).toHaveLength(2);
 
     // Tâche créée après J-1 : J-1 n'est pas envoyé
     const late = await task("2026-11-25", null);
@@ -186,6 +195,11 @@ describe("schémas et envois", () => {
     const r2 = await run("2026-11-24T09:01:00Z");
     expect(sent).toHaveLength(0);
     expect(r2.sautes).toBe(2);
+    const lateHist = (await listAudit(db, { todoId: late.id })).filter((e) => e.action === "rappel");
+    expect(lateHist.map((e) => describeDetails(e)[0])).toEqual([
+      expect.stringContaining("non envoyé (prévu avant la création ou la dernière modification de la tâche)"),
+      expect.stringContaining("non envoyé (prévu avant la création ou la dernière modification de la tâche)"),
+    ]);
   });
 
   it("réarme les rappels quand l'échéance change, et s'arrête quand la tâche est faite", async () => {
