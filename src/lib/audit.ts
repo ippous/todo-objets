@@ -4,6 +4,7 @@ import { and, desc, eq, sql, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
 import { auditLog, objects, reminderSchemes, taskTypes, todos, users, type AuditEntry, type AuditSource, type Todo, type User } from "@/db/schema";
 import { CATEGORY_LABEL, fmtDate, PRIORITY_LABEL, RECURRENCE_LABEL, STATUS_LABEL } from "./format";
+import { invaliderProchainRappel } from "./reminder-gate";
 
 /** Auteur d'une action et canal utilisé. */
 export type Actor = { userId: string | null; userName: string; source: AuditSource; client?: string | null };
@@ -67,6 +68,9 @@ export type AuditRow = { target: AuditTarget; action: AuditAction; details?: Rec
 
 /** Enregistre une ou plusieurs actions. Sans auteur (scripts, tests), rien n'est enregistré. */
 export async function logAction(db: Db, actor: Actor | undefined, ...rows: AuditRow[]): Promise<void> {
+  // Une tâche a changé (création, échéance, statut…) : le prochain rappel est à recalculer.
+  // Les rappels eux-mêmes ne changent pas le calendrier.
+  if (actor !== REMINDER_ACTOR && rows.some((r) => r.target.kind === "tache")) await invaliderProchainRappel();
   if (!actor || rows.length === 0) return;
   await db.insert(auditLog).values(
     rows.map((r) => ({

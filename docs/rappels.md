@@ -51,7 +51,7 @@ Chacun règle ses canaux dans **Rappels** (`/rappels`, lien en haut de page) :
 
 Les notifications utilisent le standard Web Push : pas de numéro de téléphone ni de service payant. Un appareil désinstallé ou expiré est retiré automatiquement.
 
-## Envoi : une route appelée chaque minute
+## Envoi : une route appelée toutes les 5 minutes
 
 `GET` ou `POST /api/rappels/envoyer`, avec l'en-tête `Authorization: Bearer <CRON_SECRET>`. Elle traite les rappels arrivés à échéance et répond un résumé JSON (envoyés, sautés, sans canal, échecs). Elle est idempotente : deux appels simultanés n'envoient pas deux fois le même rappel (index unique sur tâche + rappel + échéance, table `reminder_deliveries`).
 
@@ -63,6 +63,12 @@ Deux déclencheurs :
 ```cron
 * * * * * curl -fsS -m 50 -H "Authorization: Bearer <CRON_SECRET>" https://todo.jaume-eric.com/api/rappels/envoyer > /dev/null
 ```
+
+### Veille de la base entre deux rappels
+
+Neon met la base en veille après 5 minutes sans requête et le plan gratuit donne 100 CU-h de calcul par mois. Un cron toutes les 5 minutes qui interroge la base la garderait éveillée en permanence (environ 180 CU-h par mois) : c'est ce qui a épuisé le quota le 20/11/2026.
+
+La route note donc, après chaque passage, l'instant du prochain rappel à venir (au plus 3 h plus tard) dans le Runtime Cache de Vercel (`src/lib/reminder-gate.ts`). Tant que cet instant n'est pas atteint, elle répond `{"en_veille": true, "jusqu_a": …}` sans toucher à la base. Toute création, modification, suppression ou changement de statut d'une tâche (via `logAction`), et toute modification ou suppression d'un schéma, efface la note : le passage suivant interroge la base. Le plafond de 3 h sert de filet. Hors de Vercel, la note est gardée en mémoire du processus.
 
 Pour le **dev** (protégé par l'authentification Vercel), ajouter l'en-tête `x-vercel-protection-bypass: <jeton>` (Vercel › Settings › Deployment Protection › Protection Bypass for Automation) et utiliser le `CRON_SECRET` du dev.
 

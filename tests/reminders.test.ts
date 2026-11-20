@@ -147,6 +147,15 @@ describe("schémas et envois", () => {
     expect((await getTodo(db, t.id))!.reminderSchemeId).toBeNull();
   });
 
+  it("donne l'instant du prochain rappel à venir, pour laisser dormir la base d'ici là", async () => {
+    expect((await run("2026-11-18T13:00:00Z")).prochain).toBeNull(); // aucune tâche
+    await task("2026-11-20", "14:30"); // schéma de test : J-2 / J-1 / H-3
+    await task("2026-11-25", null);
+    expect(iso((await run("2026-11-18T13:00:00Z")).prochain!)).toBe("2026-11-18T13:30:00.000Z"); // J-2
+    expect(iso((await run("2026-11-18T13:31:00Z")).prochain!)).toBe("2026-11-19T13:30:00.000Z"); // J-1
+    expect(iso((await run("2026-11-20T10:31:00Z")).prochain!)).toBe("2026-11-23T07:00:00.000Z"); // J-2 à 8 h de l'autre
+  });
+
   it("envoie chaque rappel une fois, par e-mail et sur chaque appareil, au responsable", async () => {
     await savePushSubscription(db, userId, { endpoint: "https://push.test/a", keys: { p256dh: "k", auth: "a" } }, "Chrome sur Android");
     const t = await task("2026-11-20", "14:30");
