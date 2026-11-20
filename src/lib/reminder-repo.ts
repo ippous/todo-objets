@@ -15,6 +15,7 @@ import {
 } from "@/db/schema";
 import { logAction, REMINDER_ACTOR, todoTarget } from "./audit";
 import { fmtDue } from "./format";
+import { invaliderProchainRappel } from "./reminder-gate";
 import { addDays, dueInstant, dueKey, dueReminders, fireTimes, sortOffsets, TZ, untilLabel } from "./reminders";
 import { DomainError } from "./repo";
 
@@ -78,6 +79,7 @@ export async function updateReminderScheme(db: Db, id: string, data: { name: str
     .where(eq(reminderSchemes.id, id))
     .returning({ id: reminderSchemes.id });
   if (!res.length) throw new DomainError("Schéma introuvable");
+  await invaliderProchainRappel();
 }
 
 /** Schéma proposé par défaut pour les nouvelles tâches (null : aucun). */
@@ -94,6 +96,7 @@ export async function setDefaultScheme(db: Db, id: string | null) {
 /** Supprime un schéma : les tâches qui l'utilisaient n'ont plus de rappel. */
 export async function deleteReminderScheme(db: Db, id: string) {
   await db.delete(reminderSchemes).where(eq(reminderSchemes.id, id));
+  await invaliderProchainRappel();
 }
 
 // ---------- Préférences et appareils ----------
@@ -152,6 +155,8 @@ export type RunSummary = {
   sans_canal: number;
   echecs: number;
   details: { tache: string; rappel: string; resultat: DeliveryOutcome; canaux: string[]; erreur?: string }[];
+  /** Prochain rappel à venir parmi les tâches examinées (null : aucun dans l'année). */
+  prochain: Date | null;
 };
 
 const parisToday = (now: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(now);
@@ -221,7 +226,7 @@ export function reminderMessage(
 export async function runReminders(db: Db, opts: { now?: Date; senders: Senders; origin: string }): Promise<RunSummary> {
   const now = opts.now ?? new Date();
   const today = parisToday(now);
-  const summary: RunSummary = { examinees: 0, envoyes: 0, sautes: 0, sans_canal: 0, echecs: 0, details: [] };
+  const summary: RunSummary = { examinees: 0, envoyes: 0, sautes: 0, sans_canal: 0, echecs: 0, details: [], prochain: null };
 
   // Tâches ouvertes avec un schéma et une échéance aujourd'hui ou dans l'année
   const candidates = await db
@@ -274,9 +279,12 @@ export async function runReminders(db: Db, opts: { now?: Date; senders: Senders;
     summary.examinees++;
     const dk = dueKey(t.dueDate, t.dueTime);
     const fires = fireTimes(t.dueDate, t.dueTime, t.offsets);
+    const deadline = dueInstant(t.dueDate, t.dueTime);
+    const next = fires.find((f) => f.at > now && f.at < deadline);
+    if (next && (!summary.prochain || next.at < summary.prochain)) summary.prochain = next.at;
     const { send, skip } = dueReminders(
       fires,
-      dueInstant(t.dueDate, t.dueTime),
+      deadline,
       now,
       doneKeys.get(`${t.id}|${dk}`) ?? new Set(),
       t.updatedAt,
