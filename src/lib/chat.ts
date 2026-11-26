@@ -8,6 +8,8 @@ import type { User } from "@/db/schema";
 import { AI_PROVIDER_LABEL, AiError, type AiProvider } from "./ai";
 import { buildMcpServer } from "./mcp-server";
 import { getPieces, pieceContent, readPiece, type PieceContent } from "./chat-pieces";
+import { STATUS_LABEL } from "./format";
+import { getDocument, getObject, getTodo } from "./repo";
 import type { ChatAttachment } from "@/db/schema";
 
 export const CHAT_CLIENT = "Chat Carnet";
@@ -102,23 +104,90 @@ function baseUrl(p: AiProvider) {
   return (env || (p === "anthropic" ? "https://api.anthropic.com" : "https://api.openai.com")).replace(/\/+$/, "").replace(/\/v1$/, "");
 }
 
-/** Page affichée, en clair pour le modèle (« cette tâche », « cet objet »). */
-export function describePage(page: string | null | undefined, origin: string): string | null {
-  if (!page || !/^\/[\w\-/]*$/.test(page)) return null;
-  const id = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
-  const t = new RegExp(`^/taches/${id}$`, "i").exec(page);
-  if (t) return `L'utilisateur regarde la fiche de la tâche ${t[1]} (${origin}/taches/${t[1]}) : « cette tâche » désigne celle-ci (lis-la avec obtenir_tache).`;
-  const o = new RegExp(`^/objets/${id}(?:/modifier)?$`, "i").exec(page);
-  if (o) return `L'utilisateur regarde la fiche de l'objet ${o[1]} (${origin}/objets/${o[1]}) : « cet objet » ou « ici » désigne celui-ci (lis-le avec obtenir_objet).`;
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const isId = (v: string | null | undefined): v is string => !!v && new RegExp(`^${UUID}$`, "i").test(v);
+const VUES: Record<string, string> = { tableau: "en tableau (kanban)", gantt: "en diagramme de Gantt" };
+
+/** « Moulin Frat › Grange › Grenier », de la racine à l'objet. */
+async function objectPath(db: Db, id: string): Promise<string | null> {
+  const names: string[] = [];
+  let cur: string | null = id;
+  for (let i = 0; cur && i < 20; i++) {
+    const o = await getObject(db, cur);
+    if (!o) break;
+    names.unshift(o.name);
+    cur = o.parentId;
+  }
+  return names.length ? names.join(" › ") : null;
+}
+
+/**
+ * Page affichée, en clair pour le modèle (« cette tâche », « cet objet », « ici ») :
+ * nom de la tâche ou de l'objet, chemin dans l'arbre, filtres de la liste.
+ * `page` est le chemin avec sa requête (/taches?objet=…&vue=gantt).
+ */
+export async function describePage(db: Db, page: string | null | undefined, origin: string): Promise<string | null> {
+  if (!page || !/^\/[\w\-/]*(\?[\w\-=&%.+]*)?$/.test(page)) return null;
+  const url = new URL(page, "http://x");
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+  const q = url.searchParams;
+  const link = (p: string) => `${origin}${p}`;
+
+  const t = new RegExp(`^/taches/(${UUID})(?:/modifier)?$`, "i").exec(path);
+  if (t) {
+    const todo = await getTodo(db, t[1]);
+    if (!todo) return null;
+    const where = await objectPath(db, todo.objectId);
+    return (
+      `L'utilisateur regarde la tâche « ${todo.title} » (id ${todo.id}, ${STATUS_LABEL[todo.status]}` +
+      `${where ? `, sur ${where}` : ""}) : ${link(`/taches/${todo.id}`)}. ` +
+      "« cette tâche », « ici » ou une demande sans autre précision la désignent ; lis-la avec obtenir_tache avant d'en parler ou de la modifier."
+    );
+  }
+  const o = new RegExp(`^/objets/(${UUID})(?:/modifier)?$`, "i").exec(path);
+  if (o) {
+    const where = await objectPath(db, o[1]);
+    if (!where) return null;
+    return (
+      `L'utilisateur regarde l'objet ${where} (id ${o[1]}) : ${link(`/objets/${o[1]}`)}. ` +
+      "« cet objet », « ici » ou une demande sans autre précision (ex. « ajoute une tâche ») le désignent ; lis-le avec obtenir_objet."
+    );
+  }
+  const d = new RegExp(`^/documents/(${UUID})$`, "i").exec(path);
+  if (d) {
+    const doc = await getDocument(db, d[1]);
+    if (!doc) return null;
+    const owner = doc.todoId ? await getTodo(db, doc.todoId) : null;
+    const where = owner ? `la tâche « ${owner.title} » (id ${owner.id})` : doc.objectId ? `l'objet ${await objectPath(db, doc.objectId)} (id ${doc.objectId})` : null;
+    return `L'utilisateur regarde le document « ${doc.filename} » (id ${doc.id})${where ? `, rattaché à ${where}` : ""} ; « ce document » le désigne (lire_document).`;
+  }
+  if (path === "/taches") {
+    const parts = [`la liste des tâches${VUES[q.get("vue") ?? ""] ? ` ${VUES[q.get("vue")!]}` : ""}`];
+    const objet = q.get("objet");
+    if (isId(objet)) {
+      const where = await objectPath(db, objet);
+      if (where) parts.push(`filtrée sur l'objet ${where} et ses sous-objets (id ${objet}) — « ici » désigne cet objet`);
+    }
+    if (q.get("q")) parts.push(`recherche « ${q.get("q")!.slice(0, 100)} »`);
+    for (const k of ["statut", "priorite", "tag", "type", "responsable", "avant"] as const)
+      if (q.get(k)) parts.push(`${k} = ${q.get(k)!.slice(0, 60)}`);
+    return `L'utilisateur est sur ${parts.join(", ")}.`;
+  }
+  if (path === "/taches/nouvelle" || path === "/objets/nouveau") {
+    const id = q.get(path === "/objets/nouveau" ? "parent" : "objet");
+    const where = isId(id) ? await objectPath(db, id) : null;
+    const what = path === "/objets/nouveau" ? "le formulaire de nouvel objet" : "le formulaire de nouvelle tâche";
+    return `L'utilisateur est sur ${what}${where ? `, sous ${where} (id ${id})` : ""}.`;
+  }
   const names: Record<string, string> = {
     "/": "l'arbre des objets",
-    "/taches": "la liste des tâches",
-    "/taches/nouvelle": "le formulaire de nouvelle tâche",
     "/journal": "le journal des actions",
     "/rappels": "ses réglages de rappels",
     "/types": "la gestion des types",
+    "/commandes": "la liste des commandes",
+    "/assistant": "la page de l'assistant",
   };
-  return `L'utilisateur est sur la page ${names[page] ?? page}.`;
+  return `L'utilisateur est sur la page ${names[path] ?? path}.`;
 }
 
 function systemPrompt(user: User, instructions: string, allowDelete: boolean, page: string | null) {
@@ -218,7 +287,7 @@ export async function runChat(
       // « $schema » n'est pas attendu par les API des modèles
       inputSchema: Object.fromEntries(Object.entries(t.inputSchema as Record<string, unknown>).filter(([k]) => k !== "$schema")),
     }));
-    const system = systemPrompt(user, client.getInstructions() ?? "", !!opts.allowDelete, describePage(opts.page, opts.origin));
+    const system = systemPrompt(user, client.getInstructions() ?? "", !!opts.allowDelete, await describePage(db, opts.page, opts.origin));
     tools.push(JOIN_TOOL, OPEN_TOOL);
     const history = opts.history.filter((m) => m.text.trim() || m.pieces?.length).slice(-HISTORY_MAX);
     if (!history.length || history.at(-1)!.role !== "user") throw new AiError("Pose une question");
