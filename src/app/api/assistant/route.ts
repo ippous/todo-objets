@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     async start(controller) {
       const emit = (e: ChatEvent) => controller.enqueue(encoder.encode(`${JSON.stringify(e)}\n`));
       try {
-        const page = typeof body?.page === "string" ? body.page.slice(0, 200) : null;
+        const page = typeof body?.page === "string" ? body.page.slice(0, 500) : null;
         await runChat(db, { user, origin, target, history, allowDelete: body?.allowDelete === true, page, emit });
       } catch (err) {
         if (!(err instanceof AiError)) console.error("assistant", err);

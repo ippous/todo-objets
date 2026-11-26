@@ -116,14 +116,22 @@ describe("chat de Carnet", () => {
 });
 
 describe("contexte de page", () => {
-  it("décrit la tâche ou l'objet affiché, ignore une adresse douteuse", async () => {
+  it("nomme la tâche, l'objet et les filtres affichés, ignore une adresse douteuse", async () => {
     const { describePage } = await import("@/lib/chat");
-    const id = "3b23c320-47b0-458a-8781-e35132a9c29d";
-    expect(describePage(`/taches/${id}`, "https://c.test")).toContain(`tâche ${id}`);
-    expect(describePage(`/objets/${id}/modifier`, "https://c.test")).toContain(`objet ${id}`);
-    expect(describePage("/taches", "https://c.test")).toContain("liste des tâches");
-    expect(describePage("/x<script>", "https://c.test")).toBeNull();
-    expect(describePage(null, "https://c.test")).toBeNull();
+    const o = (await listObjects(db)).find((x) => x.parentId)!;
+    const parent = (await listObjects(db)).find((x) => x.id === o.parentId)!;
+    const todo = await createTodo(db, { objectId: o.id, title: "Vidanger le tracteur" });
+    const tache = await describePage(db, `/taches/${todo.id}`, "https://c.test");
+    expect(tache).toContain("« Vidanger le tracteur »");
+    expect(tache).toContain(`${parent.name} › ${o.name}`);
+    expect(await describePage(db, `/objets/${o.id}/modifier`, "https://c.test")).toContain(`l'objet ${parent.name} › ${o.name}`);
+    const liste = await describePage(db, `/taches?vue=gantt&objet=${o.id}`, "https://c.test");
+    expect(liste).toContain("Gantt");
+    expect(liste).toContain(`filtrée sur l'objet ${parent.name} › ${o.name}`);
+    expect(await describePage(db, "/taches", "https://c.test")).toContain("liste des tâches");
+    expect(await describePage(db, "/taches/3b23c320-47b0-458a-8781-e35132a9c29d", "https://c.test")).toBeNull();
+    expect(await describePage(db, "/x<script>", "https://c.test")).toBeNull();
+    expect(await describePage(db, null, "https://c.test")).toBeNull();
   });
 });
 

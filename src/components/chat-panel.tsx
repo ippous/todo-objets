@@ -312,7 +312,8 @@ export function ChatPanel({
         body: JSON.stringify({
           provider,
           allowDelete,
-          page: pathname,
+          // avec la requête : filtres de la liste (?objet=…&vue=gantt)
+          page: pathname + window.location.search,
           history: history.map((m) => ({ role: m.role, text: m.text, pieces: m.pieces?.map((p) => p.id) })),
         }),
         signal: ctrl.signal,
