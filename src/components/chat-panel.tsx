@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Paperclip, X as Close } from "lucide-react";
+import { Mic, Paperclip, Square, Volume2, X as Close } from "lucide-react";
 import { ACCEPT_ATTR } from "@/lib/document-types";
+import { speak, speechSupported, stopSpeaking, useDictation } from "@/lib/voice";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type ToolCall = { id: string; name: string; args: Record<string, unknown>; ok?: boolean; summary?: string };
@@ -44,6 +45,13 @@ async function shrinkImage(file: File): Promise<File> {
 const fmtSize = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} Ko` : `${(n / 1024 / 1024).toFixed(1).replace(".", ",")} Mo`);
 
 const STORE = (userId: string) => `carnet-chat-${userId}`;
+/** Lecture des réponses : après une question dictée (par défaut), toujours, ou jamais. */
+type ReadAloud = "dictee" | "toujours" | "jamais";
+const READ_ALOUD: { id: ReadAloud; label: string }[] = [
+  { id: "dictee", label: "après une question dictée" },
+  { id: "toujours", label: "toujours" },
+  { id: "jamais", label: "jamais" },
+];
 const MAX_KEPT = 60;
 
 const SUGGESTIONS = [
@@ -192,20 +200,50 @@ export function ChatPanel({
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // ---------- Voix ----------
+  const [readAloud, setReadAloud] = useState<ReadAloud>("dictee");
+  const [canSpeak, setCanSpeak] = useState(false);
+  /** Index du message en cours de lecture */
+  const [speaking, setSpeaking] = useState<number | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- détection côté navigateur après le premier rendu
+    setCanSpeak(speechSupported());
+    return () => stopSpeaking();
+  }, []);
+  const readMessage = (i: number, text: string) => {
+    setSpeaking(i);
+    speak(text, () => setSpeaking((cur) => (cur === i ? null : cur)));
+  };
+  const quiet = () => {
+    stopSpeaking();
+    setSpeaking(null);
+  };
+  // Fin de la dictée (silence) : la question part aussitôt, avec ce qui était déjà écrit
+  const dictation = useDictation((said) => {
+    const text = [input.trim(), said].filter(Boolean).join(" ");
+    if (busy || uploading) setInput(text);
+    else void send(text, true);
+  });
+
   // Conversation gardée dans ce navigateur
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(STORE(userId)) ?? "null") as { messages?: Message[]; provider?: string } | null;
+      const saved = JSON.parse(localStorage.getItem(STORE(userId)) ?? "null") as {
+        messages?: Message[];
+        provider?: string;
+        readAloud?: ReadAloud;
+      } | null;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reprise de la conversation après le premier rendu
       if (saved?.messages) setMessages(saved.messages);
       if (saved?.provider && providers.some((p) => p.id === saved.provider)) setProvider(saved.provider);
+      if (saved?.readAloud && READ_ALOUD.some((r) => r.id === saved.readAloud)) setReadAloud(saved.readAloud);
     } catch {}
   }, [userId, providers]);
   useEffect(() => {
     try {
-      localStorage.setItem(STORE(userId), JSON.stringify({ messages: messages.slice(-MAX_KEPT), provider }));
+      localStorage.setItem(STORE(userId), JSON.stringify({ messages: messages.slice(-MAX_KEPT), provider, readAloud }));
     } catch {}
-  }, [messages, provider, userId]);
+  }, [messages, provider, readAloud, userId]);
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [messages]);
@@ -246,7 +284,7 @@ export function ChatPanel({
       return all.filter((x) => x.key !== key);
     });
 
-  const send = async (text: string) => {
+  const send = async (text: string, spoken = false) => {
     const q = text.trim();
     const pieces = pending.flatMap((p) => (p.piece ? [p.piece] : []));
     if ((!q && !pieces.length) || busy || uploading) return;
@@ -257,6 +295,9 @@ export function ChatPanel({
     for (const p of pending) if (p.preview) URL.revokeObjectURL(p.preview);
     setPending([]);
     setBusy(true);
+    quiet();
+    const answerIndex = messages.length + 1;
+    let answer = "";
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     let wrote = false;
@@ -300,7 +341,10 @@ export function ChatPanel({
             | { type: "navigate"; path: string }
             | { type: "error"; message: string }
             | { type: "done" };
-          if (e.type === "text") update((m) => ({ ...m, text: m.text ? `${m.text}\n\n${e.text}` : e.text }));
+          if (e.type === "text") {
+            answer = answer ? `${answer}\n\n${e.text}` : e.text;
+            update((m) => ({ ...m, text: m.text ? `${m.text}\n\n${e.text}` : e.text }));
+          }
           else if (e.type === "tool") {
             if (WRITES.test(e.name)) wrote = true;
             update((m) => ({ ...m, tools: [...(m.tools ?? []), { id: e.id, name: e.name, args: e.args }] }));
@@ -317,6 +361,9 @@ export function ChatPanel({
     } finally {
       setBusy(false);
       abortRef.current = null;
+      // Réponse lue à voix haute (question dictée, ou réglage « toujours »)
+      if (answer && !ctrl.signal.aborted && (readAloud === "toujours" || (spoken && readAloud === "dictee")))
+        readMessage(answerIndex, answer);
       inputRef.current?.focus();
       // La page affichée reflète les modifications faites par l'assistant
       if (wrote) router.refresh();
@@ -363,12 +410,27 @@ export function ChatPanel({
           <input type="checkbox" className="size-4 accent-brick" checked={allowDelete} onChange={(e) => setAllowDelete(e.target.checked)} />
           Autoriser les suppressions
         </label>
+        {canSpeak && (
+          <label className="flex items-center gap-2">
+            <span className="text-muted">Lire les réponses</span>
+            <select className="input min-h-9 py-1" value={readAloud} onChange={(e) => setReadAloud(e.target.value as ReadAloud)}>
+              {READ_ALOUD.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {messages.length > 0 && (
           <button
             type="button"
             className="text-muted underline underline-offset-4 hover:text-ink"
             disabled={busy}
-            onClick={() => setMessages([])}
+            onClick={() => {
+              quiet();
+              setMessages([]);
+            }}
           >
             Nouvelle conversation
           </button>
@@ -438,6 +500,17 @@ export function ChatPanel({
                 <div className="rounded-2xl rounded-bl-sm bg-surface px-4 py-3">
                   {m.text ? <Markdown text={m.text} /> : <span className="text-muted">Réflexion…</span>}
                 </div>
+              )}
+              {canSpeak && m.text && !(busy && i === messages.length - 1) && (
+                <button
+                  type="button"
+                  className="flex items-center gap-1 justify-self-start rounded px-1.5 py-0.5 text-xs text-muted hover:bg-moss-soft hover:text-ink"
+                  aria-label={speaking === i ? "Arrêter la lecture" : "Lire à voix haute"}
+                  onClick={() => (speaking === i ? quiet() : readMessage(i, m.text))}
+                >
+                  {speaking === i ? <Square size={12} aria-hidden /> : <Volume2 size={14} aria-hidden />}
+                  {speaking === i ? "Arrêter la lecture" : "Écouter"}
+                </button>
               )}
               {m.error && (
                 <p role="alert" className="rounded-lg bg-brick-soft px-3 py-2 text-sm text-brick">
@@ -512,8 +585,13 @@ export function ChatPanel({
           className="min-h-12 resize-none bg-transparent px-2 py-1 outline-none"
           rows={2}
           maxLength={4000}
-          placeholder="Écris ta demande, colle ou joins une image ou un document… (Entrée pour envoyer)"
-          value={input}
+          placeholder={
+            dictation.supported
+              ? "Écris ou dicte ta demande, colle ou joins une image ou un document… (Entrée pour envoyer)"
+              : "Écris ta demande, colle ou joins une image ou un document… (Entrée pour envoyer)"
+          }
+          value={dictation.listening ? [input.trim(), dictation.interim || "…"].filter(Boolean).join(" ") : input}
+          readOnly={dictation.listening}
           onChange={(e) => setInput(e.target.value)}
           onPaste={(e) => {
             // Image ou fichier collé (capture d'écran, fichier copié dans l'explorateur)
@@ -523,6 +601,11 @@ export function ChatPanel({
             addFiles(files);
           }}
           onKeyDown={(e) => {
+            if (e.key === "Escape" && dictation.listening) {
+              e.preventDefault();
+              dictation.cancel();
+              return;
+            }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               void send(input);
@@ -552,8 +635,35 @@ export function ChatPanel({
           >
             <Paperclip size={18} aria-hidden />
           </button>
+          {dictation.error && (
+            <span role="alert" className="mr-auto text-xs text-brick">
+              {dictation.error}
+            </span>
+          )}
+          {dictation.supported && (
+            <button
+              type="button"
+              className={`grid size-9 place-items-center rounded-md disabled:opacity-40 ${
+                dictation.listening ? "animate-pulse bg-brick text-surface" : "text-muted hover:bg-moss-soft hover:text-ink"
+              }`}
+              aria-label={dictation.listening ? "Terminer la dictée" : "Dicter la demande"}
+              aria-pressed={dictation.listening}
+              title={dictation.listening ? "J'écoute… (touche pour terminer, Échap pour annuler)" : "Dicter la demande"}
+              disabled={busy && !dictation.listening}
+              onClick={() => (dictation.listening ? dictation.stop() : dictation.start())}
+            >
+              <Mic size={18} aria-hidden />
+            </button>
+          )}
           {busy ? (
-            <button type="button" className="btn btn-ghost min-h-9 px-3 text-sm" onClick={() => abortRef.current?.abort()}>
+            <button
+              type="button"
+              className="btn btn-ghost min-h-9 px-3 text-sm"
+              onClick={() => {
+                quiet();
+                abortRef.current?.abort();
+              }}
+            >
               Arrêter
             </button>
           ) : null}
